@@ -15,8 +15,12 @@ export const DEFAULT_STAGES = [
 export const DEFAULT_LISTS = {
   objection: ["Preço", "Distância", "Sem horário", "Vai pensar", "Medo do resultado", "Já tem salão"],
   lost_reason: ["Preço", "Não respondeu mais", "Escolheu outro salão", "Sem horário disponível", "Mora longe", "Só pesquisando"],
+  service: ["Avaliação capilar", "Tratamento de queda", "Coloração", "Corte", "Hidratação"],
   origin: ["WhatsApp", "Anúncio", "Instagram", "Site", "Indicação", "Já é cliente"],
 } as const;
+
+/** Ciclo de retorno (dias) dos serviços recorrentes. */
+export const SERVICE_CYCLE_DAYS: Record<string, number> = { "Coloração": 35, "Hidratação": 30 };
 
 export const DEFAULT_QUICK_REPLIES = [
   { label: "boas-vindas", body: "Oi, {nome}! Que bom falar com você. Sou da Casa Fiaes. Como posso te ajudar?" },

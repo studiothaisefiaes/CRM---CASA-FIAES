@@ -6,7 +6,7 @@ import {
 export const roleEnum = pgEnum("role", ["gestor", "atendente"]);
 export const stageKindEnum = pgEnum("stage_kind", ["lead", "atendimento", "agendado", "followup", "fechado", "perdido"]);
 export const directionEnum = pgEnum("direction", ["in", "out"]);
-export const listKindEnum = pgEnum("list_kind", ["objection", "lost_reason", "quick_reply", "origin"]);
+export const listKindEnum = pgEnum("list_kind", ["objection", "lost_reason", "quick_reply", "origin", "service"]);
 export const channelStatusEnum = pgEnum("channel_status", ["desconectado", "aguardando_qr", "conectado", "erro"]);
 
 const id = () => uuid("id").primaryKey().default(sql`gen_random_uuid()`);
@@ -61,6 +61,8 @@ export const contacts = pgTable("contacts", {
   avatarCheckedAt: timestamp("avatar_checked_at", { withTimezone: true }),
   /** "Não é cliente" (conversa pessoal, fornecedor): mensagens ficam guardadas, mas não abre lead nem alerta. */
   ignored: boolean("ignored").notNull().default(false),
+  /** Última resposta automática de fora do expediente (evita repetir). */
+  lastAutoReplyAt: timestamp("last_auto_reply_at", { withTimezone: true }),
   createdAt: createdAt(),
 }, (t) => [uniqueIndex("contacts_phone_uq").on(t.phoneE164)]);
 
@@ -71,6 +73,8 @@ export const lists = pgTable("lists", {
   body: text("body"),
   position: integer("position").notNull().default(0),
   active: boolean("active").notNull().default(true),
+  /** Serviços recorrentes: de quantos em quantos dias a cliente volta (null = sem ciclo). */
+  cycleDays: smallint("cycle_days"),
 }, (t) => [uniqueIndex("lists_kind_label_uq").on(t.kind, t.label)]);
 
 export const channels = pgTable("channels", {
@@ -81,6 +85,8 @@ export const channels = pgTable("channels", {
   phone: text("phone"),
   lastQrAt: timestamp("last_qr_at", { withTimezone: true }),
   lastEventAt: timestamp("last_event_at", { withTimezone: true }),
+  /** Silêncio de avisos do canal até esta data. */
+  quietUntil: timestamp("quiet_until", { withTimezone: true }),
   createdAt: createdAt(),
 }, (t) => [uniqueIndex("channels_instance_uq").on(t.instanceName)]);
 
@@ -105,13 +111,24 @@ export const deals = pgTable("deals", {
   firstResponseAt: timestamp("first_response_at", { withTimezone: true }),
   stageEnteredAt: timestamp("stage_entered_at", { withTimezone: true }).notNull().defaultNow(),
   closedAt: timestamp("closed_at", { withTimezone: true }),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+  archivedBy: uuid("archived_by").references(() => users.id),
+  archivedStageId: uuid("archived_stage_id").references(() => stages.id),
+  sourceId: uuid("source_id").references(() => leadSources.id),
+  sourceLabel: text("source_label"),
+  serviceId: uuid("service_id").references(() => lists.id),
+  paidAt: timestamp("paid_at", { withTimezone: true }),
+  paidCents: integer("paid_cents"),
+  /** confirmado | compareceu | faltou | remarcou (validado no domínio). */
+  attendance: text("attendance"),
+  attendanceAt: timestamp("attendance_at", { withTimezone: true }),
   createdAt: createdAt(),
 }, (t) => [
   index("deals_stage_idx").on(t.stageId),
   index("deals_contact_idx").on(t.contactId),
   index("deals_owner_idx").on(t.ownerId),
   // Nunca dois leads abertos para o mesmo contato.
-  uniqueIndex("deals_one_open_per_contact").on(t.contactId).where(sql`${t.closedAt} is null`),
+  uniqueIndex("deals_one_open_per_contact").on(t.contactId).where(sql`${t.closedAt} is null and ${t.archivedAt} is null`),
 ]);
 
 export const messages = pgTable("messages", {
@@ -130,6 +147,7 @@ export const messages = pgTable("messages", {
   mediaPath: text("media_path"),
   mediaMime: text("media_mime"),
   mediaAttempts: smallint("media_attempts").notNull().default(0),
+  mediaPurgedAt: timestamp("media_purged_at", { withTimezone: true }),
   /** A cliente editou/apagou a mensagem no WhatsApp. */
   editedAt: timestamp("edited_at", { withTimezone: true }),
   /** Trecho da mensagem que esta responde (citação do WhatsApp). */
@@ -166,7 +184,16 @@ export const alerts = pgTable("alerts", {
   createdAt: createdAt(),
   readAt: timestamp("read_at", { withTimezone: true }),
   resolvedAt: timestamp("resolved_at", { withTimezone: true }),
-}, (t) => [uniqueIndex("alerts_dedupe_uq").on(t.dedupeKey), index("alerts_user_idx").on(t.userId, t.createdAt)]);
+  /** Chave da espera em aberto (um alerta ativo por espera). */
+  waitKey: text("wait_key"),
+  level: smallint("level").notNull().default(1),
+  escalatedAt: timestamp("escalated_at", { withTimezone: true }),
+  pushedAt: timestamp("pushed_at", { withTimezone: true }),
+}, (t) => [
+  uniqueIndex("alerts_dedupe_uq").on(t.dedupeKey),
+  index("alerts_user_idx").on(t.userId, t.createdAt),
+  uniqueIndex("alerts_wait_uq").on(t.waitKey).where(sql`resolved_at is null and wait_key is not null`),
+]);
 
 export const automations = pgTable("automations", {
   id: id(),
@@ -227,6 +254,59 @@ export const auditLog = pgTable("audit_log", {
   createdAt: createdAt(),
 });
 
+export const leadSources = pgTable("lead_sources", {
+  id: id(),
+  /** 6–12 caracteres [a-z0-9]. */
+  code: text("code").notNull(),
+  label: text("label").notNull(),
+  /** instagram | google | panfleto | indicacao | anuncio | recepcao | outro */
+  kind: text("kind").notNull(),
+  prefill: text("prefill"),
+  referrerContactId: uuid("referrer_contact_id").references(() => contacts.id),
+  active: boolean("active").notNull().default(true),
+  createdAt: createdAt(),
+}, (t) => [uniqueIndex("lead_sources_code_uq").on(t.code)]);
+
+export const tasks = pgTable("tasks", {
+  id: id(),
+  dealId: uuid("deal_id").references(() => deals.id, { onDelete: "cascade" }),
+  contactId: uuid("contact_id").notNull().references(() => contacts.id),
+  /** proxima_acao | retorno | comparecimento | geral */
+  kind: text("kind").notNull(),
+  title: text("title").notNull(),
+  dueAt: timestamp("due_at", { withTimezone: true }).notNull(),
+  assigneeId: uuid("assignee_id").references(() => users.id),
+  doneAt: timestamp("done_at", { withTimezone: true }),
+  createdBy: uuid("created_by").references(() => users.id),
+  createdAt: createdAt(),
+}, (t) => [index("tasks_done_due_idx").on(t.doneAt, t.dueAt)]);
+
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: id(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  endpoint: text("endpoint").notNull(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  createdAt: createdAt(),
+  lastOkAt: timestamp("last_ok_at", { withTimezone: true }),
+}, (t) => [uniqueIndex("push_subscriptions_endpoint_uq").on(t.endpoint)]);
+
+export const outbox = pgTable("outbox", {
+  id: id(),
+  dealId: uuid("deal_id").notNull().references(() => deals.id, { onDelete: "cascade" }),
+  /** text | poll */
+  kind: text("kind").notNull(),
+  text: text("text").notNull(),
+  options: jsonb("options").$type<string[]>(),
+  /** pending | sent | failed */
+  status: text("status").notNull().default("pending"),
+  notBefore: timestamp("not_before", { withTimezone: true }).notNull().defaultNow(),
+  sentAt: timestamp("sent_at", { withTimezone: true }),
+  error: text("error"),
+  attempts: smallint("attempts").notNull().default(0),
+  createdAt: createdAt(),
+}, (t) => [index("outbox_status_idx").on(t.status, t.notBefore)]);
+
 export type User = typeof users.$inferSelect;
 export type Stage = typeof stages.$inferSelect;
 export type Contact = typeof contacts.$inferSelect;
@@ -236,3 +316,6 @@ export type Channel = typeof channels.$inferSelect;
 export type Alert = typeof alerts.$inferSelect;
 export type Automation = typeof automations.$inferSelect;
 export type ListItem = typeof lists.$inferSelect;
+export type LeadSource = typeof leadSources.$inferSelect;
+export type Task = typeof tasks.$inferSelect;
+export type OutboxItem = typeof outbox.$inferSelect;

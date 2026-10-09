@@ -9,7 +9,7 @@ import { hashPassword } from "../src/server/auth/password";
 async function main() {
   if (!process.env.DATABASE_URL?.includes("crm_e2e")) throw new Error("reset só roda no banco crm_e2e");
   await db.execute(sql`truncate table automation_runs, automation_versions, automations, alerts, deal_events, messages, deals,
-    contacts, channels, lists, stages, sessions, users, webhook_events, audit_log, settings restart identity cascade`);
+    contacts, channels, lists, stages, sessions, users, webhook_events, audit_log, settings, outbox, tasks, lead_sources, push_subscriptions restart identity cascade`);
   await seed(db);
   await db.insert(users).values([
     { name: "Thaíse Fiaes", email: "gestao@e2e.local", role: "gestor", passwordHash: await hashPassword("senha-e2e-123") },

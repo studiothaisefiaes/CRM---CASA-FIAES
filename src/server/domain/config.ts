@@ -89,7 +89,7 @@ export async function previewAutomation(input: AutomationInput) {
 }
 
 /* ---------- Listas ---------- */
-export const listKinds = ["objection", "lost_reason", "quick_reply", "origin"] as const;
+export const listKinds = ["objection", "lost_reason", "quick_reply", "origin", "service"] as const;
 export async function addListItem(kind: (typeof listKinds)[number], label: string, body: string | null, userId: string) {
   const l = z.string().trim().min(1).max(60).parse(kind === "quick_reply" ? label.replace(/^\//, "").toLowerCase().replace(/\s+/g, "-") : label);
   if (kind === "quick_reply" && !body?.trim()) throw new Error("Escreva o texto da resposta pronta.");

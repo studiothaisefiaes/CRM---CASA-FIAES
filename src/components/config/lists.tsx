@@ -8,8 +8,8 @@ import { useToast } from "@/components/ui/toast";
 import { addListItemAction, updateListItemAction } from "@/app/(app)/config/actions";
 import { SPRING } from "@/lib/motion";
 
-type Item = { id: string; kind: "objection" | "lost_reason" | "quick_reply" | "origin"; label: string; body: string | null; active: boolean };
-const TABS = [["quick_reply", "Respostas prontas", "Aparecem ao digitar / no card. Use {nome} para o primeiro nome da cliente."], ["objection", "Objeções", "O que a cliente diz quando hesita. Viram relatório."], ["lost_reason", "Motivos de perda", "Pedidos ao marcar um lead como perdido."], ["origin", "Origens", "De onde vêm os leads."]] as const;
+type Item = { id: string; kind: "objection" | "lost_reason" | "quick_reply" | "origin" | "service"; label: string; body: string | null; active: boolean };
+const TABS = [["quick_reply", "Respostas prontas", "Aparecem ao digitar / no card. Use {nome} para o primeiro nome da cliente."], ["objection", "Objeções", "O que a cliente diz quando hesita. Viram relatório."], ["lost_reason", "Motivos de perda", "Pedidos ao marcar um lead como perdido."], ["origin", "Origens", "De onde vêm os leads."], ["service", "Serviços", "Serviços oferecidos pela Casa."]] as const;
 
 export function ListsEditor({ items }: { items: Item[] }) {
   const [tab, setTab] = useState<Item["kind"]>("quick_reply");
