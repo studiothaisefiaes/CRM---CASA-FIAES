@@ -24,7 +24,7 @@ export type BaileysMessage = {
 };
 type EvoKey = { remoteJid?: string; fromMe?: boolean; id?: string; remoteJidAlt?: string; senderPn?: string };
 type EvoMessageData = { key?: EvoKey; pushName?: string | null; message?: BaileysMessage | null; messageType?: string; messageTimestamp?: number; contextInfo?: CtxInfo | null };
-type EvoConnectionData = { state?: string; wuid?: string; keyId?: string; status?: string; senderPn?: string; remoteJidAlt?: string };
+type EvoConnectionData = { state?: string; statusReason?: number; wuid?: string; keyId?: string; status?: string; senderPn?: string; remoteJidAlt?: string };
 export type EvoPayload = { event?: string; instance?: string; data?: (EvoMessageData & EvoConnectionData) | EvoMessageData[]; date_time?: string };
 
 /** Extrai tipo e texto de uma mensagem do WhatsApp (Baileys). */
@@ -82,10 +82,12 @@ export async function handleEvolutionEvent(p: EvoPayload) {
   if (Array.isArray(p.data)) return { ok: true, ignored: event || "sem_evento" };
   if (event === "connection.update") {
     const state = p.data?.state as string | undefined;
-    const status = state === "open" ? "conectado" : state === "connecting" ? "aguardando_qr" : "desconectado";
+    let status: "conectado" | "aguardando_qr" | "desconectado" = state === "open" ? "conectado" : state === "connecting" ? "aguardando_qr" : "desconectado";
     const phone = typeof p.data?.wuid === "string" ? "+" + p.data.wuid.split("@")[0].split(":")[0] : undefined;
     if (p.instance) {
       const [before] = await db.select().from(channels).where(eq(channels.instanceName, p.instance));
+      // "connecting" de um número já pareado é só a Evolution reconectando (rede piscou, Mac acordou): continua conectado.
+      if (state === "connecting" && before?.status === "conectado") { status = "conectado"; return { ok: true, kind: "connection", status, reconectando: true }; }
       await db.update(channels).set({ status, lastEventAt: new Date(), ...(phone && status === "conectado" ? { phone } : {}) })
         .where(eq(channels.instanceName, p.instance));
       // Mesmo número lido em outro canal: os leads abertos do canal antigo (desconectado) passam a responder por este.
@@ -251,4 +253,9 @@ export async function processHistoryEvents(limit = 20) {
   }
   if (chats) await emit("historico_importado", { chats, leads });
   return { lotes: rows.length, chats, leads };
+}
+
+/** Eventos crus já processados só servem para diagnóstico: guarda 14 dias (uma madrugada de reconexão gera milhares). */
+export async function purgeOldWebhookEvents(now = new Date()) {
+  await db.delete(webhookEvents).where(and(sql`${webhookEvents.processedAt} is not null`, lt(webhookEvents.receivedAt, new Date(now.getTime() - 14 * 86_400_000))));
 }

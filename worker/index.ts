@@ -2,7 +2,7 @@ import "dotenv/config";
 process.env.TZ ??= "America/Bahia";
 import { PgBoss } from "pg-boss";
 import { runRules } from "../src/server/rules/engine";
-import { processHistoryEvents, retryFailedWebhooks } from "../src/server/whatsapp/webhook";
+import { processHistoryEvents, purgeOldWebhookEvents, retryFailedWebhooks } from "../src/server/whatsapp/webhook";
 import { purgeExpiredSessions } from "../src/server/auth/sessions-store";
 import { pool } from "../src/server/db";
 
@@ -29,7 +29,7 @@ async function main() {
   await boss.work(QUEUES.history, { batchSize: 1 }, async () => {
     for (let i = 0; i < 50; i++) { const r = await processHistoryEvents(5); if (r.lotes) console.log("[histórico]", r); if (r.lotes < 5) break; }
   });
-  await boss.work(QUEUES.cleanup, async () => { await purgeExpiredSessions(); });
+  await boss.work(QUEUES.cleanup, async () => { await purgeExpiredSessions(); await purgeOldWebhookEvents(); });
 
   // Primeira rodada imediata (sem esperar o próximo minuto cheio).
   await boss.send(QUEUES.rules, {});

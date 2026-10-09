@@ -109,6 +109,12 @@ describe("número real conectado", () => {
     expect((await db.select().from(messages)).length).toBe(0);
   });
 
+  it("reconexão (Mac acordou, rede piscou) não marca número pareado como 'aguardando QR'", async () => {
+    await db.insert(channels).values({ name: "Recepção", instanceName: "rec", status: "conectado", phone: "+557199990404" });
+    for (let i = 0; i < 5; i++) await ingestEvolution({ event: "connection.update", instance: "rec", date_time: `t${i}`, data: { state: "connecting", statusReason: 200 } });
+    expect((await db.select().from(channels))[0].status).toBe("conectado");
+  });
+
   it("histórico de quem já tem lead aberto entra no mesmo lead", async () => {
     await db.insert(channels).values({ name: "Recepção", instanceName: "rec", status: "conectado", phone: "+557199990404" });
     await ingestEvolution({ event: "messages.upsert", instance: "rec", data: msg("N1", "5571911110001@s.whatsapp.net", false, "Oi de novo", new Date(), "Ana Paula") });
