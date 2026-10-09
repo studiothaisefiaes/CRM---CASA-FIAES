@@ -11,6 +11,11 @@ const toMin = (hhmm: string) => { const [h, m] = hhmm.split(":").map(Number); re
 
 /** Minutos de expediente entre dois instantes (ex.: quanto tempo útil a cliente está esperando). */
 export function businessMinutesBetween(fromMs: number, toMs: number, hours: BusinessHours = DEFAULT_HOURS): number {
+  return Math.floor(businessSecondsBetween(fromMs, toMs, hours) / 60);
+}
+
+/** Segundos de expediente entre dois instantes: o cronômetro da tela pausa com a Casa fechada. */
+export function businessSecondsBetween(fromMs: number, toMs: number, hours: BusinessHours = DEFAULT_HOURS): number {
   if (toMs <= fromMs) return 0;
   let total = 0;
   // percorre dia a dia no horário local
@@ -23,7 +28,7 @@ export function businessMinutesBetween(fromMs: number, toMs: number, hours: Busi
     if (win) {
       const open = dayStart + toMin(win[0]) * 60_000, close = dayStart + toMin(win[1]) * 60_000;
       const a = Math.max(cursor, open), b = Math.min(end, close);
-      if (b > a) total += (b - a) / 60_000;
+      if (b > a) total += (b - a) / 1000;
     }
     cursor = dayStart + 86_400_000;
   }

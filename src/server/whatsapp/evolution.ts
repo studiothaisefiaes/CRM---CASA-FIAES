@@ -68,6 +68,18 @@ export class EvolutionProvider implements WhatsAppProvider {
     return { externalId: r?.key?.id ?? null };
   }
 
+  async downloadMedia(instanceName: string, node: { key: Record<string, unknown>; message: Record<string, unknown> }) {
+    const r = await this.req<{ base64?: string; mimetype?: string; fileName?: string }>("POST", `/chat/getBase64FromMediaMessage/${encodeURIComponent(instanceName)}`,
+      { message: node, convertToMp4: false });
+    if (!r?.base64) throw new ProviderError("A Evolution não devolveu a mídia.");
+    return { base64: r.base64, mimetype: r.mimetype ?? null, fileName: r.fileName ?? null };
+  }
+
+  async profilePictureUrl(instanceName: string, toE164: string) {
+    const r = await this.req<{ profilePictureUrl?: string | null }>("POST", `/chat/fetchProfilePictureUrl/${encodeURIComponent(instanceName)}`, { number: toWhatsappNumber(toE164) });
+    return r?.profilePictureUrl || null;
+  }
+
   async logout(instanceName: string) { await this.req("DELETE", `/instance/logout/${encodeURIComponent(instanceName)}`); }
   async remove(instanceName: string) { await this.req("DELETE", `/instance/delete/${encodeURIComponent(instanceName)}`); }
 }

@@ -56,6 +56,9 @@ export const contacts = pgTable("contacts", {
   clientSince: timestamp("client_since", { withTimezone: true }),
   lastServiceAt: timestamp("last_service_at", { withTimezone: true }),
   notes: text("notes"),
+  /** Foto de perfil do WhatsApp baixada (relativo a MEDIA_DIR); avatarCheckedAt evita buscar de novo toda hora. */
+  avatarPath: text("avatar_path"),
+  avatarCheckedAt: timestamp("avatar_checked_at", { withTimezone: true }),
   createdAt: createdAt(),
 }, (t) => [uniqueIndex("contacts_phone_uq").on(t.phoneE164)]);
 
@@ -119,6 +122,12 @@ export const messages = pgTable("messages", {
   kind: text("kind").notNull().default("text"),
   body: text("body"),
   mediaUrl: text("media_url"),
+  /** Nó de mídia do WhatsApp ({ key, message }) para baixar o arquivo depois; miniatura incluída. */
+  media: jsonb("media").$type<{ key: Record<string, unknown>; message: Record<string, unknown> }>(),
+  /** Arquivo baixado (relativo a MEDIA_DIR) e tipo. */
+  mediaPath: text("media_path"),
+  mediaMime: text("media_mime"),
+  mediaAttempts: smallint("media_attempts").notNull().default(0),
   status: text("status").notNull().default("sent"),
   sentByUserId: uuid("sent_by_user_id").references(() => users.id),
   fromPhone: boolean("from_phone").notNull().default(false),

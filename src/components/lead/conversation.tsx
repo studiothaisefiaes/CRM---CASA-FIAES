@@ -1,10 +1,25 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { IconMic } from "@/components/icons";
 import { SPRING } from "@/lib/motion";
 
-export type Msg = { id: string; direction: "in" | "out"; kind: string; body: string | null; status: string; createdAt: string; sender: string | null; fromPhone: boolean; error?: string | null };
+export type Msg = { id: string; direction: "in" | "out"; kind: string; body: string | null; status: string; createdAt: string; sender: string | null; fromPhone: boolean; error?: string | null; hasMedia?: boolean };
+
+/** Foto, figurinha, áudio, vídeo ou documento vindos do WhatsApp (arquivo servido por /api/media/[id]). */
+function Media({ m }: { m: Msg }) {
+  const [failed, setFailed] = useState(false);
+  const src = `/api/media/${m.id}`;
+  if (failed) return <span className="text-graphite italic">{KIND_LABEL[m.kind] ?? "Mídia"} (não foi possível carregar)</span>;
+  switch (m.kind) {
+    case "image": return <a href={src} target="_blank" rel="noreferrer" className="block -mx-1.5 -mt-0.5 mb-1"><img src={src} alt={m.body ?? "Foto enviada"} loading="lazy" onError={() => setFailed(true)} className="rounded-[12px] max-h-72 w-auto max-w-full object-cover bg-paper-2" /></a>;
+    case "sticker": return <img src={src} alt="Figurinha" loading="lazy" onError={() => setFailed(true)} className="size-28 object-contain" />;
+    case "audio": return <audio controls preload="none" src={src} onError={() => setFailed(true)} className="w-[240px] max-w-full h-10" />;
+    case "video": return <video controls preload="none" src={src} onError={() => setFailed(true)} className="rounded-[12px] max-h-72 max-w-full bg-ink" />;
+    case "document": return <a href={src} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 underline decoration-line-strong underline-offset-2">Abrir documento{m.body ? `: ${m.body}` : ""}</a>;
+    default: return null;
+  }
+}
 
 const STATUS: Record<string, [string, string]> = { pending: ["enviando…", ""], sent: ["✓", ""], delivered: ["✓✓", ""], read: ["✓✓", "text-gold"], simulado: ["simulado", ""], failed: ["não enviada", "text-alert font-semibold"] };
 
@@ -30,8 +45,10 @@ export function Conversation({ messages }: { messages: Msg[] }) {
             <motion.div key={m.id} layout="position" initial={{ opacity: 0, y: 10, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={SPRING} className="flex flex-col">
               {showDay && <p className="self-center my-2 text-[11px] font-medium text-muted bg-paper border border-line rounded-full px-2.5 py-0.5 first-letter:uppercase">{day}</p>}
               <div className={`max-w-[78%] rounded-[16px] px-3.5 py-2 text-[14px] leading-relaxed shadow-[var(--shadow-card)] ${out ? "self-end bg-[#f3ead9] rounded-br-[5px]" : "self-start bg-paper border border-line rounded-bl-[5px]"} ${m.status === "pending" ? "opacity-60" : ""}`}>
-                {m.kind === "audio" ? (
-                  <span className="inline-flex items-center gap-2 text-graphite"><IconMic size={15} /> Áudio <span className="text-[12px] text-muted">(ouça no celular)</span></span>
+                {m.hasMedia && m.kind !== "text" ? (
+                  <><Media m={m} />{m.body && m.kind !== "document" && <span className="block whitespace-pre-wrap break-words">{m.body}</span>}</>
+                ) : m.kind === "audio" ? (
+                  <span className="inline-flex items-center gap-2 text-graphite"><IconMic size={15} /> Áudio</span>
                 ) : m.kind !== "text" && !m.body ? (
                   <span className="text-graphite italic">{KIND_LABEL[m.kind] ?? "Mensagem"}</span>
                 ) : (

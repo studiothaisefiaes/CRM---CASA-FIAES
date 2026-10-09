@@ -6,6 +6,7 @@ import { IconMic, IconClock, IconCalendar } from "@/components/icons";
 import { formatPhoneClient } from "@/lib/phone-client";
 import { elapsed, initials, money } from "@/lib/format";
 import { cn } from "@/lib/cn";
+import { ContactAvatar } from "@/components/ui/contact-avatar";
 
 export function DealCard({ card, slaMinutes, stageKind, stageName, dragging, filtersQs }: {
   card: BoardCard; slaMinutes: number | null; stageKind: string; stageName?: string; dragging?: boolean; filtersQs: string;
@@ -13,7 +14,8 @@ export function DealCard({ card, slaMinutes, stageKind, stageName, dragging, fil
   const { urgency, label } = useUrgency(card.awaitingReplySince, slaMinutes);
   const now = useNow();
   const name = card.contactName?.trim() || formatPhoneClient(card.phone);
-  const snippet = card.lastMessageKind === "audio" ? "Áudio" : card.lastMessage;
+  const KIND: Record<string, string> = { audio: "Áudio", image: "Foto", sticker: "Figurinha", video: "Vídeo", document: "Documento", location: "Localização", contact: "Contato" };
+  const snippet = card.lastMessage || (card.lastMessageKind ? KIND[card.lastMessageKind] ?? null : null);
   const waitingClient = !card.awaitingReplySince && card.lastDirection === "out" && card.lastMessageAt;
   return (
     <Link href={`/funil?${filtersQs}${filtersQs ? "&" : ""}lead=${card.id}`} scroll={false} draggable={false}
@@ -23,9 +25,10 @@ export function DealCard({ card, slaMinutes, stageKind, stageName, dragging, fil
         dragging ? "shadow-[var(--shadow-pop)] rotate-[1.5deg] scale-[1.02]" : "shadow-[var(--shadow-card)] hover:shadow-[0_6px_18px_-10px_rgb(40_30_15/0.25)] hover:-translate-y-px",
       )}>
       <div className="flex items-start justify-between gap-2">
-        <p className="font-medium text-[14px] leading-tight truncate flex items-center gap-1.5">
-          {urgency === "late" && <span className="size-2 rounded-full bg-alert shrink-0 animate-[pulse_1s_ease-in-out_3]" aria-hidden />}
-          {name}
+        <p className="font-medium text-[14px] leading-tight min-w-0 flex items-center gap-2">
+          <ContactAvatar contactId={card.contactId} hasAvatar={card.hasAvatar} name={name} size={28}
+            className={urgency === "late" ? "ring-2 ring-alert ring-offset-1 ring-offset-paper" : undefined} />
+          <span className="truncate">{name}</span>
         </p>
         {card.ownerName && <span title={card.ownerName} className="size-6 shrink-0 rounded-full bg-paper-3 text-graphite text-[10px] font-semibold grid place-items-center">{initials(card.ownerName)}</span>}
       </div>

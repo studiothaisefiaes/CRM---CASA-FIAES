@@ -43,8 +43,16 @@ describe("fluxo do lead", () => {
     expect(d.awaitingReplySince?.toISOString()).toBe(t0.toISOString());
   });
 
+  it("tempo de resposta conta só o expediente (23h → respondida 8h05 = 5 min)", async () => {
+    const r = await recordInbound({ channelId: null, externalId: "N1", phoneRaw: "71999812244", body: "oi", at: new Date("2026-10-14T02:00:00Z") }); // ter 23h
+    if (!("dealId" in r)) throw new Error();
+    await recordOutbound({ dealId: r.dealId, channelId: null, body: "Bom dia!", at: new Date("2026-10-14T11:05:00Z") }); // qua 8h05
+    const ev = await db.select().from(dealEvents).where(eq(dealEvents.type, "resposta"));
+    expect(ev[0].payload).toMatchObject({ waitedSeconds: 300 });
+  });
+
   it("resposta pelo celular (fromMe) conta e move Lead → Atendimento com tempo de espera registrado", async () => {
-    const t0 = new Date("2026-10-09T10:00:00Z");
+    const t0 = new Date("2026-10-09T13:00:00Z"); // sexta, 10h em Salvador (Casa aberta)
     const r = await recordInbound({ channelId: null, externalId: "M1", phoneRaw: "71999812244", body: "oi", at: t0 });
     if (!("dealId" in r)) throw new Error();
     const out = await recordOutbound({ phoneRaw: "557199812244@s.whatsapp.net", channelId: null, externalId: "O1", body: "Oi!", fromPhone: true, at: new Date(t0.getTime() + 95_000) });
@@ -84,6 +92,14 @@ describe("fluxo do lead", () => {
 
   it("sem ser pelo celular (sem contato) continua ignorada", async () => {
     expect(await recordOutbound({ phoneRaw: "71988887777", channelId: null, externalId: "X", body: "oi" })).toEqual({ skipped: "sem_contato" });
+  });
+
+  it("sem atendente ativa (convite não aceito), o lead fica com a gestão", async () => {
+    const [g] = await db.insert(users).values([{ name: "Thaíse", email: "g@c.com", role: "gestor", passwordHash: "x" }]).returning();
+    await db.insert(users).values({ name: "Ana", email: "a@c.com", role: "atendente", passwordHash: null });
+    const r = await recordInbound({ channelId: null, externalId: "OW1", phoneRaw: "71999990000", body: "oi" });
+    if (!("dealId" in r)) throw new Error();
+    expect((await db.select().from(deals))[0].ownerId).toBe(g.id);
   });
 
   it("distribui para a atendente com menos leads", async () => {

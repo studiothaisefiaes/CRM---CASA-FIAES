@@ -5,6 +5,7 @@ import { businessMinutesBetween, isOpen, DEFAULT_HOURS, type BusinessHours } fro
 import { formatPhone } from "../domain/phone";
 import { logEvent, emit } from "../domain/events";
 import { moveDealTx } from "../domain/deals";
+import { getBusinessHours } from "../domain/hours";
 import { actionSchema, conditionSchema, triggerSchema, type Action, type Trigger } from "./types";
 
 export const TZ_OFFSET_MIN = -180; // America/Bahia (UTC-3, sem horário de verão)
@@ -18,10 +19,7 @@ type Candidate = {
 
 function localDate(d: Date) { return new Date(d.getTime() + TZ_OFFSET_MIN * 60_000); }
 
-export async function getBusinessHours(): Promise<BusinessHours> {
-  const [r] = await db.select().from(settings).where(eq(settings.key, "business_hours"));
-  return (r?.value as BusinessHours | undefined) ?? DEFAULT_HOURS;
-}
+export { getBusinessHours };
 
 export async function candidatesFor(trigger: Trigger, now: Date, hours?: BusinessHours): Promise<Candidate[]> {
   const bh = hours ?? (await getBusinessHours());

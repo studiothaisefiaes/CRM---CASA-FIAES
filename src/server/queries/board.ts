@@ -3,7 +3,7 @@ import { db } from "../db";
 import { contacts, deals, messages, stages, users } from "../db/schema";
 
 export type BoardCard = {
-  id: string; contactName: string | null; phone: string; origin: string; ownerId: string | null; ownerName: string | null;
+  id: string; contactId: string; hasAvatar: boolean; contactName: string | null; phone: string; origin: string; ownerId: string | null; ownerName: string | null;
   stageId: string; awaitingReplySince: string | null; stageEnteredAt: string; lastMessage: string | null; lastMessageKind: string | null;
   lastMessageAt: string | null; lastDirection: "in" | "out" | null; isClient: boolean; scheduledAt: string | null; valueCents: number | null;
 };
@@ -21,7 +21,7 @@ export async function getBoard(filter: { ownerId?: string | null; origin?: strin
     conds.push(or(sql`lower(coalesce(${contacts.name}, '')) like ${like}`, digits.length >= 3 ? sql`${contacts.phoneE164} like ${"%" + digits + "%"}` : sql`false`)!);
   }
   const rows = await db.select({
-    id: deals.id, contactName: contacts.name, phone: contacts.phoneE164, origin: deals.origin, ownerId: deals.ownerId, ownerName: users.name,
+    id: deals.id, contactId: contacts.id, hasAvatar: sql<boolean>`(${contacts.avatarPath} is not null)`, contactName: contacts.name, phone: contacts.phoneE164, origin: deals.origin, ownerId: deals.ownerId, ownerName: users.name,
     stageId: deals.stageId, awaitingReplySince: deals.awaitingReplySince, stageEnteredAt: deals.stageEnteredAt, isClient: contacts.isClient,
     scheduledAt: deals.scheduledAt, valueCents: deals.valueCents,
     lastMessage: sql<string | null>`lm.body`, lastMessageKind: sql<string | null>`lm.kind`, lastMessageAt: sql<Date | null>`lm.created_at`, lastDirection: sql<"in" | "out" | null>`lm.direction`,

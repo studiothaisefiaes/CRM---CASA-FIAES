@@ -2,7 +2,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { asc, eq, isNull, and, lt, gt, ne, sql } from "drizzle-orm";
 import { db } from "../db";
 import { alerts, channels, deals, messages, webhookEvents } from "../db/schema";
-import { importHistoryChat, recordInbound, recordOutbound, type HistoryMessage } from "../domain/deals";
+import { importHistoryChat, recordInbound, recordOutbound, type HistoryMessage, type MediaNode } from "../domain/deals";
 import { emit } from "../domain/events";
 
 export function checkSecret(received: string | null, expected: string) {
@@ -44,6 +44,12 @@ export function parseContent(m: BaileysMessage | null | undefined): { kind: stri
   if (m.locationMessage) return { kind: "location", body: "Localização compartilhada" };
   if (m.contactMessage) return { kind: "contact", body: m.contactMessage.displayName ?? "Contato compartilhado" };
   return { kind: "other", body: null };
+}
+
+const MEDIA_KINDS = new Set(["image", "video", "audio", "sticker", "document"]);
+/** Guarda { key, message } da mídia para o worker baixar o arquivo (o link do WhatsApp expira). */
+function mediaNode(kind: string, d: EvoMessageData): MediaNode | null {
+  return MEDIA_KINDS.has(kind) && d.key && d.message ? { key: d.key as Record<string, unknown>, message: d.message as Record<string, unknown> } : null;
 }
 
 function hasAd(d: EvoMessageData) {
@@ -149,11 +155,11 @@ export async function handleEvolutionEvent(p: EvoPayload) {
       // Enviada pelo CRM: o envio já gravou a mensagem como "enviando"; só vincula o id externo.
       if (event === "send.message" && await claimPendingSend(jid, d.key.id, content.body)) return { ok: true, kind: "out", claimed: true };
       const r = await recordOutbound({ phoneRaw: jid, channelId, externalId: d.key.id, body: content.body, kind: content.kind,
-        fromPhone: event === "messages.upsert", at });
+        fromPhone: event === "messages.upsert", at, media: mediaNode(content.kind, d) });
       return { ok: true, kind: "out", result: r };
     }
     const r = await recordInbound({ channelId, externalId: d.key.id, phoneRaw: jid, pushName: d.pushName, kind: content.kind,
-      body: content.body, at, hasAdReferral: hasAd(d) });
+      body: content.body, at, hasAdReferral: hasAd(d), media: mediaNode(content.kind, d) });
     return { ok: true, kind: "in", result: r };
   }
   return { ok: true, ignored: event || "sem_evento" };
@@ -237,7 +243,7 @@ export async function processHistoryEvents(limit = 20) {
         const content = parseContent(d.message);
         if (!jid || !d.key?.id || !content || !d.messageTimestamp) continue;
         const list = byChat.get(jid) ?? [];
-        list.push({ externalId: d.key.id, fromMe: !!d.key.fromMe, at: new Date(Number(d.messageTimestamp) * 1000), kind: content.kind, body: content.body, pushName: d.pushName });
+        list.push({ externalId: d.key.id, fromMe: !!d.key.fromMe, at: new Date(Number(d.messageTimestamp) * 1000), kind: content.kind, body: content.body, pushName: d.pushName, media: mediaNode(content.kind, d) });
         byChat.set(jid, list);
       }
       for (const [jid, items] of byChat) {

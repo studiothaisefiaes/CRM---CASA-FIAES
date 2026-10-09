@@ -1,4 +1,5 @@
 "use client";
+import { ContactAvatar } from "@/components/ui/contact-avatar";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
@@ -63,7 +64,7 @@ export function LeadSheet({ d, nextId }: { d: DealDetail; nextId?: string | null
   const name = d.contact.name?.trim() || formatPhoneClient(d.contact.phoneE164);
   const firstName = d.contact.name?.trim().split(/\s+/)[0] ?? "";
   const msgs: Msg[] = useMemo(() => {
-    const base = d.messages.map((m) => ({ id: m.id, direction: m.direction, kind: m.kind, body: m.body, status: m.status, createdAt: new Date(m.createdAt).toISOString(), sender: m.sender, fromPhone: m.fromPhone, error: m.error }));
+    const base = d.messages.map((m) => ({ id: m.id, direction: m.direction, kind: m.kind, body: m.body, status: m.status, createdAt: new Date(m.createdAt).toISOString(), sender: m.sender, fromPhone: m.fromPhone, error: m.error, hasMedia: m.hasMedia }));
     return optimistic ? [...base, { id: "optimistic", direction: "out" as const, kind: "text", body: optimistic, status: "pending", createdAt: new Date().toISOString(), sender: null, fromPhone: false }] : base;
   }, [d.messages, optimistic]);
 
@@ -130,12 +131,15 @@ export function LeadSheet({ d, nextId }: { d: DealDetail; nextId?: string | null
         className="fixed z-50 inset-y-0 right-0 w-full lg:w-[min(1040px,calc(100vw-260px))] bg-paper shadow-[-30px_0_60px_-30px_rgb(40_30_15/0.35)] flex flex-col">
         <header className="px-5 lg:px-6 pt-4 pb-3 border-b border-line">
           <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
+            <div className="min-w-0 flex items-center gap-3.5">
+              <ContactAvatar contactId={d.contact.id} hasAvatar={!!d.contact.avatarPath} name={name} size={52} />
+              <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="font-serif text-[28px] leading-tight font-light truncate">{name}</h2>
                 {d.contact.isClient && <Badge tone="ok">Cliente</Badge>}
               </div>
               <p className="text-[13px] text-graphite mt-0.5">{formatPhoneClient(d.contact.phoneE164)} · {d.deal.origin}{d.channelName ? ` · ${d.channelName}` : ""}</p>
+              </div>
             </div>
             <button onClick={close} className="size-9 grid place-items-center rounded-[10px] text-muted hover:bg-paper-2 hover:text-ink" aria-label="Fechar"><IconClose /></button>
           </div>

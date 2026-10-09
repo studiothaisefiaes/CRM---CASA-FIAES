@@ -1,6 +1,8 @@
 import { sql } from "drizzle-orm";
 import { db } from "../db";
 import type { SessionUser } from "../auth/sessions-store";
+import { getBusinessHours } from "../domain/hours";
+import { businessSecondsBetween } from "../../lib/business-hours";
 
 export type TodayItem = { id: string; name: string | null; phone: string; stageName: string; stageKey: string; slaMinutes: number | null; at: string | null; extra?: string | null };
 
@@ -37,7 +39,7 @@ export async function getToday(user: SessionUser) {
       coalesce((select sla_minutes from stages where key = 'lead'), 2) * 60 as goal
     from deal_events e where e.type = 'resposta' and (e.created_at - ${sql.raw(OFFSET)})::date = ${todayLocal}
       ${user.role === "gestor" ? sql`` : sql`and e.user_id = ${user.id}`}`)).rows[0] as { n: number; avg: number; within: number; goal: number };
-  const now = Date.now();
-  const late = waiting.filter((w) => w.slaMinutes && w.at && now - new Date(w.at).getTime() >= w.slaMinutes * 60_000).length;
+  const now = Date.now(), hours = await getBusinessHours();
+  const late = waiting.filter((w) => w.slaMinutes && w.at && businessSecondsBetween(new Date(w.at).getTime(), now, hours) >= w.slaMinutes * 60).length;
   return { waiting, scheduled, followups, birthdays, dues, late, resp, counts: counts.rows[0] as { novos: number; abertos: number; atrasos: number } };
 }

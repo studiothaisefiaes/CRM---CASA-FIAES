@@ -5,7 +5,7 @@ import { DndContext, DragOverlay, PointerSensor, TouchSensor, useDraggable, useD
 import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import type { BoardCard, BoardStage } from "@/server/queries/board";
 import { DealCard } from "./deal-card";
-import { useNow } from "./timer";
+import { urgencyOf, useHours, useNow } from "./timer";
 import { moveDealAction } from "@/app/(app)/funil/actions";
 import { useToast } from "@/components/ui/toast";
 import { StageDialogs, type PendingMove } from "./stage-dialogs";
@@ -118,7 +118,8 @@ function CollapsedColumn({ stage, onOpen }: { stage: Column; onOpen: () => void 
 function ColumnView({ stage, activeId, filtersQs, onCollapse }: { stage: Column; activeId: string | null; filtersQs: string; onCollapse?: () => void }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage.id });
   const now = useNow();
-  const late = stage.cards.filter((c) => c.awaitingReplySince && stage.slaMinutes && now - new Date(c.awaitingReplySince).getTime() >= stage.slaMinutes * 60_000).length;
+  const hours = useHours();
+  const late = stage.cards.filter((c) => urgencyOf(c.awaitingReplySince, stage.slaMinutes, now, hours) === "late").length;
   return (
     <section ref={setNodeRef} aria-label={`${stage.name}, ${stage.cards.length} leads`}
       className={cn("snap-start shrink-0 w-[288px] flex flex-col rounded-[16px] transition-colors duration-200", isOver ? "bg-gold-soft/70 ring-1 ring-gold/40" : "bg-paper-2")}>

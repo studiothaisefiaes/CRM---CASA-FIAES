@@ -3,6 +3,8 @@ import { db, type Tx } from "../db";
 import { alerts, contacts, deals, messages, stages, users, type Stage } from "../db/schema";
 import { normalizePhone } from "./phone";
 import { emit, logEvent } from "./events";
+import { getBusinessHours } from "./hours";
+import { businessSecondsBetween } from "../../lib/business-hours";
 
 export const CLOSED_KINDS = ["fechado", "perdido"] as const;
 
@@ -31,13 +33,14 @@ export function detectOrigin(input: { body?: string | null; hasAdReferral?: bool
   return "WhatsApp";
 }
 
-/** Distribui o lead para quem atende com menos leads abertos (rodízio por carga). */
+/** Distribui o lead para quem atende com menos leads abertos (rodízio por carga). Sem atendente ativa, fica com a gestão. */
 async function pickOwner(tx: Tx): Promise<string | null> {
   const rows = await tx.execute(sql`
     select u.id, count(d.id)::int as open
     from users u
     left join deals d on d.owner_id = u.id and d.closed_at is null
-    where u.active and u.role = 'atendente' and u.password_hash is not null
+    where u.active and u.password_hash is not null
+      and (u.role = 'atendente' or not exists (select 1 from users a where a.active and a.role = 'atendente' and a.password_hash is not null))
     group by u.id order by open asc, random() limit 1`);
   return (rows.rows[0] as { id: string } | undefined)?.id ?? null;
 }
@@ -65,9 +68,13 @@ export type InboundInput = {
   kind?: string;
   body?: string | null;
   mediaUrl?: string | null;
+  media?: MediaNode | null;
   at?: Date;
   hasAdReferral?: boolean;
 };
+
+/** Nó de mídia do WhatsApp, guardado para baixar o arquivo depois. */
+export type MediaNode = { key: Record<string, unknown>; message: Record<string, unknown> };
 
 export type InboundResult = { skipped: "telefone_invalido" } | { duplicate: true; dealId: string } | { dealId: string; created: boolean; messageId: string };
 
@@ -91,7 +98,7 @@ export async function recordInbound(input: InboundInput): Promise<InboundResult>
     }
     const [msg] = await tx.insert(messages).values({
       dealId: deal.id, contactId: contact.id, channelId: input.channelId, externalId: input.externalId,
-      direction: "in", kind: input.kind ?? "text", body: input.body ?? null, mediaUrl: input.mediaUrl ?? null, status: "received", createdAt: at,
+      direction: "in", kind: input.kind ?? "text", body: input.body ?? null, mediaUrl: input.mediaUrl ?? null, media: input.media ?? null, status: "received", createdAt: at,
     }).onConflictDoNothing().returning({ id: messages.id });
     if (!msg) return { duplicate: true as const, dealId: deal.id };
 
@@ -124,6 +131,7 @@ export type OutboundInput = {
   kind?: string;
   userId?: string | null;
   fromPhone?: boolean;
+  media?: MediaNode | null;
   status?: string;
   at?: Date;
   /** Mensagem já gravada como "pending" pelo envio do CRM: atualiza em vez de inserir. */
@@ -169,7 +177,7 @@ export async function recordOutbound(input: OutboundInput) {
       : await tx.insert(messages).values({
           dealId, contactId: deal.contactId, channelId: input.channelId ?? deal.channelId, externalId: input.externalId ?? null,
           direction: "out", kind: input.kind ?? "text", body: input.body ?? null, status: input.status ?? "sent",
-          sentByUserId: input.userId ?? null, fromPhone: !!input.fromPhone, createdAt: at,
+          sentByUserId: input.userId ?? null, fromPhone: !!input.fromPhone, media: input.media ?? null, createdAt: at,
         }).onConflictDoNothing().returning({ id: messages.id });
     if (!msg) return { duplicate: true as const, dealId };
 
@@ -180,7 +188,8 @@ export async function recordOutbound(input: OutboundInput) {
     }
     const responder = input.userId ?? deal.ownerId ?? null;
     if (deal.awaitingReplySince) {
-      const waited = Math.max(0, Math.round((at.getTime() - deal.awaitingReplySince.getTime()) / 1000));
+      // Tempo de resposta conta só o expediente: mensagem das 23h respondida às 8h não é "9 horas de atraso".
+      const waited = businessSecondsBetween(deal.awaitingReplySince.getTime(), at.getTime(), await getBusinessHours(tx));
       await logEvent(tx, dealId, "resposta", { waitedSeconds: waited, first: !deal.firstResponseAt, fromPhone: !!input.fromPhone }, responder);
     }
     await tx.update(deals).set({
@@ -232,7 +241,7 @@ export async function activeUsers() {
     .where(and(eq(users.active, true), sql`${users.passwordHash} is not null`)).orderBy(asc(users.name));
 }
 
-export type HistoryMessage = { externalId: string; fromMe: boolean; at: Date; kind: string; body: string | null; pushName?: string | null };
+export type HistoryMessage = { externalId: string; fromMe: boolean; at: Date; kind: string; body: string | null; pushName?: string | null; media?: MediaNode | null };
 
 /** Conversas paradas há mais que isso entram como contato com histórico, sem lead aberto. */
 export const HISTORY_LEAD_DAYS = 30;
@@ -271,7 +280,7 @@ export async function importHistoryChat(channelId: string | null, phoneRaw: stri
     }
     const rows = msgs.map((m) => ({
       dealId: deal?.id ?? null, contactId: contact.id, channelId, externalId: m.externalId, direction: m.fromMe ? "out" as const : "in" as const,
-      kind: m.kind, body: m.body, status: m.fromMe ? "sent" : "received", fromPhone: m.fromMe, createdAt: m.at,
+      kind: m.kind, body: m.body, media: m.media ?? null, status: m.fromMe ? "sent" : "received", fromPhone: m.fromMe, createdAt: m.at,
     }));
     let inserted = 0;
     for (let i = 0; i < rows.length; i += 500) {

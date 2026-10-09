@@ -10,6 +10,8 @@ const schema = z.object({
   APP_URL: z.string().url(),
   DEV_TOOLS: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
+  /** Onde ficam fotos, áudios e figurinhas baixados do WhatsApp (entra no backup). */
+  MEDIA_DIR: z.string().optional(),
 });
 
 export type Env = z.infer<typeof schema>;
