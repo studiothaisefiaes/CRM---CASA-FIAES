@@ -28,7 +28,7 @@ export async function candidatesFor(trigger: Trigger, now: Date, hours?: Busines
   // Arquivado ("não é cliente") e canal em modo quieto (histórico recém-importado) ficam fora do motor.
   const from = sql`from deals d join stages s on s.id = d.stage_id join contacts c on c.id = d.contact_id
     left join channels ch on ch.id = d.channel_id`;
-  const live = sql`d.archived_at is null and (ch.quiet_until is null or ch.quiet_until < ${now.toISOString()}::timestamptz)`;
+  const live = sql`d.archived_at is null and (ch.quiet_until is null or ch.quiet_until <= ${now.toISOString()}::timestamptz)`;
   let q;
   switch (trigger.type) {
     case "sem_resposta_minutos":

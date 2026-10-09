@@ -4,6 +4,7 @@ import { alerts, auditLog, contacts, deals, messages, stages, users, type Stage 
 import { normalizePhone } from "./phone";
 import { emit, logEvent } from "./events";
 import { archiveDeals, restoreDeals } from "./archive";
+import { isQuiet } from "./quiet";
 import { getBusinessHours } from "./hours";
 import { businessSecondsBetween } from "../../lib/business-hours";
 
@@ -295,13 +296,15 @@ export async function importHistoryChat(channelId: string | null, phoneRaw: stri
   const lastAt = msgs[msgs.length - 1].at;
   const lastIn = inbound.at(-1)?.at ?? null, lastOut = outbound.at(-1)?.at ?? null;
 
+  // Canal em modo quieto (acabou de parear): conversa do histórico não abre espera (nem aviso quando o modo acabar).
+  const quiet = await isQuiet(channelId, now);
   return db.transaction(async (tx) => {
     const contact = await upsertContact(tx, phone, name);
     let deal = await findOpenDeal(contact.id, tx);
     let created = false;
     if (!deal && !contact.ignored && now.getTime() - lastAt.getTime() <= HISTORY_LEAD_DAYS * 86_400_000) {
       const stage = await stageByKey(lastOut ? "atendimento" : "lead", tx);
-      const clientWaiting = lastIn && (!lastOut || lastIn > lastOut) && now.getTime() - lastIn.getTime() <= HISTORY_WAITING_HOURS * 3_600_000;
+      const clientWaiting = !quiet && lastIn && (!lastOut || lastIn > lastOut) && now.getTime() - lastIn.getTime() <= HISTORY_WAITING_HOURS * 3_600_000;
       const waitingSince = clientWaiting ? inbound.find((m) => !lastOut || m.at > lastOut)!.at : null;
       const origin = detectOrigin({ body: inbound[0]?.body, isClient: contact.isClient });
       [deal] = await tx.insert(deals).values({

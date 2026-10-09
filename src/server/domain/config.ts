@@ -6,6 +6,7 @@ import { automations, automationVersions, auditLog, channels, lists, settings, s
 import { automationInputSchema, type AutomationInput } from "../rules/types";
 import { whatsapp } from "../whatsapp/evolution";
 import { createInvite } from "../auth/users";
+import { startQuietIfPaired } from "./quiet";
 
 const audit = (userId: string, action: string, entity: string, entityId: string | null, data: Record<string, unknown> = {}) =>
   db.insert(auditLog).values({ userId, action, entity, entityId, data });
@@ -124,6 +125,8 @@ export async function channelQr(id: string) {
   const r = await whatsapp().connect(c.instanceName);
   const status = r.status === "conectado" ? "conectado" : r.status === "aguardando_qr" ? "aguardando_qr" : c.status;
   await db.update(channels).set({ status, ...(r.status === "aguardando_qr" ? { lastQrAt: new Date() } : {}) }).where(eq(channels.id, id));
+  // A tela pode saber da conexão antes do webhook: liga o modo quieto aqui também (idempotente).
+  if (status === "conectado") await startQuietIfPaired(c, null);
   return r;
 }
 export async function channelState(id: string) {
@@ -131,6 +134,7 @@ export async function channelState(id: string) {
   if (!c) throw new Error("Número não encontrado");
   const st = await whatsapp().state(c.instanceName);
   if (st !== c.status) await db.update(channels).set({ status: st }).where(eq(channels.id, id));
+  if (st === "conectado") await startQuietIfPaired(c, null);
   return st;
 }
 export async function disconnectChannel(id: string, remove: boolean, userId: string) {

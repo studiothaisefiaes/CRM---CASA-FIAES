@@ -1,13 +1,15 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
-import { deals, messages, contacts, users, channels, alerts, dealEvents } from "../db/schema";
-import { recordInbound, ignoreContact, unignoreContact } from "./deals";
+import { deals, messages, contacts, users, channels, alerts, dealEvents, stages } from "../db/schema";
+import { recordInbound, ignoreContact, unignoreContact, importHistoryChat, moveDeal } from "./deals";
 import { archiveDeals, restoreDeals } from "./archive";
 import { startQuiet, endQuiet, isQuiet } from "./quiet";
 import { createManualLead } from "./updates";
 import { runRules } from "../rules/engine";
 import { ingestEvolution } from "../whatsapp/webhook";
+import { setWhatsappProvider } from "../whatsapp/evolution";
+import { channelState } from "./config";
 import { resetDb } from "../../../test/db";
 
 let uid = "";
@@ -15,6 +17,7 @@ beforeEach(async () => {
   await resetDb();
   [{ id: uid }] = await db.insert(users).values({ name: "T", email: "t@c.com", role: "gestor", passwordHash: "x" }).returning();
 });
+afterEach(() => setWhatsappProvider(null));
 
 describe("arquivar (não é cliente)", () => {
   it("arquiva sem apagar e Desfazer restaura etapa e mensagens", async () => {
@@ -28,7 +31,9 @@ describe("arquivar (não é cliente)", () => {
     expect((await db.select().from(contacts))[0].ignored).toBe(true);
     expect((await db.select().from(messages)).every((m) => m.dealId === r.dealId)).toBe(true);
     await recordInbound({ channelId: null, externalId: "A2", phoneRaw: "71999990001", body: "e aí" }); // Review Focus 1
+    await recordInbound({ channelId: null, externalId: "A2", phoneRaw: "71999990001", body: "e aí" }); // mesmo webhook 2x
     expect((await db.select().from(deals)).length).toBe(1);
+    expect((await db.select().from(messages)).length).toBe(2);
     expect((await db.select().from(messages)).every((m) => m.dealId === r.dealId)).toBe(true);
     expect(await db.select().from(alerts)).toHaveLength(0);
     const res = await restoreDeals([r.dealId], uid);
@@ -38,6 +43,8 @@ describe("arquivar (não é cliente)", () => {
     expect(back.archivedBy).toBeNull();
     expect(back.archivedStageId).toBeNull();
     expect(back.stageId).toBe(d.stageId);
+    expect(back.ownerId).toBe(d.ownerId);
+    expect(back.ownerId).not.toBeNull();
     expect((await db.select().from(contacts))[0].ignored).toBe(false);
     expect((await db.select().from(messages)).length).toBe(2);
     const types = (await db.select().from(dealEvents).where(eq(dealEvents.dealId, r.dealId))).map((e) => e.type);
@@ -66,6 +73,25 @@ describe("arquivar (não é cliente)", () => {
     expect(await restoreDeals([a], uid)).toEqual({ restored: 0, conflicts: [a] });
     const [still] = await db.select().from(deals).where(eq(deals.id, a));
     expect(still.archivedAt).not.toBeNull();
+  });
+
+  it("arquivar resolve os alertas abertos do lead", async () => {
+    const r = await recordInbound({ channelId: null, externalId: "AL1", phoneRaw: "71999990013", body: "oi" });
+    if (!("dealId" in r)) throw new Error();
+    await db.insert(alerts).values({ dealId: r.dealId, audience: "gestao", type: "sem_resposta_minutos", severity: "urgente", message: "x", dedupeKey: "al1" });
+    await archiveDeals([r.dealId], uid);
+    expect((await db.select().from(alerts))[0].resolvedAt).not.toBeNull();
+  });
+
+  it("arquivar lead antigo (fechado) não marca 'não é cliente' se o contato tem outro lead em andamento", async () => {
+    const r1 = await recordInbound({ channelId: null, externalId: "F1", phoneRaw: "71999990014", body: "oi" });
+    if (!("dealId" in r1)) throw new Error();
+    await moveDeal(r1.dealId, "perdido", uid);
+    const r2 = await recordInbound({ channelId: null, externalId: "F2", phoneRaw: "71999990014", body: "voltei" });
+    if (!("dealId" in r2)) throw new Error();
+    expect(r2.dealId).not.toBe(r1.dealId);
+    expect(await archiveDeals([r1.dealId], uid)).toEqual({ archived: 1 });
+    expect((await db.select().from(contacts))[0].ignored).toBe(false);
   });
 
   it("lead arquivado esperando resposta não gera alerta no motor", async () => {
@@ -113,20 +139,70 @@ describe("modo quieto", () => {
     expect(await isQuiet(ch.id, new Date())).toBe(false);
   });
 
-  it("parear o número liga o modo quieto de 48 h; reconexão do mesmo número não renova", async () => {
+  it("fronteira: em quiet_until exato o canal já não está quieto, no motor e no isQuiet", async () => {
+    const [ch] = await db.insert(channels).values({ name: "Rec", instanceName: "rec", status: "conectado" }).returning();
+    const t0 = new Date("2026-10-13T13:00:00Z");
+    await recordInbound({ channelId: ch.id, externalId: "B1", phoneRaw: "71999990015", body: "oi", at: t0 });
+    const t = new Date(t0.getTime() + 30 * 60_000);
+    await db.update(channels).set({ quietUntil: t });
+    expect(await isQuiet(ch.id, t)).toBe(false);
+    await runRules(t);
+    expect((await db.select().from(alerts)).length).toBeGreaterThan(0);
+  });
+
+  it("histórico importado com o canal quieto não abre espera", async () => {
+    const [ch] = await db.insert(channels).values({ name: "Rec", instanceName: "rec", status: "conectado" }).returning();
+    const now = new Date("2026-10-13T13:00:00Z");
+    await startQuiet(ch.id, 48, new Date(now.getTime() - 60_000));
+    await importHistoryChat(ch.id, "71999990016", [{ externalId: "H1", fromMe: false, at: new Date(now.getTime() - 30 * 60_000), kind: "text", body: "oi" }], now);
+    const [d] = await db.select().from(deals);
+    expect(d).toBeDefined();
+    expect(d.awaitingReplySince).toBeNull();
+  });
+});
+
+describe("gatilho do modo quieto", () => {
+  const open = (wuid = "557199990404@s.whatsapp.net") => ingestEvolution({ event: "connection.update", instance: "rec", data: { state: "open", wuid }, date_time: String(Math.random()) });
+  const quietOf = async (id: string) => (await db.select().from(channels).where(eq(channels.id, id)))[0].quietUntil;
+
+  it("primeiro pareamento (canal sem número) liga 48 h", async () => {
     const [ch] = await db.insert(channels).values({ name: "Rec", instanceName: "rec", status: "aguardando_qr" }).returning();
     const before = Date.now();
-    await ingestEvolution({ event: "connection.update", instance: "rec", data: { state: "open", wuid: "557199990404@s.whatsapp.net" } });
-    const [after] = await db.select().from(channels).where(eq(channels.id, ch.id));
-    expect(after.status).toBe("conectado");
-    const ms = after.quietUntil!.getTime() - before;
+    await open();
+    const ms = (await quietOf(ch.id))!.getTime() - before;
     expect(ms).toBeGreaterThan(47.9 * 3_600_000);
     expect(ms).toBeLessThan(48.1 * 3_600_000);
-    await db.update(channels).set({ quietUntil: null }).where(eq(channels.id, ch.id));
-    await ingestEvolution({ event: "connection.update", instance: "rec", data: { state: "open", wuid: "557199990404@s.whatsapp.net" } });
-    expect((await db.select().from(channels).where(eq(channels.id, ch.id)))[0].quietUntil).toBeNull();
-    // Outro número lido no mesmo canal: histórico novo chegando, liga de novo.
-    await ingestEvolution({ event: "connection.update", instance: "rec", data: { state: "open", wuid: "557199990000@s.whatsapp.net" } });
-    expect((await db.select().from(channels).where(eq(channels.id, ch.id)))[0].quietUntil).not.toBeNull();
+  });
+
+  it("queda de rede (desconectado → open, mesmo número, sem QR recente) não liga", async () => {
+    const [ch] = await db.insert(channels).values({ name: "Rec", instanceName: "rec", status: "desconectado", phone: "+557199990404",
+      lastQrAt: new Date(Date.now() - 3 * 86_400_000) }).returning();
+    await open();
+    expect((await db.select().from(channels).where(eq(channels.id, ch.id)))[0].status).toBe("conectado");
+    expect(await quietOf(ch.id)).toBeNull();
+  });
+
+  it("logout → QR lido → open com o mesmo número liga", async () => {
+    const [ch] = await db.insert(channels).values({ name: "Rec", instanceName: "rec", status: "desconectado", phone: "+557199990404" }).returning();
+    await ingestEvolution({ event: "qrcode.updated", instance: "rec", data: {}, date_time: "qr1" });
+    await open();
+    expect(await quietOf(ch.id)).not.toBeNull();
+  });
+
+  it("outro número lido no canal liga", async () => {
+    const [ch] = await db.insert(channels).values({ name: "Rec", instanceName: "rec", status: "conectado", phone: "+557199990404" }).returning();
+    await open("557199990000@s.whatsapp.net");
+    expect(await quietOf(ch.id)).not.toBeNull();
+  });
+
+  it("consulta de status chega antes do webhook: liga uma vez só (não estende)", async () => {
+    const [ch] = await db.insert(channels).values({ name: "Rec", instanceName: "rec", status: "aguardando_qr", phone: "+557199990404", lastQrAt: new Date() }).returning();
+    setWhatsappProvider({ createInstance: async () => {}, connect: async () => ({ status: "conectado" }), state: async () => "conectado", logout: async () => {}, remove: async () => {},
+      sendText: async () => { throw new Error("sem envio em teste"); } });
+    expect(await channelState(ch.id)).toBe("conectado");
+    const first = await quietOf(ch.id);
+    expect(first).not.toBeNull();
+    await open();
+    expect((await quietOf(ch.id))!.getTime()).toBe(first!.getTime());
   });
 });

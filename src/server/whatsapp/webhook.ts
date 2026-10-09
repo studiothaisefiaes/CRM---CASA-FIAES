@@ -4,7 +4,7 @@ import { db } from "../db";
 import { alerts, channels, deals, messages, webhookEvents } from "../db/schema";
 import { importHistoryChat, recordInbound, recordOutbound, type HistoryMessage, type MediaNode } from "../domain/deals";
 import { emit } from "../domain/events";
-import { startQuiet } from "../domain/quiet";
+import { startQuietIfPaired } from "../domain/quiet";
 
 export function checkSecret(received: string | null, expected: string) {
   if (!received) return false;
@@ -165,7 +165,7 @@ export async function handleEvolutionEvent(p: EvoPayload) {
       await db.update(channels).set({ status, lastEventAt: new Date(), ...(phone && status === "conectado" ? { phone } : {}) })
         .where(eq(channels.instanceName, p.instance));
       // Número recém-pareado (ou outro número lido no canal): o histórico vai chegar, 48 h sem avisos desse canal.
-      if (status === "conectado" && before && (before.status !== "conectado" || (phone && before.phone !== phone))) await startQuiet(before.id, 48);
+      if (status === "conectado" && before) await startQuietIfPaired(before, phone);
       // Mesmo número lido em outro canal: os leads abertos do canal antigo (desconectado) passam a responder por este.
       if (status === "conectado" && phone && before) {
         await db.execute(sql`update deals set channel_id = ${before.id}

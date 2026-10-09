@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "../db";
-import { auditLog, contacts, deals } from "../db/schema";
+import { alerts, auditLog, contacts, deals } from "../db/schema";
 import { emit, logEvent } from "./events";
 import { findOpenDeal } from "./deals";
 
@@ -17,7 +17,13 @@ export async function archiveDeals(dealIds: string[], userId: string): Promise<{
       .where(and(inArray(deals.id, ids), isNull(deals.archivedAt)))
       .returning({ id: deals.id, contactId: deals.contactId, stageId: deals.stageId });
     if (!rows.length) return rows;
-    await tx.update(contacts).set({ ignored: true }).where(inArray(contacts.id, [...new Set(rows.map((r) => r.contactId))]));
+    // Só vira "não é cliente" o contato que não ficou com outro lead em andamento (ex.: arquivou um lead antigo já fechado).
+    for (const contactId of new Set(rows.map((r) => r.contactId))) {
+      if (!(await findOpenDeal(contactId, tx))) await tx.update(contacts).set({ ignored: true }).where(eq(contacts.id, contactId));
+    }
+    // Avisos pendentes do lead arquivado se resolvem (ninguém precisa responder "não é cliente").
+    await tx.update(alerts).set({ resolvedAt: now, readAt: sql`coalesce(${alerts.readAt}, ${now.toISOString()}::timestamptz)` })
+      .where(and(inArray(alerts.dealId, rows.map((r) => r.id)), isNull(alerts.resolvedAt)));
     for (const r of rows) await logEvent(tx, r.id, "arquivado", { etapa: r.stageId }, userId);
     await tx.insert(auditLog).values(rows.map((r) => ({ userId, action: "arquivou_lead", entity: "deal", entityId: r.id, data: { contactId: r.contactId } })));
     return rows;

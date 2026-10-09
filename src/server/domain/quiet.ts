@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, lte, or } from "drizzle-orm";
 import { db } from "../db";
-import { channels } from "../db/schema";
+import { channels, type Channel } from "../db/schema";
 
 /**
  * Modo quieto: logo depois de parear um número, o WhatsApp despeja o histórico e várias conversas antigas
@@ -16,6 +16,26 @@ export async function startQuiet(channelId: string, hours = 48, now = new Date()
   const until = new Date(now.getTime() + hours * 3_600_000);
   await db.update(channels).set({ quietUntil: until }).where(eq(channels.id, channelId));
   return until;
+}
+
+/** QR lido há menos que isso conta como pareamento novo (o histórico vai chegar). */
+const QR_RECENT_MS = 10 * 60_000;
+
+/**
+ * Liga o modo quieto só quando o canal acabou de ser pareado: não tinha número, o número mudou ou alguém leu o QR
+ * há pouco. Queda de rede (mesmo número voltando sem QR) não silencia nada. Idempotente: não estende um modo quieto
+ * que ainda está valendo (o webhook e a consulta de status da tela podem chegar os dois).
+ * `before` é o canal como estava antes da mudança para "conectado".
+ */
+export async function startQuietIfPaired(before: Channel, phone: string | null | undefined, now = new Date()): Promise<boolean> {
+  const phoneChanged = !!phone && !!before.phone && phone !== before.phone;
+  const freshPair = before.status !== "conectado" && (!before.phone || (!!before.lastQrAt && now.getTime() - before.lastQrAt.getTime() <= QR_RECENT_MS));
+  if (!phoneChanged && !freshPair) return false;
+  const until = new Date(now.getTime() + 48 * 3_600_000);
+  const rows = await db.update(channels).set({ quietUntil: until })
+    .where(and(eq(channels.id, before.id), or(isNull(channels.quietUntil), lte(channels.quietUntil, now))))
+    .returning({ id: channels.id });
+  return rows.length > 0;
 }
 
 export async function endQuiet(channelId: string): Promise<void> {
