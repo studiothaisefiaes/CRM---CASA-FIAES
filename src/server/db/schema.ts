@@ -128,6 +128,11 @@ export const messages = pgTable("messages", {
   mediaPath: text("media_path"),
   mediaMime: text("media_mime"),
   mediaAttempts: smallint("media_attempts").notNull().default(0),
+  /** A cliente editou/apagou a mensagem no WhatsApp. */
+  editedAt: timestamp("edited_at", { withTimezone: true }),
+  /** Trecho da mensagem que esta responde (citação do WhatsApp). */
+  quotedBody: text("quoted_body"),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
   status: text("status").notNull().default("sent"),
   sentByUserId: uuid("sent_by_user_id").references(() => users.id),
   fromPhone: boolean("from_phone").notNull().default(false),

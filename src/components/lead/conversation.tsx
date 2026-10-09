@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { IconMic } from "@/components/icons";
 import { SPRING } from "@/lib/motion";
 
-export type Msg = { id: string; direction: "in" | "out"; kind: string; body: string | null; status: string; createdAt: string; sender: string | null; fromPhone: boolean; error?: string | null; hasMedia?: boolean };
+export type Msg = { id: string; direction: "in" | "out"; kind: string; body: string | null; status: string; createdAt: string; sender: string | null; fromPhone: boolean; error?: string | null; hasMedia?: boolean; quotedBody?: string | null; edited?: boolean; deleted?: boolean };
 
 /** Foto, figurinha, áudio, vídeo ou documento vindos do WhatsApp (arquivo servido por /api/media/[id]). */
 function Media({ m }: { m: Msg }) {
@@ -29,7 +29,7 @@ const dayLabel = (iso: string) => {
   if (d.toDateString() === y.toDateString()) return "Ontem";
   return d.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
 };
-const KIND_LABEL: Record<string, string> = { image: "Foto", video: "Vídeo", document: "Documento", sticker: "Figurinha", location: "Localização", contact: "Contato", other: "Mensagem" };
+const KIND_LABEL: Record<string, string> = { image: "Foto", video: "Vídeo", document: "Documento", sticker: "Figurinha", location: "Localização", contact: "Contato", poll: "Enquete", event: "Evento", other: "Mensagem sem prévia (veja no celular)" };
 
 export function Conversation({ messages }: { messages: Msg[] }) {
   const end = useRef<HTMLDivElement>(null);
@@ -45,6 +45,11 @@ export function Conversation({ messages }: { messages: Msg[] }) {
             <motion.div key={m.id} layout="position" initial={{ opacity: 0, y: 10, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={SPRING} className="flex flex-col">
               {showDay && <p className="self-center my-2 text-[11px] font-medium text-muted bg-paper border border-line rounded-full px-2.5 py-0.5 first-letter:uppercase">{day}</p>}
               <div className={`max-w-[78%] rounded-[16px] px-3.5 py-2 text-[14px] leading-relaxed shadow-[var(--shadow-card)] ${out ? "self-end bg-[#f3ead9] rounded-br-[5px]" : "self-start bg-paper border border-line rounded-bl-[5px]"} ${m.status === "pending" ? "opacity-60" : ""}`}>
+                {m.quotedBody && (
+                  <span className={`block mb-1.5 -mx-1 px-2.5 py-1.5 rounded-[10px] border-l-2 border-gold/70 text-[12.5px] text-graphite line-clamp-3 ${out ? "bg-paper/60" : "bg-paper-2"}`}>{m.quotedBody}</span>
+                )}
+                {m.deleted && <span className="block text-[11.5px] font-medium text-alert/80 mb-0.5">Apagada pela cliente no WhatsApp</span>}
+                <span className={m.deleted ? "block line-through decoration-alert/50 opacity-60" : "contents"}>
                 {m.hasMedia && m.kind !== "text" ? (
                   <><Media m={m} />{m.body && m.kind !== "document" && <span className="block whitespace-pre-wrap break-words">{m.body}</span>}</>
                 ) : m.kind === "audio" ? (
@@ -54,7 +59,9 @@ export function Conversation({ messages }: { messages: Msg[] }) {
                 ) : (
                   <>{m.kind !== "text" && <span className="text-graphite italic">{KIND_LABEL[m.kind]}: </span>}<span className="whitespace-pre-wrap break-words">{m.body}</span></>
                 )}
+                </span>
                 <span className="flex items-center justify-end gap-1 text-[10.5px] text-muted mt-1" title={m.status === "failed" && m.error ? m.error : undefined}>
+                  {m.edited && "editada · "}
                   {out && (m.fromPhone ? "pelo celular · " : m.sender ? `${m.sender.split(" ")[0]} · ` : "automática · ")}
                   {new Date(m.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
                   {out && STATUS[m.status] && <span className={`ml-0.5 ${STATUS[m.status][1]}`} aria-label={`Status: ${m.status}`}>{STATUS[m.status][0]}</span>}

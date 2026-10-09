@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { env } from "@/server/env";
 import { assertUser } from "@/server/auth/session";
 import { ingestEvolution } from "@/server/whatsapp/webhook";
+import { normalizePhone } from "@/server/domain/phone";
 import { db } from "@/server/db";
 import { channels } from "@/server/db/schema";
 
@@ -15,7 +16,8 @@ export async function simulateAction(input: { phone: string; name: string; text:
   const r = await ingestEvolution({
     event: "messages.upsert", instance: ch?.instanceName ?? "simulador",
     data: {
-      key: { remoteJid: `${input.phone.replace(/\D/g, "")}@s.whatsapp.net`, fromMe: input.fromMe, id },
+      // Igual ao WhatsApp real: o identificador sempre vem com o código do país (55…).
+      key: { remoteJid: `${(normalizePhone(input.phone) ?? input.phone).replace(/\D/g, "")}@s.whatsapp.net`, fromMe: input.fromMe, id },
       pushName: input.fromMe ? "Você" : input.name || null,
       message: input.ad ? { extendedTextMessage: { text: input.text, contextInfo: { externalAdReply: { title: "Anúncio" } } } } : { conversation: input.text },
       messageType: "conversation", messageTimestamp: Math.floor(Date.now() / 1000),

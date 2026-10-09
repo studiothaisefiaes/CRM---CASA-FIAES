@@ -15,41 +15,105 @@ export function checkSecret(received: string | null, expected: string) {
 type CtxInfo = { externalAdReply?: object; conversionSource?: string; ctwaClid?: string };
 type DocMsg = { caption?: string; fileName?: string };
 /** Só os campos do Baileys que o CRM usa. */
+type LocationMsg = { degreesLatitude?: number; degreesLongitude?: number; name?: string; address?: string };
+type PollMsg = { name?: string };
+type ProtocolMsg = { key?: { id?: string }; type?: number | string; editedMessage?: Record<string, unknown> };
 export type BaileysMessage = {
+  ptvMessage?: object; liveLocationMessage?: LocationMsg; contactsArrayMessage?: { displayName?: string };
+  pollCreationMessage?: PollMsg; pollCreationMessageV2?: PollMsg; pollCreationMessageV3?: PollMsg; eventMessage?: { name?: string };
+  buttonsResponseMessage?: { selectedDisplayText?: string }; templateButtonReplyMessage?: { selectedDisplayText?: string };
+  listResponseMessage?: { title?: string }; interactiveResponseMessage?: { body?: { text?: string } };
   conversation?: string; extendedTextMessage?: { text?: string; contextInfo?: CtxInfo };
   imageMessage?: { caption?: string }; videoMessage?: { caption?: string }; audioMessage?: object; stickerMessage?: object;
   documentMessage?: DocMsg; documentWithCaptionMessage?: { message?: { documentMessage?: DocMsg } };
-  locationMessage?: object; contactMessage?: { displayName?: string };
-  reactionMessage?: object; protocolMessage?: object; senderKeyDistributionMessage?: object;
+  locationMessage?: LocationMsg; contactMessage?: { displayName?: string; vcard?: string };
+  reactionMessage?: object; protocolMessage?: ProtocolMsg; senderKeyDistributionMessage?: object;
 };
 type EvoKey = { remoteJid?: string; fromMe?: boolean; id?: string; remoteJidAlt?: string; senderPn?: string };
 type EvoMessageData = { key?: EvoKey; pushName?: string | null; message?: BaileysMessage | null; messageType?: string; messageTimestamp?: number; contextInfo?: CtxInfo | null };
 type EvoConnectionData = { state?: string; statusReason?: number; wuid?: string; keyId?: string; status?: string; senderPn?: string; remoteJidAlt?: string };
 export type EvoPayload = { event?: string; instance?: string; data?: (EvoMessageData & EvoConnectionData) | EvoMessageData[]; date_time?: string };
 
-/** Extrai tipo e texto de uma mensagem do WhatsApp (Baileys). */
-export function parseContent(m: BaileysMessage | null | undefined): { kind: string; body: string | null } | null {
-  if (!m) return null;
-  if (m.reactionMessage || m.protocolMessage || (m.senderKeyDistributionMessage && Object.keys(m).length === 1)) return null;
+/** Embrulhos do WhatsApp que só carregam outra mensagem dentro (temporária, visualização única, legenda de documento). */
+const WRAPPERS = ["ephemeralMessage", "viewOnceMessage", "viewOnceMessageV2", "viewOnceMessageV2Extension", "documentWithCaptionMessage"] as const;
+type Loose = Record<string, unknown> & BaileysMessage;
+function unwrap(m: Loose): Loose {
+  for (let i = 0; i < 3; i++) {
+    const w = WRAPPERS.find((k) => (m[k] as { message?: Loose } | undefined)?.message);
+    if (!w || w === "documentWithCaptionMessage") break;
+    m = (m[w] as { message: Loose }).message;
+  }
+  return m;
+}
+/** Tipos que não são conversa (sistema, confirmação, reação…): não viram mensagem nem cobram resposta. */
+const SILENT = ["reactionMessage", "encReactionMessage", "secretEncryptedMessage", "pollUpdateMessage", "pinInChatMessage", "keepInChatMessage",
+  "albumMessage", "senderKeyDistributionMessage", "messageContextInfo", "callLogMesssage", "bcallMessage", "protocolMessage", "editedMessage"];
+
+/** Extrai tipo e texto de uma mensagem do WhatsApp (Baileys). null = não é conversa. */
+export function parseContent(raw: BaileysMessage | null | undefined): { kind: string; body: string | null } | null {
+  if (!raw) return null;
+  const m = unwrap(raw as Loose);
+  const keys = Object.keys(m);
+  if (keys.length === 0 || keys.every((k) => SILENT.includes(k))) return null;
   if (typeof m.conversation === "string") return { kind: "text", body: m.conversation };
   if (m.extendedTextMessage?.text) return { kind: "text", body: m.extendedTextMessage.text };
   if (m.imageMessage) return { kind: "image", body: m.imageMessage.caption ?? null };
   if (m.videoMessage) return { kind: "video", body: m.videoMessage.caption ?? null };
+  if (m.ptvMessage) return { kind: "video", body: null }; // vídeo-recado (bolinha)
   if (m.audioMessage) return { kind: "audio", body: null };
   if (m.documentMessage || m.documentWithCaptionMessage) {
     const d = m.documentMessage ?? m.documentWithCaptionMessage?.message?.documentMessage;
     return { kind: "document", body: d?.caption ?? d?.fileName ?? null };
   }
   if (m.stickerMessage) return { kind: "sticker", body: null };
-  if (m.locationMessage) return { kind: "location", body: "Localização compartilhada" };
-  if (m.contactMessage) return { kind: "contact", body: m.contactMessage.displayName ?? "Contato compartilhado" };
+  if (m.locationMessage || m.liveLocationMessage) {
+    const l = (m.locationMessage ?? m.liveLocationMessage)!;
+    const where = [l.name, l.address].filter(Boolean).join(" · ");
+    const link = l.degreesLatitude != null ? `https://maps.google.com/?q=${l.degreesLatitude},${l.degreesLongitude}` : "";
+    return { kind: "location", body: [where, link].filter(Boolean).join(" · ") || "Localização compartilhada" };
+  }
+  if (m.contactMessage) {
+    const tel = m.contactMessage.vcard?.match(/TEL[^:]*:([^\n\r]+)/)?.[1]?.trim();
+    return { kind: "contact", body: [m.contactMessage.displayName, tel].filter(Boolean).join(" · ") || "Contato compartilhado" };
+  }
+  if (m.contactsArrayMessage) return { kind: "contact", body: m.contactsArrayMessage.displayName ?? "Contatos compartilhados" };
+  const poll = m.pollCreationMessage ?? m.pollCreationMessageV2 ?? m.pollCreationMessageV3;
+  if (poll) return { kind: "poll", body: `Enquete: ${poll.name ?? ""}`.trim() };
+  if (m.eventMessage) return { kind: "event", body: `Evento: ${m.eventMessage.name ?? ""}`.trim() };
+  // Respostas de botão/lista: o que importa é a opção escolhida.
+  const choice = m.buttonsResponseMessage?.selectedDisplayText ?? m.templateButtonReplyMessage?.selectedDisplayText ?? m.listResponseMessage?.title
+    ?? m.interactiveResponseMessage?.body?.text;
+  if (choice) return { kind: "text", body: choice };
   return { kind: "other", body: null };
+}
+
+/** Edição ou exclusão de uma mensagem já recebida (o WhatsApp manda como mensagem nova apontando para a original). */
+export function protocolAction(raw: BaileysMessage | null | undefined): { type: "edit"; id: string; body: string | null } | { type: "delete"; id: string } | null {
+  if (!raw) return null;
+  const m = raw as Loose;
+  const proto = m.protocolMessage ?? (m.editedMessage as { message?: Loose } | undefined)?.message?.protocolMessage;
+  if (!proto?.key?.id) return null;
+  const t = proto.type;
+  if (t === 0 || t === "REVOKE") return { type: "delete", id: proto.key.id };
+  if (t === 14 || t === "MESSAGE_EDIT") return { type: "edit", id: proto.key.id, body: parseContent(proto.editedMessage as BaileysMessage)?.body ?? null };
+  return null;
 }
 
 const MEDIA_KINDS = new Set(["image", "video", "audio", "sticker", "document"]);
 /** Guarda { key, message } da mídia para o worker baixar o arquivo (o link do WhatsApp expira). */
 function mediaNode(kind: string, d: EvoMessageData): MediaNode | null {
   return MEDIA_KINDS.has(kind) && d.key && d.message ? { key: d.key as Record<string, unknown>, message: d.message as Record<string, unknown> } : null;
+}
+
+const QUOTE_LABEL: Record<string, string> = { image: "Foto", video: "Vídeo", audio: "Áudio", sticker: "Figurinha", document: "Documento", location: "Localização", contact: "Contato", poll: "Enquete" };
+/** Texto (ou tipo) da mensagem citada quando a pessoa responde uma mensagem específica. */
+function quotedBody(d: EvoMessageData): string | null {
+  const msg = (d.message ?? {}) as Record<string, { contextInfo?: { quotedMessage?: BaileysMessage } } | undefined>;
+  const ci = (d.contextInfo as { quotedMessage?: BaileysMessage } | null | undefined)
+    ?? Object.values(msg).find((v) => v && typeof v === "object" && v.contextInfo?.quotedMessage)?.contextInfo;
+  const q = parseContent(ci?.quotedMessage);
+  if (!q) return null;
+  return (q.body ?? QUOTE_LABEL[q.kind] ?? "Mensagem").slice(0, 280);
 }
 
 function hasAd(d: EvoMessageData) {
@@ -88,12 +152,15 @@ export async function handleEvolutionEvent(p: EvoPayload) {
   if (Array.isArray(p.data)) return { ok: true, ignored: event || "sem_evento" };
   if (event === "connection.update") {
     const state = p.data?.state as string | undefined;
-    let status: "conectado" | "aguardando_qr" | "desconectado" = state === "open" ? "conectado" : state === "connecting" ? "aguardando_qr" : "desconectado";
+    const status: "conectado" | "aguardando_qr" | "desconectado" = state === "open" ? "conectado" : state === "connecting" ? "aguardando_qr" : "desconectado";
     const phone = typeof p.data?.wuid === "string" ? "+" + p.data.wuid.split("@")[0].split(":")[0] : undefined;
     if (p.instance) {
       const [before] = await db.select().from(channels).where(eq(channels.instanceName, p.instance));
       // "connecting" de um número já pareado é só a Evolution reconectando (rede piscou, Mac acordou): continua conectado.
-      if (state === "connecting" && before?.status === "conectado") { status = "conectado"; return { ok: true, kind: "connection", status, reconectando: true }; }
+      if (state === "connecting" && before?.status === "conectado") {
+        await db.update(channels).set({ lastEventAt: new Date() }).where(eq(channels.id, before.id));
+        return { ok: true, kind: "connection", status: "conectado" as const, reconectando: true };
+      }
       await db.update(channels).set({ status, lastEventAt: new Date(), ...(phone && status === "conectado" ? { phone } : {}) })
         .where(eq(channels.instanceName, p.instance));
       // Mesmo número lido em outro canal: os leads abertos do canal antigo (desconectado) passam a responder por este.
@@ -128,7 +195,12 @@ export async function handleEvolutionEvent(p: EvoPayload) {
       const rank = sql`case ${messages.status} when 'read' then 3 when 'delivered' then 2 when 'sent' then 1 else 0 end`;
       const next = { sent: 1, delivered: 2, read: 3, failed: 0 }[status];
       // Nunca rebaixa (read > delivered > sent); falha só sobrescreve quem ainda não foi entregue.
-      await db.update(messages).set({ status }).where(and(eq(messages.externalId, id), status === "failed" ? sql`${rank} <= 1` : sql`${rank} < ${next}`));
+      const r = await db.update(messages).set({ status }).where(and(eq(messages.externalId, id), status === "failed" ? sql`${rank} <= 1` : sql`${rank} < ${next}`)).returning({ id: messages.id });
+      if (r.length === 0) {
+        // O status pode chegar antes da própria mensagem (lote do celular): tenta de novo pelo worker.
+        const [exists] = await db.select({ id: messages.id }).from(messages).where(eq(messages.externalId, id)).limit(1);
+        if (!exists) throw new RetryLater("status antes da mensagem");
+      }
       await emit("status_mensagem", {});
     }
     return { ok: true, kind: "status", status };
@@ -147,6 +219,13 @@ export async function handleEvolutionEvent(p: EvoPayload) {
       return { ok: true, ignored: "lid_sem_numero" };
     }
     if (!jid || !d.key?.id) return { ok: true, ignored: "sem_chave" };
+    const proto = protocolAction(d.message);
+    if (proto) {
+      const set = proto.type === "edit" ? { editedAt: new Date(), ...(proto.body != null ? { body: proto.body } : {}) } : { deletedAt: new Date() };
+      const r = await db.update(messages).set(set).where(eq(messages.externalId, proto.id)).returning({ dealId: messages.dealId });
+      if (r[0]?.dealId) await emit("mensagem_atualizada", { dealId: r[0].dealId });
+      return { ok: true, kind: proto.type, found: r.length > 0 };
+    }
     if (await isSelfChat(p.instance, jid)) return { ok: true, ignored: "conversa_consigo_mesmo" };
     const content = parseContent(d.message);
     if (!content) return { ok: true, ignored: "tipo_ignorado" };
@@ -155,11 +234,11 @@ export async function handleEvolutionEvent(p: EvoPayload) {
       // Enviada pelo CRM: o envio já gravou a mensagem como "enviando"; só vincula o id externo.
       if (event === "send.message" && await claimPendingSend(jid, d.key.id, content.body)) return { ok: true, kind: "out", claimed: true };
       const r = await recordOutbound({ phoneRaw: jid, channelId, externalId: d.key.id, body: content.body, kind: content.kind,
-        fromPhone: event === "messages.upsert", at, media: mediaNode(content.kind, d) });
+        fromPhone: event === "messages.upsert", at, media: mediaNode(content.kind, d), quotedBody: quotedBody(d) });
       return { ok: true, kind: "out", result: r };
     }
     const r = await recordInbound({ channelId, externalId: d.key.id, phoneRaw: jid, pushName: d.pushName, kind: content.kind,
-      body: content.body, at, hasAdReferral: hasAd(d), media: mediaNode(content.kind, d) });
+      body: content.body, at, hasAdReferral: hasAd(d), media: mediaNode(content.kind, d), quotedBody: quotedBody(d) });
     return { ok: true, kind: "in", result: r };
   }
   return { ok: true, ignored: event || "sem_evento" };
@@ -196,13 +275,17 @@ export async function ingestEvolution(p: EvoPayload) {
     await db.update(webhookEvents).set({ processedAt: new Date() }).where(eq(webhookEvents.id, row.id));
     return r;
   } catch (e) {
-    console.error("[webhook] processamento falhou; fica para o worker", e);
+    if (!(e instanceof RetryLater)) console.error("[webhook] processamento falhou; fica para o worker", e);
     await db.update(webhookEvents).set({ error: e instanceof Error ? e.message : String(e), attempts: 1 }).where(eq(webhookEvents.id, row.id)).catch(() => {});
     return { ok: false, queued: true };
   }
 }
 
 export const MAX_ATTEMPTS = 8;
+/** Falha esperada e temporária (ex.: status chegou antes da mensagem): tenta de novo sem alarde. */
+export class RetryLater extends Error {}
+/** No reprocessamento, estado de conexão antigo não vale mais (o vigia de conexão cuida do atual). */
+const STALE_ON_RETRY = new Set(["connection.update", "qrcode.updated"]);
 
 /** Worker: reprocessa eventos que falharam nas últimas 24 h, mais antigos primeiro, até 8 tentativas. */
 export async function retryFailedWebhooks(limit = 50) {
@@ -212,10 +295,12 @@ export async function retryFailedWebhooks(limit = 50) {
     .orderBy(asc(webhookEvents.receivedAt)).limit(limit);
   let ok = 0;
   for (const r of rows) {
+    if (STALE_ON_RETRY.has(eventName(r.event))) { await db.update(webhookEvents).set({ processedAt: new Date(), error: "estado antigo: ignorado" }).where(eq(webhookEvents.id, r.id)); continue; }
     try { await handleEvolutionEvent(r.payload as EvoPayload); await db.update(webhookEvents).set({ processedAt: new Date(), error: null }).where(eq(webhookEvents.id, r.id)); ok++; }
     catch (e) {
       const attempts = r.attempts + 1;
       await db.update(webhookEvents).set({ error: e instanceof Error ? e.message : String(e), attempts }).where(eq(webhookEvents.id, r.id));
+      if (attempts >= MAX_ATTEMPTS && e instanceof RetryLater) { await db.update(webhookEvents).set({ processedAt: new Date() }).where(eq(webhookEvents.id, r.id)); continue; }
       if (attempts >= MAX_ATTEMPTS) await db.insert(alerts).values({ audience: "gestao", type: "webhook_falhou", severity: "info",
         message: `Uma mensagem do WhatsApp não pôde ser registrada depois de ${attempts} tentativas. Erro: ${(e instanceof Error ? e.message : String(e)).slice(0, 120)}`,
         dedupeKey: `webhook:${r.id}` }).onConflictDoNothing();
@@ -243,7 +328,7 @@ export async function processHistoryEvents(limit = 20) {
         const content = parseContent(d.message);
         if (!jid || !d.key?.id || !content || !d.messageTimestamp) continue;
         const list = byChat.get(jid) ?? [];
-        list.push({ externalId: d.key.id, fromMe: !!d.key.fromMe, at: new Date(Number(d.messageTimestamp) * 1000), kind: content.kind, body: content.body, pushName: d.pushName, media: mediaNode(content.kind, d) });
+        list.push({ externalId: d.key.id, fromMe: !!d.key.fromMe, at: new Date(Number(d.messageTimestamp) * 1000), kind: content.kind, body: content.body, pushName: d.pushName, media: mediaNode(content.kind, d), quotedBody: quotedBody(d) });
         byChat.set(jid, list);
       }
       for (const [jid, items] of byChat) {

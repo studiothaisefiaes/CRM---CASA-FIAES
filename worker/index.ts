@@ -6,6 +6,7 @@ import { processHistoryEvents, purgeOldWebhookEvents, retryFailedWebhooks } from
 import { purgeExpiredSessions } from "../src/server/auth/sessions-store";
 import { pool } from "../src/server/db";
 import { downloadPendingMedia, refreshAvatars } from "../src/server/whatsapp/media";
+import { checkConnections } from "../src/server/whatsapp/watchdog";
 
 // Worker do CRM: automações (a cada minuto), reprocessamento de webhooks e limpeza.
 // Roda separado do app: `npm run worker` (no Contabo, sob pm2).
@@ -33,6 +34,7 @@ async function main() {
   });
   // Fotos, áudios e figurinhas: baixa logo (o link do WhatsApp expira) + fotos de perfil.
   await boss.work(QUEUES.media, { batchSize: 1 }, async () => {
+    await checkConnections().catch((e) => console.error("[vigia da conexão]", e));
     const m = await downloadPendingMedia(30); const a = await refreshAvatars(15);
     if (m.tried || a.tried) console.log("[mídia]", m, "[fotos de perfil]", a);
   });

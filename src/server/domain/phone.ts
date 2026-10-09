@@ -9,12 +9,18 @@ const DEFAULT_DDD = "71"; // Salvador
 export function normalizePhone(raw: string | null | undefined): string | null {
   if (!raw) return null;
   let s = String(raw).trim();
-  if (s.includes("@")) {
+  const fromWhatsapp = s.includes("@");
+  if (fromWhatsapp) {
     if (s.endsWith("@g.us") || s.endsWith("@broadcast") || s.endsWith("@lid")) return null; // grupo / lista / id anônimo
     s = s.split("@")[0].split(":")[0];
   }
   let digits = s.replace(/\D/g, "");
   if (!digits) return null;
+  // Do WhatsApp o número já vem com o código do país: estrangeiro (+1, +351…) não pode virar DDD brasileiro.
+  if (fromWhatsapp && !digits.startsWith("55")) {
+    const intl = parsePhoneNumberFromString("+" + digits);
+    return intl?.isValid() ? intl.number : null;
+  }
   if (digits.startsWith("00")) digits = digits.slice(2);
   if (digits.startsWith("0")) digits = digits.replace(/^0+/, "");
   // Número local sem DDD

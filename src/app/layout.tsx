@@ -10,6 +10,8 @@ export const metadata: Metadata = {
   title: { default: "CRM Casa Fiaes", template: "%s · CRM Casa Fiaes" },
   description: "Atendimento e funil de vendas da Casa Fiaes",
   robots: { index: false, follow: false },
+  // Manifesto estático em public/: a rota dinâmica (app/manifest.ts) fazia o dev server recompilar e recarregar a página em loop.
+  manifest: "/manifest.webmanifest",
   appleWebApp: { capable: true, title: "Casa Fiaes", statusBarStyle: "default" },
   icons: { apple: "/apple-touch-icon.png" },
 };

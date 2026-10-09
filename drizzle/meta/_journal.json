@@ -36,6 +36,20 @@
       "when": 1791576463547,
       "tag": "0004_midia",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791577033298,
+      "tag": "0005_mensagem_editada",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791577153580,
+      "tag": "0006_citacao",
+      "breakpoints": true
     }
   ]
 }

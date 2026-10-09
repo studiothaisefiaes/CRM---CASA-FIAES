@@ -14,7 +14,7 @@ export function DealCard({ card, slaMinutes, stageKind, stageName, dragging, fil
   const { urgency, label } = useUrgency(card.awaitingReplySince, slaMinutes);
   const now = useNow();
   const name = card.contactName?.trim() || formatPhoneClient(card.phone);
-  const KIND: Record<string, string> = { audio: "Áudio", image: "Foto", sticker: "Figurinha", video: "Vídeo", document: "Documento", location: "Localização", contact: "Contato" };
+  const KIND: Record<string, string> = { audio: "Áudio", image: "Foto", sticker: "Figurinha", video: "Vídeo", document: "Documento", location: "Localização", contact: "Contato", poll: "Enquete", event: "Evento", other: "Mensagem" };
   const snippet = card.lastMessage || (card.lastMessageKind ? KIND[card.lastMessageKind] ?? null : null);
   const waitingClient = !card.awaitingReplySince && card.lastDirection === "out" && card.lastMessageAt;
   return (

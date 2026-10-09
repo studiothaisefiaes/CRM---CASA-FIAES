@@ -19,7 +19,7 @@ export function elapsed(fromIso: string, now = Date.now()) {
 }
 export function seconds(s: number) {
   if (s < 60) return `${s} s`;
-  if (s < 3600) return `${Math.floor(s / 60)} min${s % 60 ? ` ${s % 60} s` : ""}`;
+  if (s < 3600) return `${Math.floor(s / 60)} min${s < 600 && s % 60 ? ` ${s % 60} s` : ""}`; // segundos só importam abaixo de 10 min
   return `${Math.floor(s / 3600)} h ${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}`;
 }
 export const money = (cents: number | null | undefined) =>

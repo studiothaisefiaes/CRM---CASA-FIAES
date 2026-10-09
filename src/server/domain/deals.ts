@@ -69,12 +69,16 @@ export type InboundInput = {
   body?: string | null;
   mediaUrl?: string | null;
   media?: MediaNode | null;
+  quotedBody?: string | null;
   at?: Date;
   hasAdReferral?: boolean;
 };
 
 /** Nó de mídia do WhatsApp, guardado para baixar o arquivo depois. */
 export type MediaNode = { key: Record<string, unknown>; message: Record<string, unknown> };
+
+/** Tipos que costumam só encerrar a conversa (figurinha de "obrigada"). */
+const closesConversation = (kind?: string) => kind === "sticker";
 
 export type InboundResult = { skipped: "telefone_invalido" } | { duplicate: true; dealId: string } | { dealId: string; created: boolean; messageId: string };
 
@@ -98,7 +102,7 @@ export async function recordInbound(input: InboundInput): Promise<InboundResult>
     }
     const [msg] = await tx.insert(messages).values({
       dealId: deal.id, contactId: contact.id, channelId: input.channelId, externalId: input.externalId,
-      direction: "in", kind: input.kind ?? "text", body: input.body ?? null, mediaUrl: input.mediaUrl ?? null, media: input.media ?? null, status: "received", createdAt: at,
+      direction: "in", kind: input.kind ?? "text", body: input.body ?? null, mediaUrl: input.mediaUrl ?? null, media: input.media ?? null, quotedBody: input.quotedBody ?? null, status: "received", createdAt: at,
     }).onConflictDoNothing().returning({ id: messages.id });
     if (!msg) return { duplicate: true as const, dealId: deal.id };
 
@@ -106,7 +110,9 @@ export async function recordInbound(input: InboundInput): Promise<InboundResult>
     const atIso = at.toISOString();
     await tx.update(deals).set({
       lastInboundAt: sql`greatest(${deals.lastInboundAt}, ${atIso}::timestamptz)`,
-      awaitingReplySince: sql`case when ${atIso}::timestamptz > coalesce(${deals.lastOutboundAt}, '-infinity'::timestamptz)
+      // Figurinha/reação logo depois da resposta da Casa ("obrigada" em figurinha) não cobra resposta.
+      awaitingReplySince: closesConversation(input.kind) && !created && deal.lastOutboundAt ? deals.awaitingReplySince
+        : sql`case when ${atIso}::timestamptz > coalesce(${deals.lastOutboundAt}, '-infinity'::timestamptz)
         then coalesce(${deals.awaitingReplySince}, ${atIso}::timestamptz) else ${deals.awaitingReplySince} end`,
       channelId: deal.channelId ?? input.channelId,
     }).where(eq(deals.id, deal.id));
@@ -132,6 +138,7 @@ export type OutboundInput = {
   userId?: string | null;
   fromPhone?: boolean;
   media?: MediaNode | null;
+  quotedBody?: string | null;
   status?: string;
   at?: Date;
   /** Mensagem já gravada como "pending" pelo envio do CRM: atualiza em vez de inserir. */
@@ -177,13 +184,16 @@ export async function recordOutbound(input: OutboundInput) {
       : await tx.insert(messages).values({
           dealId, contactId: deal.contactId, channelId: input.channelId ?? deal.channelId, externalId: input.externalId ?? null,
           direction: "out", kind: input.kind ?? "text", body: input.body ?? null, status: input.status ?? "sent",
-          sentByUserId: input.userId ?? null, fromPhone: !!input.fromPhone, media: input.media ?? null, createdAt: at,
+          sentByUserId: input.userId ?? null, fromPhone: !!input.fromPhone, media: input.media ?? null, quotedBody: input.quotedBody ?? null, createdAt: at,
         }).onConflictDoNothing().returning({ id: messages.id });
     if (!msg) return { duplicate: true as const, dealId };
 
-    if (input.automated) {
-      await tx.update(deals).set({ lastOutboundAt: at }).where(eq(deals.id, dealId));
-      await logEvent(tx, dealId, "mensagem_enviada", { messageId: msg.id, automatica: true }, null);
+    // Mensagem da Casa mais antiga que a espera atual (chegou atrasada no webhook): só entra na conversa.
+    // A cliente escreveu depois dela, então continua esperando resposta.
+    const stale = !!deal.awaitingReplySince && at < deal.awaitingReplySince;
+    if (input.automated || stale) {
+      await tx.update(deals).set({ lastOutboundAt: sql`greatest(${deals.lastOutboundAt}, ${at.toISOString()}::timestamptz)` }).where(eq(deals.id, dealId));
+      await logEvent(tx, dealId, "mensagem_enviada", { messageId: msg.id, ...(input.automated ? { automatica: true } : { atrasada: true }) }, null);
       return { dealId, messageId: msg.id };
     }
     const responder = input.userId ?? deal.ownerId ?? null;
@@ -199,7 +209,8 @@ export async function recordOutbound(input: OutboundInput) {
     }).where(eq(deals.id, dealId));
     await logEvent(tx, dealId, "mensagem_enviada", { messageId: msg.id, fromPhone: !!input.fromPhone }, input.userId ?? null);
     // Respondeu: os alertas de espera deste lead se resolvem sozinhos.
-    await tx.update(alerts).set({ resolvedAt: at, readAt: sql`coalesce(${alerts.readAt}, ${at.toISOString()}::timestamptz)` })
+    const resolvedNow = new Date(); // hora real da resolução (a mensagem pode ter chegado atrasada)
+    await tx.update(alerts).set({ resolvedAt: resolvedNow, readAt: sql`coalesce(${alerts.readAt}, ${resolvedNow.toISOString()}::timestamptz)` })
       .where(and(eq(alerts.dealId, dealId), eq(alerts.type, "sem_resposta_minutos"), sql`${alerts.resolvedAt} is null`));
 
     const [stage] = await tx.select().from(stages).where(eq(stages.id, deal.stageId));
@@ -241,7 +252,7 @@ export async function activeUsers() {
     .where(and(eq(users.active, true), sql`${users.passwordHash} is not null`)).orderBy(asc(users.name));
 }
 
-export type HistoryMessage = { externalId: string; fromMe: boolean; at: Date; kind: string; body: string | null; pushName?: string | null; media?: MediaNode | null };
+export type HistoryMessage = { externalId: string; fromMe: boolean; at: Date; kind: string; body: string | null; pushName?: string | null; media?: MediaNode | null; quotedBody?: string | null };
 
 /** Conversas paradas há mais que isso entram como contato com histórico, sem lead aberto. */
 export const HISTORY_LEAD_DAYS = 30;
@@ -280,7 +291,7 @@ export async function importHistoryChat(channelId: string | null, phoneRaw: stri
     }
     const rows = msgs.map((m) => ({
       dealId: deal?.id ?? null, contactId: contact.id, channelId, externalId: m.externalId, direction: m.fromMe ? "out" as const : "in" as const,
-      kind: m.kind, body: m.body, media: m.media ?? null, status: m.fromMe ? "sent" : "received", fromPhone: m.fromMe, createdAt: m.at,
+      kind: m.kind, body: m.body, media: m.media ?? null, quotedBody: m.quotedBody ?? null, status: m.fromMe ? "sent" : "received", fromPhone: m.fromMe, createdAt: m.at,
     }));
     let inserted = 0;
     for (let i = 0; i < rows.length; i += 500) {
