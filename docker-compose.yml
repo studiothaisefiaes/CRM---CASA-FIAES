@@ -1,0 +1,63 @@
+# Infraestrutura local do CRM Casa Fiaes.
+# Mesmo desenho que vai para o Contabo: Postgres + Evolution API. O app Next.js e o worker rodam fora (npm run dev / npm run worker).
+name: casa-fiaes-crm
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PG_USER:-crm}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-crm_local_dev}
+      POSTGRES_DB: ${PG_DB:-crm}
+    ports:
+      - "${PG_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-crm} -d ${PG_DB:-crm}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    logging: { driver: local }
+
+  evolution:
+    image: evoapicloud/evolution-api:v2.3.7
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+    ports:
+      - "${EVOLUTION_PORT:-8080}:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      SERVER_URL: http://localhost:${EVOLUTION_PORT:-8080}
+      DEL_INSTANCE: "false"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://${PG_USER:-crm}:${PG_PASSWORD:-crm_local_dev}@db:5432/evolution?schema=evolution_api
+      DATABASE_CONNECTION_CLIENT_NAME: casa_fiaes
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
+      DATABASE_SAVE_MESSAGE_UPDATE: "true"
+      DATABASE_SAVE_DATA_CONTACTS: "true"
+      DATABASE_SAVE_DATA_CHATS: "true"
+      # histórico completo no pareamento derruba sessões (issue #2437): desligado
+      DATABASE_SAVE_DATA_HISTORIC: "false"
+      CACHE_REDIS_ENABLED: "false"
+      CACHE_LOCAL_ENABLED: "true"
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:?defina EVOLUTION_API_KEY no .env}
+      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "true"
+      WEBHOOK_GLOBAL_ENABLED: "false"
+      CONFIG_SESSION_PHONE_CLIENT: Casa Fiaes CRM
+      CONFIG_SESSION_PHONE_NAME: Chrome
+      QRCODE_LIMIT: "30"
+      QRCODE_COLOR: "#121212"
+      LANGUAGE: pt-BR
+      LOG_LEVEL: ERROR,WARN,INFO
+    volumes:
+      - evolution_instances:/evolution/instances
+    logging: { driver: local }
+
+volumes:
+  pgdata:
+  evolution_instances:
