@@ -96,14 +96,18 @@ describe("auditoria do número real", () => {
       .toEqual({ kind: "location", body: "Casa Fiaes · https://maps.google.com/?q=-12.98,-38.5" });
   });
 
-  it("ignorar contato tira o lead do funil, guarda as mensagens e não abre lead com mensagem nova", async () => {
+  it("ignorar contato arquiva o lead (sem apagar), guarda as mensagens nele e não abre lead com mensagem nova", async () => {
     await ingestEvolution(up("IG1", false, text("oi primo")));
     const [d] = await db.select().from(deals); const [u] = await db.select().from(users);
     await ignoreContact(d.id, u.id);
-    expect(await db.select().from(deals)).toHaveLength(0);
+    const [arch] = await db.select().from(deals);
+    expect(arch.id).toBe(d.id);
+    expect(arch.archivedAt).not.toBeNull();
     await ingestEvolution(up("IG2", false, text("e aí?")));
-    expect(await db.select().from(deals)).toHaveLength(0);
-    expect((await db.select().from(messages)).length).toBe(2);
+    expect(await db.select().from(deals)).toHaveLength(1);
+    const msgs = await db.select().from(messages);
+    expect(msgs.length).toBe(2);
+    expect(msgs.every((m) => m.dealId === d.id)).toBe(true);
     expect((await db.select().from(contacts))[0].ignored).toBe(true);
   });
 

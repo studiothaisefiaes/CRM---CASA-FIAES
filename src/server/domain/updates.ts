@@ -73,7 +73,8 @@ export async function createManualLead(input: { phone: string; name?: string; or
   if (!phone) throw new Error("Telefone inválido. Use DDD + número, ex.: 71 99999-9999");
   const dealId = await db.transaction(async (tx) => {
     const [c] = await tx.insert(contacts).values({ phoneE164: phone, name: input.name?.trim() || null })
-      .onConflictDoUpdate({ target: contacts.phoneE164, set: { name: input.name?.trim() || undefined } }).returning();
+      // Lead criado na mão = a gestão considera cliente: tira a marca de "não é cliente", se houver.
+      .onConflictDoUpdate({ target: contacts.phoneE164, set: { name: input.name?.trim() || undefined, ignored: false } }).returning();
     const existing = await findOpenDeal(c.id, tx);
     if (existing) return existing.id;
     const lead = await stageByKey("atendimento", tx);

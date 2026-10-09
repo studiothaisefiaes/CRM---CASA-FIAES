@@ -3,7 +3,7 @@ import { dealEvents } from "../db/schema";
 
 export type DealEventType =
   | "lead_criado" | "mensagem_recebida" | "mensagem_enviada" | "resposta" | "etapa_alterada"
-  | "campo_alterado" | "responsavel_alterado" | "alerta";
+  | "campo_alterado" | "responsavel_alterado" | "alerta" | "arquivado" | "restaurado";
 
 export async function logEvent(tx: Tx | typeof db, dealId: string, type: DealEventType, payload: Record<string, unknown> = {}, userId: string | null = null) {
   await tx.insert(dealEvents).values({ dealId, type, payload, userId });

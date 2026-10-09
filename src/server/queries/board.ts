@@ -12,7 +12,7 @@ export type BoardStage = { id: string; key: string; name: string; kind: string; 
 export async function getBoard(filter: { ownerId?: string | null; origin?: string | null; q?: string | null } = {}): Promise<BoardStage[]> {
   const st = await db.select().from(stages).where(eq(stages.active, true)).orderBy(asc(stages.position));
   const since30 = new Date(Date.now() - 30 * 86_400_000);
-  const conds = [or(isNull(deals.closedAt), gte(deals.closedAt, since30))!];
+  const conds = [or(isNull(deals.closedAt), gte(deals.closedAt, since30))!, isNull(deals.archivedAt)];
   if (filter.ownerId && /^[0-9a-f-]{36}$/i.test(filter.ownerId)) conds.push(eq(deals.ownerId, filter.ownerId));
   if (filter.origin) conds.push(eq(deals.origin, filter.origin));
   if (filter.q) {

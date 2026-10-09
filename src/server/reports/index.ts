@@ -14,7 +14,7 @@ export function periodStart(p: Period, now = new Date()): Date {
 }
 
 function dealScope(f: ReportFilter, alias = "d"): SQL {
-  const parts: SQL[] = [sql`true`];
+  const parts: SQL[] = [sql`${sql.raw(alias)}.archived_at is null`];
   if (f.ownerId && /^[0-9a-f-]{36}$/i.test(f.ownerId)) parts.push(sql`${sql.raw(alias)}.owner_id = ${f.ownerId}`);
   if (f.origin) parts.push(sql`${sql.raw(alias)}.origin = ${f.origin}`);
   return sql.join(parts, sql` and `);

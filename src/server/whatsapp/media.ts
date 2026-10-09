@@ -82,7 +82,7 @@ export async function refreshAvatars(limit = 15) {
   const [ch] = await db.select({ i: channels.instanceName }).from(channels).where(eq(channels.status, "conectado")).limit(1);
   if (!ch || !p.profilePictureUrl) return { tried: 0, ok: 0 };
   const rows = await db.selectDistinct({ id: contacts.id, phone: contacts.phoneE164 }).from(contacts)
-    .innerJoin(deals, and(eq(deals.contactId, contacts.id), isNull(deals.closedAt)))
+    .innerJoin(deals, and(eq(deals.contactId, contacts.id), isNull(deals.closedAt), isNull(deals.archivedAt)))
     .where(or(isNull(contacts.avatarCheckedAt), lt(contacts.avatarCheckedAt, new Date(Date.now() - 7 * 86_400_000)))).limit(limit);
   let ok = 0;
   for (const c of rows) {

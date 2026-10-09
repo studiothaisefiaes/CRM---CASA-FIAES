@@ -1,8 +1,9 @@
-import { and, asc, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
 import { db, type Tx } from "../db";
 import { alerts, auditLog, contacts, deals, messages, stages, users, type Stage } from "../db/schema";
 import { normalizePhone } from "./phone";
 import { emit, logEvent } from "./events";
+import { archiveDeals, restoreDeals } from "./archive";
 import { getBusinessHours } from "./hours";
 import { businessSecondsBetween } from "../../lib/business-hours";
 
@@ -38,19 +39,28 @@ async function pickOwner(tx: Tx): Promise<string | null> {
   const rows = await tx.execute(sql`
     select u.id, count(d.id)::int as open
     from users u
-    left join deals d on d.owner_id = u.id and d.closed_at is null
+    left join deals d on d.owner_id = u.id and d.closed_at is null and d.archived_at is null
     where u.active and u.password_hash is not null
       and (u.role = 'atendente' or not exists (select 1 from users a where a.active and a.role = 'atendente' and a.password_hash is not null))
     group by u.id order by open asc, random() limit 1`);
   return (rows.rows[0] as { id: string } | undefined)?.id ?? null;
 }
 
+/** Lead em andamento do contato. Arquivado ("não é cliente") não conta como aberto. */
 export async function findOpenDeal(contactId: string, tx: Tx | typeof db = db) {
   const closedIds = tx.select({ id: stages.id }).from(stages).where(inArray(stages.kind, [...CLOSED_KINDS]));
   const [d] = await tx.select().from(deals)
-    .where(and(eq(deals.contactId, contactId), notInArray(deals.stageId, closedIds)))
+    .where(and(eq(deals.contactId, contactId), notInArray(deals.stageId, closedIds), isNull(deals.archivedAt)))
     .orderBy(desc(deals.createdAt)).limit(1);
   return d ?? null;
+}
+
+/** Lead arquivado mais recente do contato: mensagens de contato ignorado ficam nele, para o Desfazer trazer a conversa. */
+export async function latestArchivedDealId(contactId: string, tx: Tx | typeof db = db): Promise<string | null> {
+  const [d] = await tx.select({ id: deals.id }).from(deals)
+    .where(and(eq(deals.contactId, contactId), isNotNull(deals.archivedAt)))
+    .orderBy(desc(deals.archivedAt)).limit(1);
+  return d?.id ?? null;
 }
 
 async function upsertContact(tx: Tx, phone: string, name?: string | null) {
@@ -89,8 +99,10 @@ export async function recordInbound(input: InboundInput): Promise<InboundResult>
   const at = input.at ?? new Date();
   const result = await db.transaction(async (tx) => {
     const contact = await upsertContact(tx, phone, input.pushName);
-    if (contact.ignored) {
-      await tx.insert(messages).values({ dealId: null, contactId: contact.id, channelId: input.channelId, externalId: input.externalId, direction: "in",
+    // Contato marcado como "não é cliente": guarda a mensagem no lead arquivado, sem abrir lead nem alerta.
+    // Se a gestão abriu um lead novo para ele na mão, segue o fluxo normal.
+    if (contact.ignored && !(await findOpenDeal(contact.id, tx))) {
+      await tx.insert(messages).values({ dealId: await latestArchivedDealId(contact.id, tx), contactId: contact.id, channelId: input.channelId, externalId: input.externalId, direction: "in",
         kind: input.kind ?? "text", body: input.body ?? null, media: input.media ?? null, quotedBody: input.quotedBody ?? null, status: "received", createdAt: at }).onConflictDoNothing();
       return { ignored: true as const };
     }
@@ -165,8 +177,8 @@ export async function recordOutbound(input: OutboundInput) {
       const c = input.fromPhone ? await upsertContact(tx, phone, null)
         : (await tx.select().from(contacts).where(eq(contacts.phoneE164, phone)))[0];
       if (!c) return { skipped: "sem_contato" as const };
-      if (c.ignored) {
-        await tx.insert(messages).values({ dealId: null, contactId: c.id, channelId: input.channelId, externalId: input.externalId ?? null, direction: "out",
+      if (c.ignored && !(await findOpenDeal(c.id, tx))) {
+        await tx.insert(messages).values({ dealId: await latestArchivedDealId(c.id, tx), contactId: c.id, channelId: input.channelId, externalId: input.externalId ?? null, direction: "out",
           kind: input.kind ?? "text", body: input.body ?? null, status: input.status ?? "sent", fromPhone: !!input.fromPhone, media: input.media ?? null, createdAt: at }).onConflictDoNothing();
         return { skipped: "contato_ignorado" as const };
       }
@@ -299,8 +311,9 @@ export async function importHistoryChat(channelId: string | null, phoneRaw: stri
       await logEvent(tx, deal.id, "lead_criado", { origin, historico: true });
       created = true;
     }
+    const dealId = deal?.id ?? (contact.ignored ? await latestArchivedDealId(contact.id, tx) : null);
     const rows = msgs.map((m) => ({
-      dealId: deal?.id ?? null, contactId: contact.id, channelId, externalId: m.externalId, direction: m.fromMe ? "out" as const : "in" as const,
+      dealId, contactId: contact.id, channelId, externalId: m.externalId, direction: m.fromMe ? "out" as const : "in" as const,
       kind: m.kind, body: m.body, media: m.media ?? null, quotedBody: m.quotedBody ?? null, status: m.fromMe ? "sent" : "received", fromPhone: m.fromMe, createdAt: m.at,
     }));
     let inserted = 0;
@@ -319,22 +332,24 @@ export async function importHistoryChat(channelId: string | null, phoneRaw: stri
 }
 
 /**
- * "Não é cliente": tira a conversa do funil (conversa pessoal, fornecedor, engano).
- * As mensagens continuam guardadas no contato; mensagens novas não abrem lead nem alerta até "voltar a acompanhar".
+ * "Não é cliente": tira a conversa do funil (conversa pessoal, fornecedor, engano) sem apagar nada.
+ * O lead fica arquivado com as mensagens; mensagens novas entram nele sem abrir lead nem alerta até "Desfazer".
  */
 export async function ignoreContact(dealId: string, userId: string) {
-  return db.transaction(async (tx) => {
-    const [d] = await tx.select().from(deals).where(eq(deals.id, dealId));
-    if (!d) throw new Error("Lead não encontrado");
-    await tx.update(contacts).set({ ignored: true }).where(eq(contacts.id, d.contactId));
-    await tx.update(messages).set({ dealId: null }).where(eq(messages.dealId, dealId));
-    await tx.delete(deals).where(eq(deals.id, dealId)); // eventos, alertas e execuções saem junto (cascade)
-    await tx.insert(auditLog).values({ userId, action: "ignorou_contato", entity: "contact", entityId: d.contactId, data: { dealId } });
-    return { contactId: d.contactId };
-  }).then(async (r) => { await emit("lead_removido", { dealId }); return r; });
+  const [d] = await db.select({ contactId: deals.contactId }).from(deals).where(eq(deals.id, dealId));
+  if (!d) throw new Error("Lead não encontrado");
+  await archiveDeals([dealId], userId);
+  return { contactId: d.contactId };
 }
 
+/** Voltar a acompanhar: restaura o lead arquivado mais recente do contato (ou só tira a marca, se não houver). */
 export async function unignoreContact(contactId: string, userId: string) {
+  const dealId = await latestArchivedDealId(contactId);
+  if (dealId) {
+    const r = await restoreDeals([dealId], userId);
+    if (r.restored) return r;
+  }
   await db.update(contacts).set({ ignored: false }).where(eq(contacts.id, contactId));
   await db.insert(auditLog).values({ userId, action: "voltou_a_acompanhar", entity: "contact", entityId: contactId, data: {} });
+  return { restored: 0, conflicts: dealId ? [dealId] : [] };
 }

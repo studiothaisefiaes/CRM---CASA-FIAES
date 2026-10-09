@@ -9,7 +9,7 @@ export type TodayItem = { id: string; name: string | null; phone: string; stageN
 const OFFSET = "interval '3 hours'"; // America/Bahia
 
 export async function getToday(user: SessionUser) {
-  const scope = user.role === "gestor" ? sql`true` : sql`(d.owner_id = ${user.id} or d.owner_id is null)`;
+  const scope = user.role === "gestor" ? sql`d.archived_at is null` : sql`d.archived_at is null and (d.owner_id = ${user.id} or d.owner_id is null)`;
   const q = async (where: ReturnType<typeof sql>, at: ReturnType<typeof sql>, order: ReturnType<typeof sql>, extra = sql`null`) =>
     ((await db.execute(sql`
       select d.id, c.name, c.phone_e164 as phone, s.name as "stageName", s.key as "stageKey", s.sla_minutes as "slaMinutes", ${at} as at, ${extra} as extra
