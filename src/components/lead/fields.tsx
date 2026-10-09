@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { updateDealAction } from "@/app/(app)/funil/actions";
 import { useToast } from "@/components/ui/toast";
 import { IconCheck } from "@/components/icons";
+import { parseBRL } from "@/lib/money";
 import type { DealPatch } from "@/server/domain/updates";
 
 type Kind = "text" | "email" | "textarea" | "select" | "datetime" | "date" | "money" | "birthday";
@@ -27,7 +28,11 @@ export function AutoField({ dealId, name, label, value, kind = "text", options, 
     if (kind === "date") payload = next ? new Date(next + "T10:00").toISOString() : null;
     if (kind === "money") {
       if (!next.trim()) payload = null;
-      else { const n = Math.round(Number(next.replace(/[R$\s.]/g, "").replace(",", ".")) * 100); if (Number.isNaN(n)) { setErr("Valor inválido"); return; } payload = n; }
+      else {
+        const r = parseBRL(next);
+        if (!r.ok) { setErr(r.error); return; }
+        payload = r.cents;
+      }
     }
     if (kind === "select" || kind === "textarea" || kind === "text" || kind === "email" || kind === "birthday") payload = next === "" ? (name === "origin" ? undefined : null) : next;
     start(async () => {
@@ -37,13 +42,13 @@ export function AutoField({ dealId, name, label, value, kind = "text", options, 
     });
   };
 
-  const cls = `w-full bg-transparent rounded-[8px] px-2 -mx-2 py-1.5 text-[14px] outline-none border border-transparent hover:border-line focus:border-ink focus:bg-paper focus:shadow-[0_0_0_3px_rgb(184_134_63/0.18)] transition-[border-color,box-shadow,background] ${err ? "border-alert" : ""}`;
+  const cls = `w-full bg-transparent rounded-[8px] px-2 -mx-2 py-1.5 text-md md:text-base outline-none border border-transparent hover:border-line focus:border-ink focus:bg-paper focus:shadow-[0_0_0_3px_rgb(184_134_63/0.18)] transition-[border-color,box-shadow,background] ${err ? "border-alert" : ""}`;
   return (
     <label className="block group">
-      <span className="flex items-center justify-between text-[11.5px] font-medium text-muted mb-0.5">
+      <span className="flex items-center justify-between text-xs font-medium text-muted mb-0.5">
         <span className="inline-flex items-center gap-1.5">{icon}{label}</span>
         <AnimatePresence>{(saved || pending) && (
-          <motion.span initial={{ opacity: 0, x: 4 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} className="inline-flex items-center gap-1 text-ok text-[11px]">
+          <motion.span initial={{ opacity: 0, x: 4 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} className="inline-flex items-center gap-1 text-ok text-xs">
             {pending ? "salvando…" : <><IconCheck size={12} /> salvo</>}
           </motion.span>)}
         </AnimatePresence>
@@ -59,7 +64,7 @@ export function AutoField({ dealId, name, label, value, kind = "text", options, 
           inputMode={kind === "money" ? "decimal" : undefined} onChange={(e) => setV(e.target.value)} onBlur={() => save()}
           onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} className={cls} />
       )}
-      {err && <span className="block text-[11.5px] text-alert mt-0.5">{err}</span>}
+      {err && <span className="block text-xs text-alert mt-0.5">{err}</span>}
     </label>
   );
 }

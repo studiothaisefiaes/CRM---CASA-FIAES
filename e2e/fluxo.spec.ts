@@ -70,6 +70,23 @@ test("agendar pede data e move para Agendado", async ({ page }) => {
   await expect(sheet.getByRole("combobox", { name: "Etapa" })).toHaveValue("agendado");
 });
 
+test("fechar venda aceita 1158.50 e salva R$ 1.158,50", async ({ page }) => {
+  await login(page);
+  await page.goto("/funil");
+  await page.getByRole("region", { name: /^Agendado,/ }).getByText("Mariana Couto").click();
+  const sheet = page.getByRole("dialog", { name: /Lead Mariana Couto/ });
+  await sheet.getByRole("combobox", { name: "Etapa" }).selectOption("fechado");
+  const dlg = page.getByRole("dialog", { name: "Fechar venda" });
+  await dlg.getByLabel("Valor fechado (R$)").fill("abc");
+  await dlg.getByRole("button", { name: "Fechar venda" }).click();
+  await expect(dlg.getByRole("alert")).toBeVisible();
+  await dlg.getByLabel("Valor fechado (R$)").fill("1158.50");
+  await dlg.getByRole("button", { name: "Fechar venda" }).click();
+  await expect(sheet.getByRole("combobox", { name: "Etapa" })).toHaveValue("fechado");
+  await page.reload();
+  await expect(page.getByRole("dialog", { name: /Lead Mariana Couto/ }).getByLabel("Valor (R$)")).toHaveValue("1.158,50");
+});
+
 test("campos do card salvam sozinhos e validam", async ({ page }) => {
   await login(page);
   await page.goto("/funil");

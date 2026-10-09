@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/field";
+import { parseBRL } from "@/lib/money";
 
 export type PendingMove = { cardId: string; name: string; to: { id: string; key: string; name: string; kind: string } };
 
@@ -15,13 +16,13 @@ export function StageDialogs({ pending, lostReasons, onCancel, onConfirm }: {
 }) {
   const kind = pending?.to.kind;
   const [when, setWhen] = useState(""); const [reason, setReason] = useState(""); const [recontact, setRecontact] = useState("");
-  const [value, setValue] = useState(""); const [pay, setPay] = useState(""); const [err, setErr] = useState<string | null>(null);
+  const [value, setValue] = useState(""); const [pay, setPay] = useState(""); const [err, setErr] = useState<string | null>(null); const [valueErr, setValueErr] = useState<string | null>(null);
   const [prevPending, setPrevPending] = useState(pending);
   if (pending !== prevPending) {
     setPrevPending(pending);
     if (pending) {
       const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(10, 0, 0, 0);
-      setWhen(localInput(d)); setReason(""); setRecontact(""); setValue(""); setPay(""); setErr(null);
+      setWhen(localInput(d)); setReason(""); setRecontact(""); setValue(""); setPay(""); setErr(null); setValueErr(null);
     }
   }
 
@@ -34,8 +35,13 @@ export function StageDialogs({ pending, lostReasons, onCancel, onConfirm }: {
       if (!reason) return setErr("Escolha o motivo da perda.");
       return onConfirm({ lostReasonId: reason, recontactAt: recontact ? toIso(recontact + "T10:00") : null });
     }
-    const cents = value ? Math.round(Number(value.replace(/\./g, "").replace(",", ".")) * 100) : null;
-    if (value && (cents == null || Number.isNaN(cents) || cents < 0)) return setErr("Valor inválido. Ex.: 1.158,00");
+    let cents: number | null = null;
+    if (value.trim()) {
+      const r = parseBRL(value);
+      if (!r.ok) return setValueErr(r.error);
+      cents = r.cents;
+    }
+    setValueErr(null);
     onConfirm({ valueCents: cents, paymentMethod: pay || null });
   };
   const titles: Record<string, string> = { agendado: "Agendar", perdido: "Marcar como perdido", fechado: "Fechar venda" };
@@ -59,13 +65,13 @@ export function StageDialogs({ pending, lostReasons, onCancel, onConfirm }: {
         )}
         {kind === "fechado" && (
           <>
-            <Field label="Valor fechado (R$)" hint="Opcional. Pode preencher depois no card." htmlFor="val"><Input id="val" inputMode="decimal" placeholder="1.158,00" value={value} onChange={(e) => setValue(e.target.value)} /></Field>
+            <Field label="Valor fechado (R$)" hint="Opcional. Pode preencher depois no card." error={valueErr} htmlFor="val"><Input id="val" inputMode="decimal" placeholder="1.158,00" value={value} aria-invalid={valueErr ? true : undefined} onChange={(e) => { setValue(e.target.value); setValueErr(null); }} /></Field>
             <Field label="Forma de pagamento" htmlFor="pay">
               <Select id="pay" value={pay} onChange={(e) => setPay(e.target.value)}><option value="">—</option><option value="pix">Pix</option><option value="cartao">Cartão</option><option value="boleto">Boleto</option><option value="dinheiro">Dinheiro</option></Select>
             </Field>
           </>
         )}
-        {err && <p className="text-[13px] text-alert" role="alert">{err}</p>}
+        {err && <p className="text-sm text-alert" role="alert">{err}</p>}
       </div>
     </Dialog>
   );
