@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { db } from "../db";
 import { users } from "../db/schema";
 import { recordInbound, recordOutbound, moveDeal } from "../domain/deals";
@@ -6,12 +6,16 @@ import { updateDeal } from "../domain/updates";
 import { funnel, responseTimes, origins, finance, summary, toCsv, periodStart } from "./index";
 import { resetDb } from "../../../test/db";
 
+// Terça 2026-10-13 12:00 em Salvador: dentro do expediente, no mês corrente da data fixa.
+const NOW = new Date("2026-10-13T15:00:00Z").getTime();
+
 describe("relatórios", () => {
   let ana: string;
   beforeEach(async () => {
+    vi.useFakeTimers({ now: NOW, toFake: ["Date"] });
     await resetDb();
     [{ id: ana }] = await db.insert(users).values({ name: "Ana", email: "ana@c.com", role: "atendente", passwordHash: "x" }).returning();
-    const now = Date.now();
+    const now = NOW;
     for (let i = 0; i < 3; i++) {
       const r = await recordInbound({ channelId: null, externalId: `m${i}`, phoneRaw: `7199900001${i}`, body: i === 0 ? "vim pelo instagram" : "oi", at: new Date(now - 300_000) });
       if (!("dealId" in r)) throw new Error();
@@ -19,6 +23,8 @@ describe("relatórios", () => {
       if (i === 0) { await updateDeal(r.dealId, { valueCents: 115800, paymentMethod: "pix" }, ana); await moveDeal(r.dealId, "fechado", ana); }
     }
   });
+
+  afterEach(() => vi.useRealTimers());
 
   it("funil conta quem passou por cada etapa", async () => {
     const f = await funnel({ period: "mes" });
