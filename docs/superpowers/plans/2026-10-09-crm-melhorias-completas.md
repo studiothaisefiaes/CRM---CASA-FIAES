@@ -18,7 +18,8 @@
 - Marca: papel `#fdfdfc`, tinta `#121212`, dourado `#b8863f`. Texto pequeno em dourado usa `gold-ink #946c2e`. Newsreader nos títulos, Inter na interface.
 - Sem Three.js, GSAP ou ranking de atendentes. Animação só com `motion/react`, animando apenas `transform`/`opacity`, e sempre respeitando `prefers-reduced-motion`.
 - **Toda automação que envia mensagem nasce `enabled:false`.** Nenhum teste ou script envia mensagem real. Nos testes, o provider é sempre o fake (`setWhatsappProvider`).
-- Migrações só aditivas. Nada de `DROP` nem `ALTER ... DROP`.
+- Migrações só aditivas: nada de `DROP TABLE`/`DROP COLUMN` nem apagar dados. Exceção permitida: **recriar índice** (`DROP INDEX` + `CREATE INDEX`), porque não apaga dado.
+- **Só o orquestrador escreve no ledger** (os subagentes devolvem o resumo e o orquestrador registra), para os worktrees não conflitarem.
 - Toda Server Action ou Route Handler revalida a sessão (`requireUser`/`assertUser`/`findSessionUser`).
 - Dinheiro em centavos (`integer`). Datas em `timestamptz`, fuso America/Bahia, e o SLA conta só o horário de expediente (`businessSecondsBetween`).
 - Leads arquivados (`deals.archived_at is not null`) e contatos `ignored` ficam fora da Fila, do Quadro, do Hoje, dos Relatórios e do motor.
@@ -38,13 +39,13 @@
 
 ```
 Onda 0 (sequencial):  T1 migração única ─▶ T2 dinheiro+design system
-Onda 1 (até 3):       T3 segurança mídia/headers │ T4 operação (IP, health, backup, deploy) │ T5 arquivar + modo quieto
-Onda 2 (até 3):       T6 alerta único (após T5) │ T7 auditoria+assumir+origem/serviço/pago (após T5) │ T8 tarefas/comparecimento/retorno
-Onda 3 (até 3):       T9 origens link/QR (após T7) │ T10 enviar mídia+citar+visto (após T6) │ T11 push+som+painel+banner (após T6)
-Onda 4 (até 3):       T12 envios automáticos (após T10) │ T13 relatórios (após T7,T8) │ T14 SSE seletivo
-Onda 5 (sequencial):  T15 Fila lista+rotas (após T14) ─▶ T16 conversa na Fila ─▶ T17 painel do cliente
+Onda 1 (até 3):       T3 segurança mídia/headers │ T4a IP real+health+heartbeat ─▶ T4b backup/restauração+pm2/Caddy/rollback │ T5 arquivar + modo quieto
+Onda 2 (sequencial):  T6 alerta único ─▶ T7 auditoria+assumir+origem/serviço/pago ─▶ T8 tarefas (usa closeSale da T7)
+Onda 3 (até 3):       T9 origens link/QR │ T10 enviar mídia+citar+visto │ T11a push+sw+opt-in ─▶ T11b sino+banner+LateWatch
+Onda 4 (até 3):       T12 envios automáticos (após T10) │ T13a consultas+testes ─▶ T13b tela+drill-down+CSV │ T14 SSE seletivo (só events.ts/live.tsx/stream)
+Onda 5 (sequencial):  T15 Fila lista+rotas (após T14) ─▶ T16 conversa na Fila ─▶ T17a ações+fechar venda+etapas ─▶ T17b próxima ação+triagem+histórico
 Onda 6 (até 3):       T18 ficha do contato+busca+views (após T17) │ T19 Quadro+Jornada │ T20 Hoje+resumo 19h (após T13)
-Onda 7 (até 3):       T21 motion+desempenho (após T17) │ T22 Config: modelos/auto-resposta/teto/quieto/origens (após T12,T9) │ T23 etiquetas de sinal+importação com prévia
+Onda 7 (até 3):       T21 motion+desempenho (após T17b) │ T22 Config (após T12,T9) │ T23 sinais+importação+retenção (SÓ domínio e worker; ligar etiquetas na Fila e 'mídia expirada' na conversa fica na T24)
 Onda 8 (sequencial):  T24 celular+acessibilidade+axe ─▶ T25 e2e dos critérios ─▶ T26 verificação final e revisão do branch
 ```
 
@@ -128,6 +129,14 @@ describe("migração das melhorias", () => {
 
 **Aceite:** os testes de schema passam e o `vitest` continua 100%. **Verificação:** `\d deals` no psql mostra as colunas.
 
+**Correções da revisão do plano (obrigatórias, valem sobre o texto acima):**
+- Recriar o índice `deals_one_open_per_contact` com `where closed_at is null and archived_at is null` (drop/create index, no schema via `uniqueIndex(...).where(sql`...`)`).
+- `list_kind` é **enum do Postgres**: `listKindEnum` ganha `'service'` (o SQL gerado terá `ALTER TYPE ... ADD VALUE`); ajustar também o cast em `seed.ts`.
+- `deals.attendance` aceita `confirmado|compareceu|faltou|remarcou` (texto; validar no domínio).
+- Criar aqui também a tabela **`outbox`** (`id`, `dealId → deals cascade`, `kind text` text|poll, `text`, `options jsonb?`, `status text` pending|sent|failed default pending, `notBefore timestamptz default now()`, `sentAt?`, `error?`, `attempts smallint default 0`, `createdAt`; índice `(status, not_before)`). A T12 **não** cria migração.
+- Passo 4: `test/db.ts` e `e2e/reset.ts` truncam também **`settings, outbox`** (além de `tasks, lead_sources, push_subscriptions`). Atenção: `e2e/reset.ts` já insere `business_hours` depois do truncate; manter.
+- `pg_trgm`: o usuário `crm` é superusuário no Docker local (conferido); no Contabo, o `docs/deploy-contabo.md` deve dizer que a extensão precisa existir (criar como superusuário se o papel da app não for).
+
 ---
 
 ### Task 2: Dinheiro (parseBRL) + base do design system
@@ -190,6 +199,11 @@ export const formatBRL = (cents: number) => (cents / 100).toLocaleString("pt-BR"
 - [ ] **Step 7:** commit `feat(ui): parseBRL único + tokens (tipo, raio, gold-ink, borda 3:1) + Sheet/Tabs/Menu/IconButton/Segmented`.
 
 **Aceite:** "1158.50" salva R$ 1.158,50 no fechar venda (e2e); contraste das bordas ≥ 3:1 (calculado no teste de tokens, se der, ou anotado no ledger).
+
+**Correções da revisão do plano (obrigatórias, valem sobre o texto acima):**
+- `formatBRL` troca o espaço inquebrável: `.replace(/\u00a0/g, " ")`.
+- **Não** redefinir `--color-line-strong` (escureceria 19 divisórias). A borda de campo usa o `--color-control` (`#a39d92`, já 3:1). O `--color-gold-ink` **já existe** (`#7a5524`, 4,9:1): manter, não clarear para `#946c2e`.
+- No codemod de tamanho de texto, conferir o `line-height` (as classes `text-xs/sm/base` do Tailwind trazem line-height próprio); se mudar o layout, usar `text-[length:var(--text-sm)]` para preservar o line-height atual.
 
 ---
 
@@ -256,6 +270,13 @@ it("cabeçalhos globais", async () => {
 
 **Aceite:** Review Focus 5 coberto (teste de mídia com mimetype declarado `image/jpeg` e conteúdo `<svg>` → download). Console sem violação de CSP.
 
+**Correções da revisão do plano (obrigatórias, valem sobre o texto acima):**
+- Atualizar a fixture de `src/server/whatsapp/media.test.ts` (incluir nos Files): o conteúdo baixado vira bytes JPEG reais (`Buffer.from([0xff,0xd8,0xff,0xe0, ...])`), porque o `mediaMime` passa a vir do `sniffMime`.
+- `Permissions-Policy`: **sem** `notifications=` (o Chrome não reconhece e loga erro). Usar `camera=(), microphone=(self), geolocation=()`.
+- PDF: servir como **download** (`attachment`), porque `CSP: sandbox` em PDF inline bloqueia o visualizador do Chrome. Inline só para imagem, áudio e vídeo.
+- O nonce: `await headers()` no `app/layout.tsx` raiz (deixa a renderização dinâmica; o app já é dinâmico) para o Next aplicar o nonce nos scripts.
+- A CSP vale também para as rotas públicas (`/login`, `/convite`): o `proxy.ts` monta a CSP **antes** do `return` de rota pública.
+
 ---
 
 ### Task 4: Operação: IP real, health, heartbeat, backup e restauração, deploy
@@ -304,6 +325,15 @@ it("worker sem batida há 5 min = degraded; banco ok", async () => {
 - [ ] **Step 6:** testes verdes. `npm run build` passa (primeira verificação de build). Commit `feat(operação): IP real no rate limit, health com worker/WhatsApp, backup+restauração testada, pm2/Caddy/rollback`.
 
 **Aceite:** o restore-test passa; o build passa; o health mostra 3 partes.
+
+**Correções da revisão do plano (obrigatórias, valem sobre o texto acima):**
+- **Dividir em duas sub-tarefas sequenciais:** T4a = `clientIp` + `health` + heartbeat; T4b = backup/restore/restore-test + pm2/Caddy + roteiro de deploy e rollback.
+- Volume da Evolution: `casa-fiaes-crm_evolution_instances` (conferir com `docker volume ls`).
+- Server Action não tem IP da conexão: com `TRUSTED_PROXY_HOPS=0`, a chave cai em `"local"` (todos dividem o limite). Documentar que em produção (atrás do Caddy) o valor é 1; em dev local tudo bem.
+- `/api/health` responde **200 em `ok` e `degraded`** e 503 só em `down` (o webServer do Playwright depende disso).
+
+**Correções da revisão do plano (obrigatórias, valem sobre o texto acima):**
+- S3 (limite no webhook): além do segredo, limite por instância de 600 req/min em memória; acima disso responde 429 (a Evolution reenvia).
 
 ---
 
@@ -378,6 +408,10 @@ describe("modo quieto", () => {
 - [ ] **Step 5:** commit `feat(dados): "não é cliente" vira arquivamento reversível (individual e em massa) + modo quieto de 48 h após parear`.
 
 **Aceite:** Review Focus 1 e 2 cobertos. Nenhum `delete from deals` em `src/`.
+
+**Correções da revisão do plano (obrigatórias, valem sobre o texto acima):**
+- `startQuiet(channelId, hours = 48, now = new Date())`; o teste chama `startQuiet(ch.id, 48, t0)` (senão `quiet_until` usa o relógio real e o teste falha).
+- Com o índice recriado na T1, o ramo `conflicts` do `restoreDeals` passa a existir de verdade. Teste obrigatório: arquivar o lead A; a gestão cria um lead manual B para o mesmo contato (`createManualLead`); `restoreDeals([A])` devolve `{ restored: 0, conflicts: [A] }` e A continua arquivado.
 
 ---
 
@@ -478,6 +512,10 @@ it("origem ≠ canal: mensagem comum fica sem origem identificada", async () => 
   - `recordOutbound`, quando `fromPhone`: `responder = deal.ownerId`.
 - [ ] **Step 4:** PASS. Commit `feat(crm): auditoria de/para, assumir, fechar venda idempotente, origem separada do canal, serviço/pago/comparecimento`.
 
+**Correções da revisão do plano (obrigatórias, valem sobre o texto acima):**
+- Files incluem `src/server/domain/events.ts` (novos tipos de evento, inclusive `lido` usado na T10).
+- Payloads: `resposta.payload` ganha `stage` e `slaSeconds` (SLA da etapa vigente); `lead_criado.payload` ganha `initialStage` e `historico` (já existe no histórico).
+
 ---
 
 ### Task 8: Tarefas (próxima ação, comparecimento, retorno por serviço)
@@ -526,6 +564,12 @@ it("concluir tira da lista", async () => {
 ```
 - [ ] **Step 2:** FAIL. **Step 3:** implementar. Remarcar o agendamento substitui a tarefa `comparecimento` aberta. **Step 4:** PASS. **Step 5:** commit `feat(crm): tarefas — próxima ação, comparecimento no dia seguinte, retorno por ciclo do serviço`.
 
+**Correções da revisão do plano (obrigatórias, valem sobre o texto acima):**
+- Roda **depois da T7** (usa `closeSale` e edita `updates.ts`).
+- Teste "concluir tira da lista": usar `kind: "proxima_acao"` (com `geral` passaria sem `completeTask`).
+- Teste do retorno: comparar `t.dueAt` com `closedAt + 35 dias` (ler `deals.closedAt`), não com `Date.now()` arredondado.
+- Incluir o job de worker `lembretes` (a cada 5 min): tarefas vencendo nos próximos 15 min sem aviso → alerta `tarefa_vencendo` (nível 1, `waitKey = 'task:'+id`) para o responsável.
+
 ---
 
 ### Task 9: Origens por link e QR
@@ -560,6 +604,9 @@ it("cliente apagou o código mas manteve a frase → reconhece pela frase", asyn
 it("mensagem comum → null", async () => { expect(await matchSource("oi, qual o valor?")).toBeNull(); });
 ```
 - [ ] **Step 2:** FAIL. **Step 3:** implementar o domínio e a tela de Configurações › Origens, que tem: lista, "Nova origem" (nome, tipo, frase), link copiável, QR em SVG, botões "Baixar PNG/SVG" e ativar/desativar. A tela só aparece para a gestão (`assertUser("gestor")`). **Step 4:** PASS + verificação no navegador (criar origem e ver o QR). **Step 5:** commit `feat(origens): links e QR por canal com reconhecimento automático da origem`.
+
+**Correções da revisão do plano (obrigatórias, valem sobre o texto acima):**
+- `createSource` devolve `{ id, code, label, prefill }` (o `sourceLink` precisa do `prefill`).
 
 ---
 
@@ -614,6 +661,12 @@ it("marca como lido ao abrir", async () => { await markConversationRead(dealId, 
   - o `lead-sheet` chama `markConversationReadAction` ao abrir, uma vez por abertura.
 - [ ] **Step 4:** PASS. Verificar no navegador com o simulador/fake: anexar uma imagem mostra a prévia e o envio aparece na conversa (sem número real). **Step 5:** commit `feat(whatsapp): enviar foto/PDF/áudio, responder citando, visto azul só ao abrir`.
 
+**Correções da revisão do plano (obrigatórias, valem sobre o texto acima):**
+- Upload: `next.config.ts` → `experimental.proxyClientMaxBodySize: "20mb"` e `serverActions.bodySizeLimit: "20mb"` (o proxy corta acima de 10 MB por padrão).
+- `markRead?(instance, toE164, ids)` (a Evolution precisa do `remoteJid`); ajustar o fake do teste.
+- Safari/iOS grava `audio/mp4`: aceitar `audio/mp4` como gravação e garantir que o `sniffMime` reconhece `ftypM4A`/`ftypmp42`/`ftypisom` de áudio.
+- Files incluem `src/components/lead/lead-sheet.tsx`.
+
 ---
 
 ### Task 11: Avisos no aparelho: som, título, push PWA, painel de alertas no celular e banner de conexão
@@ -663,6 +716,11 @@ it("envia push para o responsável e marca pushed_at; inscrição expirada é re
   - `sw.js` mostra a notificação `{ title: "Lead esperando", body, data: { url } }` e o clique abre ou foca a aba.
 - [ ] **Step 4: [e2e]** no celular (iPhone 13), abrir o sino → o painel ocupa a parte de baixo, legível, e um toque no alerta abre o lead. O banner aparece quando o canal está `erro` (forçar no banco do e2e). O título da aba muda quando o `ageLead` estoura o prazo.
 - [ ] **Step 5:** commit `feat(alertas): push no celular (PWA), som e título ao atrasar, painel de alertas no celular, banner de conexão`.
+
+**Correções da revisão do plano (obrigatórias, valem sobre o texto acima):**
+- **Dividir:** T11a = `web-push` + `push.ts` + `sw.js` + opt-in + job do worker; T11b = sino em portal + banner de conexão **e banner global do modo quieto** + `LateWatch` + `aria-live=polite` anunciando "lead atrasado".
+- `VAPID_*` opcionais no `env.ts` (sem chave = push desligado, sem erro). Registrar no ledger: push no iPhone só funciona com o PWA instalado na tela inicial (iOS 16.4+).
+- `LateWatch` usa uma versão local simples de "cruzou o limite" (`useRef` do valor anterior); a T21 troca pela primitiva final.
 
 ---
 
@@ -746,6 +804,10 @@ describe("confirmação por enquete", () => {
   - **Antes de implementar**, conferir o formato real do voto na Evolution 2.3.7 (procurar `pollUpdates` em `dist/main.js` dentro do container: `docker compose cp evolution:/evolution/dist/main.js /tmp/x.js`) e ajustar o payload do teste a esse formato.
 - [ ] **Step 2:** FAIL. **Step 3:** implementar (migração `outbox`; `sendPoll` no provider: `POST /message/sendPoll/{i}` com `{ number, name, selectableCount: 1, values }`). **Step 4:** PASS. Garantir no `seed.test.ts` que **todas** as automações com `enviar_*` vêm `enabled:false`. **Step 5:** commit `feat(automação): fila com teto por hora, resposta fora do horário e confirmação por enquete (desligadas por padrão)`.
 
+**Correções da revisão do plano (obrigatórias, valem sobre o texto acima):**
+- **Não** criar migração: a tabela `outbox` vem da T1.
+- Dedupe do webhook: em `ingestEvolution`, a chave de `messages.update` com `pollUpdates` inclui um hash curto de `JSON.stringify(pollUpdates)` (senão a troca de voto é descartada como duplicada). Teste da enquete cobre isso.
+
 ---
 
 ### Task 13: Relatórios honestos (R1–R16)
@@ -815,6 +877,12 @@ it("resumo do dia tem os números e o link para os atrasados", async () => {
   - sem pizza; CSV de cada bloco mantido.
 - [ ] **Step 4:** PASS + **[e2e]** exportar o CSV continua funcionando; clicar em "Atrasados" abre a lista filtrada. **Step 5:** commit `feat(relatórios): primeira resposta em faixas, funil por marcos, origem→venda, parados, qualidade, comparação e drill-down`.
 
+**Correções da revisão do plano (obrigatórias, valem sobre o texto acima):**
+- **Dividir:** T13a = consultas + testes (`src/server/reports/*`); T13b = tela, abas, drill-down e CSV.
+- Os testes novos ficam num `describe` próprio com `beforeEach(async () => { await resetDb(); })`; **não** reimportar `users` (já importado no arquivo).
+- Teste "conversão nunca passa de 100%": fechar o lead antigo com data antiga — `await db.transaction((tx) => moveDealTx(tx, old.dealId, "fechado", null, "manual", new Date("2026-09-02T13:00:00Z")))` — e afirmar que a coorte de hoje tem `fechados = 0` **e** que a coorte de setembro tem 1.
+- R2: os 5 números são `leadsNovos`, `pctPrimeiraRespostaNoSla`, `agendamentosMarcados`, `vendas` (n e R$) e `ticketMedio`, cada um com `atual`/`anterior`; função `executiveNumbers(f)` com teste.
+
 ---
 
 ### Task 14: Tempo real seletivo (SSE por escopo)
@@ -830,6 +898,9 @@ it("resumo do dia tem os números e o link para os atrasados", async () => {
 As telas chamam `router.refresh()` só quando `shouldRefresh` for verdadeiro. Relatórios não assinam `queue` (atualizam a cada 60 s ou ao focar).
 
 - [ ] **Step 1:** teste unitário de `shouldRefresh` (mensagem de outro lead não atualiza o card aberto; atualiza a Fila). **Step 2:** FAIL. **Step 3:** implementar e passar todos os `emit` existentes para incluir `scope`. **Step 4:** PASS + medição: com o Relatórios aberto, um webhook simulado **não** gera `GET /relatorios` no log. **Step 5:** commit `perf(tempo-real): SSE por escopo — cada tela atualiza só o que mostra`.
+
+**Correções da revisão do plano (obrigatórias, valem sobre o texto acima):**
+- **Não** mexer nas chamadas de `emit` espalhadas (colidiria com a T12): `events.ts` deriva o escopo de um mapa `SCOPE_OF: Record<string, string[]>` pelo `type` (ex.: `mensagem_recebida → ["queue", "deal:<id>"]`). Files: só `events.ts`, `live.tsx`, `stream/route.ts` e o teste.
 
 ---
 
@@ -871,6 +942,13 @@ test("fila: abrir conversa e voltar preserva filtro e rolagem (celular)", async 
   - `role=listbox`/`option`, setas para navegar, Enter abre.
 - [ ] **Step 4:** PASS (unit + e2e desktop e celular). **Step 5:** commit `feat(fila): /atendimento com seções por urgência, 3 painéis no desktop e sequência no celular, estado preservado`.
 
+**Correções da revisão do plano (obrigatórias, valem sobre o texto acima):**
+- `playwright.config.ts`: o projeto `celular` passa a `testMatch: /(mobile|fila|a11y)\.spec\.ts/` e o `desktop` ignora `mobile`; `fila.spec` tem um teste por projeto (`test.skip(isMobile)`/`!isMobile` conforme o caso).
+- `QueueItem.awaitingSince: string | null` (ISO).
+- `QueueList` recebe só `sections` (e callbacks opcionais) e **não** usa `next/navigation`; hooks de rota ficam num wrapper `QueueListRoute` (para o teste em jsdom da T21).
+- `view` inclui as 6 views da spec C7: `meus`, `sem-dono`, `parados`, `agendados-hoje`, `clientes-ativos`, `sem-contato-90d` (+ `todos`).
+- `vitest.config.ts`: `include` passa a `["src/**/*.test.{ts,tsx}", ...]` (os testes .tsx da T21 precisam).
+
 ---
 
 ### Task 16: Conversa dentro da Fila [e2e]
@@ -908,6 +986,9 @@ test("fila: abrir conversa e voltar preserva filtro e rolagem (celular)", async 
   - Seção "Histórico" com os eventos e a auditoria de/para.
 - [ ] **Step 4:** PASS. **Step 5:** commit `feat(fila): painel do cliente — etapas, assumir, fechar venda em 4 toques, próxima ação, por que atrasou, triagem em massa`.
 
+**Correções da revisão do plano (obrigatórias, valem sobre o texto acima):**
+- **Dividir:** T17a = ações (assumir, fechar venda em `Sheet` com chips, agendar com validação, perdido com motivo, etapas/Path); T17b = próxima ação, "Como conheceu?" (quando origem não identificada), botões Compareceu/Faltou na Fila, triagem em massa e histórico com auditoria de/para.
+
 ---
 
 ### Task 18: Ficha do contato, busca e views prontas [e2e]
@@ -921,6 +1002,9 @@ test("fila: abrir conversa e voltar preserva filtro e rolagem (celular)", async 
 - `startConversationAction(contactId)`: cria ou reabre o lead (respeitando o conflito de lead aberto), **não envia mensagem** e redireciona para `/atendimento/[dealId]` com o composer focado.
 
 - [ ] **Step 1:** unit (a busca por um trecho de mensagem acha o contato; `startConversation` não duplica lead aberto) + e2e (Contatos → buscar → abrir a ficha → "Iniciar conversa" abre a Fila no lead). **Step 2:** FAIL. **Step 3:** implementar. **Step 4:** PASS. **Step 5:** commit `feat(contatos): ficha com histórico completo, busca por mensagem e "iniciar conversa"`.
+
+**Correções da revisão do plano (obrigatórias, valem sobre o texto acima):**
+- Triagem em massa também em Contatos (seleção + "Não é cliente" + Desfazer).
 
 ---
 
@@ -1005,6 +1089,9 @@ it("o relógio não re-renderiza os itens da fila (só as folhas do tempo)", () 
   - Sheet que troca de lead sem fechar.
 - [ ] **Step 4:** PASS + roteiro do doc 03 §4.4 no Chrome Performance (CPU 4×, 100 cards) **com o build de produção**: nenhuma tarefa longa (> 50 ms) por segundo em 10 s; resultado no ledger. **Step 5:** commit `perf(motion): relógio sem medir layout, pulso único ao atrasar, tokens e primitivas`.
 
+**Correções da revisão do plano (obrigatórias, valem sobre o texto acima):**
+- Instalar em dev `jsdom`, `@testing-library/react` **e** `@testing-library/dom`.
+
 ---
 
 ### Task 22: Configurações: modelos de automação, resposta fora do horário, teto, modo quieto, retenção
@@ -1014,6 +1101,9 @@ it("o relógio não re-renderiza os itens da fila (só as folhas do tempo)", () 
 - Create: `src/server/rules/templates.ts` (+ test: todo modelo é válido no `automationSchema` e os que enviam vêm desligados)
 
 - [ ] **Step 1:** teste dos modelos. **Step 2:** FAIL. **Step 3:** implementar. Ligar qualquer envio automático mostra um `Dialog` explícito: "Isto vai enviar mensagens reais para clientes." **Step 4:** PASS + verificação no navegador. **Step 5:** commit `feat(config): modelos de automação, resposta fora do horário, teto de envios, modo quieto e retenção`.
+
+**Correções da revisão do plano (obrigatórias, valem sobre o texto acima):**
+- Config › Listas: editar `cycle_days` dos serviços ("Lembrar retorno em N dias").
 
 ---
 
@@ -1074,6 +1164,9 @@ it("prévia aponta duplicado pelo telefone normalizado e linha inválida", () =>
 ```
 - [ ] **Step 2:** FAIL. **Step 3:** implementar. **Step 4:** PASS. **Step 5:** commit `feat: etiquetas de sinal, importação com prévia, retenção de mídia de 12 meses`.
 
+**Correções da revisão do plano (obrigatórias, valem sobre o texto acima):**
+- Só domínio e worker. Ligar as etiquetas na Fila (`queue.ts`) e mostrar "mídia expirada" na conversa ficam na **T24** (evita conflito com a T21).
+
 ---
 
 ### Task 24: Celular e acessibilidade [e2e]
@@ -1098,6 +1191,10 @@ for (const path of ["/", "/atendimento", "/funil", "/jornada", "/contatos", "/re
 ```
   Mais um teste que verifica que todo `input`, `select` e `textarea` visível no celular tem `font-size ≥ 16` (via `getComputedStyle`) e que os botões visíveis têm ≥ 44×44 em `pointer: coarse` (exceções: links em texto corrido).
 - [ ] **Step 2:** rodar → listar as violações. **Step 3:** corrigir até zerar. **Step 4:** PASS nos dois projetos (desktop e celular). **Step 5:** commit `fix(a11y/celular): zero violações sérias, sem rolagem lateral, 16 px nos campos, alvos de 44 px`.
+
+**Correções da revisão do plano (obrigatórias, valem sobre o texto acima):**
+- Esperar `load` + um heading visível em vez de `networkidle` (o SSE nunca deixa a rede ociosa).
+- Inclui: ligar `signalsOf` na `getQueue` e o "mídia expirada" na conversa (vindos da T23).
 
 ---
 
