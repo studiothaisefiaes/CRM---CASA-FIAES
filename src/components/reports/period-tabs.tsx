@@ -9,12 +9,12 @@ export function PeriodTabs({ people, origins }: { people: { id: string; name: st
   const sp = useSearchParams(); const router = useRouter();
   const current = sp.get("periodo") ?? "mes";
   const set = (k: string, v: string) => { const p = new URLSearchParams(sp.toString()); if (v) p.set(k, v); else p.delete(k); router.replace(`/relatorios?${p}`, { scroll: false }); };
-  const sel = "h-9 rounded-[10px] border border-line-strong bg-paper px-3 pr-7 text-[13px] appearance-none cursor-pointer";
+  const sel = "h-9 rounded-[var(--radius-control)] border border-line-strong bg-paper px-3 pr-7 text-sm appearance-none cursor-pointer";
   return (
     <div className="flex flex-wrap items-center gap-2">
       <div className="flex bg-paper-2 border border-line rounded-full p-1" role="tablist" aria-label="Período">
         {P.map(([k, label]) => (
-          <button key={k} role="tab" aria-selected={current === k} onClick={() => set("periodo", k)} className={`relative h-7 px-3.5 text-[13px] font-medium rounded-full transition-colors ${current === k ? "text-paper" : "text-graphite hover:text-ink"}`}>
+          <button key={k} role="tab" aria-selected={current === k} onClick={() => set("periodo", k)} className={`relative h-7 px-3.5 text-sm font-medium rounded-full transition-colors ${current === k ? "text-paper" : "text-graphite hover:text-ink"}`}>
             {current === k && <motion.span layoutId="period-pill" transition={SPRING} className="absolute inset-0 rounded-full bg-ink" />}
             <span className="relative">{label}</span>
           </button>

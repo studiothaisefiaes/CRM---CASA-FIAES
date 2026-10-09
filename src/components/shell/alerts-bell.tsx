@@ -33,7 +33,7 @@ export function AlertsBell({ alerts }: { alerts: AlertItem[] }) {
   return (
     <div className="relative">
       <button type="button" onClick={() => setOpen((o) => !o)} aria-label={`Alertas, ${unread.length} não lidos`} aria-expanded={open}
-        className="relative size-9 grid place-items-center rounded-[10px] text-graphite hover:bg-paper-3 hover:text-ink transition-colors">
+        className="relative size-9 grid place-items-center rounded-[var(--radius-control)] text-graphite hover:bg-paper-3 hover:text-ink transition-colors">
         <IconBell />
         <AnimatePresence>
           {unread.length > 0 && (
@@ -49,22 +49,22 @@ export function AlertsBell({ alerts }: { alerts: AlertItem[] }) {
           <>
             <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden />
             <motion.div initial={{ opacity: 0, y: -6, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -4, scale: 0.98 }} transition={{ duration: 0.18, ease: EASE }}
-              className="fixed lg:absolute z-50 inset-x-0 bottom-0 lg:bottom-auto lg:inset-x-auto lg:left-0 lg:top-11 w-full lg:w-[360px] max-h-[75dvh] lg:max-h-[460px] overflow-auto scroll-thin bg-paper border border-line rounded-t-[20px] lg:rounded-[16px] shadow-[var(--shadow-pop)] pb-[env(safe-area-inset-bottom)]" role="dialog" aria-label="Alertas">
+              className="fixed lg:absolute z-50 inset-x-0 bottom-0 lg:bottom-auto lg:inset-x-auto lg:left-0 lg:top-11 w-full lg:w-[360px] max-h-[75dvh] lg:max-h-[460px] overflow-auto scroll-thin bg-paper border border-line rounded-t-[var(--radius-panel)] lg:rounded-[var(--radius-card)] shadow-[var(--shadow-pop)] pb-[env(safe-area-inset-bottom)]" role="dialog" aria-label="Alertas">
               <div className="flex items-center justify-between px-4 py-3 border-b border-line sticky top-0 bg-paper">
-                <p className="font-semibold text-[13.5px]">Alertas</p>
+                <p className="font-semibold text-sm">Alertas</p>
                 <div className="flex items-center gap-3">
-                  <button className="text-[12.5px] text-graphite hover:text-ink" onClick={() => { if (muted || isMuted()) { unmute(); setMuted(false); } else { muteFor(30); setMuted(true); } }}>
+                  <button className="text-sm text-graphite hover:text-ink" onClick={() => { if (muted || isMuted()) { unmute(); setMuted(false); } else { muteFor(30); setMuted(true); } }}>
                     {muted ? "Som silenciado · ligar" : "Silenciar 30 min"}
                   </button>
-                  {unread.length > 0 && <button className="text-[12.5px] text-gold-ink hover:underline" onClick={() => start(async () => { await markAlertsReadAction(unread.map((a) => a.id)); })}>Marcar como lidos</button>}
+                  {unread.length > 0 && <button className="text-sm text-gold-ink hover:underline" onClick={() => start(async () => { await markAlertsReadAction(unread.map((a) => a.id)); })}>Marcar como lidos</button>}
                 </div>
               </div>
               {notifPerm === "default" && (
-                <button className="w-full text-left px-4 py-2.5 text-[12.5px] bg-gold-soft text-gold-ink" onClick={async () => { await Notification.requestPermission(); setPermTick((t) => t + 1); }}>
+                <button className="w-full text-left px-4 py-2.5 text-sm bg-gold-soft text-gold-ink" onClick={async () => { await Notification.requestPermission(); setPermTick((t) => t + 1); }}>
                   Ativar notificações do navegador para não perder nenhum lead
                 </button>
               )}
-              {alerts.length === 0 ? <p className="px-4 py-8 text-center text-muted text-[13px]">Nenhum alerta nos últimos 7 dias.</p> : (
+              {alerts.length === 0 ? <p className="px-4 py-8 text-center text-muted text-sm">Nenhum alerta nos últimos 7 dias.</p> : (
                 <ul>
                   {alerts.map((a) => (
                     <li key={a.id}>
@@ -72,8 +72,8 @@ export function AlertsBell({ alerts }: { alerts: AlertItem[] }) {
                         className={`flex gap-3 px-4 py-3 border-b border-line/70 hover:bg-paper-2 transition-colors ${a.read ? "opacity-60" : ""}`}>
                         <span className={`mt-1.5 size-2 rounded-full shrink-0 ${a.resolved ? "bg-ok" : a.severity === "urgente" ? "bg-alert" : "bg-gold"}`} />
                         <span className="min-w-0">
-                          <span className="block text-[13px] leading-snug">{a.message}</span>
-                          <span className="block text-[11.5px] text-muted mt-0.5">{relTime(a.createdAt)}{a.resolved ? " · resolvido" : ""}</span>
+                          <span className="block text-sm leading-snug">{a.message}</span>
+                          <span className="block text-xs text-muted mt-0.5">{relTime(a.createdAt)}{a.resolved ? " · resolvido" : ""}</span>
                         </span>
                       </Link>
                     </li>

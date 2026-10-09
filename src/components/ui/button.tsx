@@ -15,9 +15,9 @@ const variants: Record<Variant, string> = {
   gold: "bg-gold text-ink hover:brightness-105",
 };
 const sizes: Record<Size, string> = {
-  sm: "h-8 px-3 text-[13px] rounded-[8px]",
-  md: "h-10 px-4 text-[14px] rounded-[10px]",
-  lg: "h-12 px-5 text-[15px] rounded-[12px]",
+  sm: "h-8 px-3 text-sm rounded-[8px]",
+  md: "h-10 px-4 text-base rounded-[var(--radius-control)]",
+  lg: "h-12 px-5 text-base rounded-[var(--radius-control)]",
 };
 
 export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: Size; loading?: boolean };

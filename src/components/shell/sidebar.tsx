@@ -32,18 +32,18 @@ export function Sidebar({ user, alerts }: { user: { name: string; role: string }
             const active = isActive(it.href);
             return (
               <Link key={it.href} href={it.href} aria-current={active ? "page" : undefined}
-                className={`relative flex items-center gap-3 h-10 px-3 rounded-[10px] text-[14px] transition-colors ${active ? "text-ink font-medium" : "text-graphite hover:text-ink hover:bg-paper-3/60"}`}>
-                {active && <motion.span layoutId="nav-pill" transition={SPRING} className="absolute inset-0 rounded-[10px] bg-paper border border-line shadow-[var(--shadow-card)]" />}
+                className={`relative flex items-center gap-3 h-10 px-3 rounded-[var(--radius-control)] text-base transition-colors ${active ? "text-ink font-medium" : "text-graphite hover:text-ink hover:bg-paper-3/60"}`}>
+                {active && <motion.span layoutId="nav-pill" transition={SPRING} className="absolute inset-0 rounded-[var(--radius-control)] bg-paper border border-line shadow-[var(--shadow-card)]" />}
                 <it.icon className="relative" /><span className="relative">{it.label}</span>
               </Link>
             );
           })}
         </nav>
         <div className="p-3 border-t border-line flex items-center gap-3">
-          <span className="size-8 rounded-full bg-ink text-paper grid place-items-center text-[12px] font-semibold">{initials(user.name)}</span>
+          <span className="size-8 rounded-full bg-ink text-paper grid place-items-center text-xs font-semibold">{initials(user.name)}</span>
           <div className="min-w-0 flex-1">
-            <p className="text-[13px] font-medium truncate">{user.name}</p>
-            <p className="text-[11.5px] text-muted">{user.role === "gestor" ? "Gestão" : "Atendimento"}</p>
+            <p className="text-sm font-medium truncate">{user.name}</p>
+            <p className="text-xs text-muted">{user.role === "gestor" ? "Gestão" : "Atendimento"}</p>
           </div>
           <form action={logout}><button className="size-8 grid place-items-center rounded-[8px] text-muted hover:text-ink hover:bg-paper-3" aria-label="Sair"><IconLogout size={17} /></button></form>
         </div>
@@ -54,7 +54,7 @@ export function Sidebar({ user, alerts }: { user: { name: string; role: string }
         <Link href="/" className="font-serif text-[19px]">Casa <em className="text-gold">Fiaes</em></Link>
         <div className="flex items-center gap-1">
           <AlertsBell alerts={alerts} />
-          <form action={logout}><button className="size-9 grid place-items-center rounded-[10px] text-muted" aria-label="Sair"><IconLogout size={17} /></button></form>
+          <form action={logout}><button className="size-9 grid place-items-center rounded-[var(--radius-control)] text-muted" aria-label="Sair"><IconLogout size={17} /></button></form>
         </div>
       </header>
       <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 grid bg-paper/95 backdrop-blur border-t border-line pb-[env(safe-area-inset-bottom)]" style={{ gridTemplateColumns: `repeat(${items.length}, 1fr)` }} aria-label="Principal">

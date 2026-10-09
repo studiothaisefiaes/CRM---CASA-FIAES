@@ -26,11 +26,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           {items.map((t) => (
             <motion.div key={t.id} layout initial={{ opacity: 0, y: -10, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, scale: 0.97 }} transition={SPRING}
               role={t.tone === "error" ? "alert" : "status"}
-              className={`pointer-events-auto pl-4 pr-2 py-2 rounded-[12px] text-[13.5px] shadow-[var(--shadow-pop)] flex items-center gap-3 ${t.tone === "error" ? "bg-alert text-white" : "bg-ink text-paper"}`}>
+              className={`pointer-events-auto pl-4 pr-2 py-2 rounded-[var(--radius-control)] text-sm shadow-[var(--shadow-pop)] flex items-center gap-3 ${t.tone === "error" ? "bg-alert text-white" : "bg-ink text-paper"}`}>
               {t.tone === "ok" && <span className="size-1.5 rounded-full bg-gold shrink-0" />}
               <span className="py-0.5">{t.text}</span>
               {t.action && (
-                <button className="h-7 px-2.5 rounded-[8px] bg-paper/10 hover:bg-paper/20 text-[12.5px] font-semibold text-gold" onClick={() => { t.action!.onClick(); dismiss(t.id); }}>
+                <button className="h-7 px-2.5 rounded-[8px] bg-paper/10 hover:bg-paper/20 text-sm font-semibold text-gold" onClick={() => { t.action!.onClick(); dismiss(t.id); }}>
                   {t.action.label}
                 </button>
               )}

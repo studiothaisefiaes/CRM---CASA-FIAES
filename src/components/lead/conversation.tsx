@@ -12,16 +12,16 @@ function Media({ m }: { m: Msg }) {
   const src = `/api/media/${m.id}`;
   if (failed) return <span className="text-graphite italic">{KIND_LABEL[m.kind] ?? "Mídia"} (não foi possível carregar)</span>;
   switch (m.kind) {
-    case "image": return <a href={src} target="_blank" rel="noreferrer" className="block -mx-1.5 -mt-0.5 mb-1"><img src={src} alt={m.body ?? "Foto enviada"} loading="lazy" onError={() => setFailed(true)} className="rounded-[12px] max-h-72 w-auto max-w-full object-cover bg-paper-2" /></a>;
+    case "image": return <a href={src} target="_blank" rel="noreferrer" className="block -mx-1.5 -mt-0.5 mb-1"><img src={src} alt={m.body ?? "Foto enviada"} loading="lazy" onError={() => setFailed(true)} className="rounded-[var(--radius-control)] max-h-72 w-auto max-w-full object-cover bg-paper-2" /></a>;
     case "sticker": return <img src={src} alt="Figurinha" loading="lazy" onError={() => setFailed(true)} className="size-28 object-contain" />;
     case "audio": return <audio controls preload="none" src={src} onError={() => setFailed(true)} className="w-[240px] max-w-full h-10" />;
-    case "video": return <video controls preload="none" src={src} onError={() => setFailed(true)} className="rounded-[12px] max-h-72 max-w-full bg-ink" />;
+    case "video": return <video controls preload="none" src={src} onError={() => setFailed(true)} className="rounded-[var(--radius-control)] max-h-72 max-w-full bg-ink" />;
     case "document": return <a href={src} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 underline decoration-line-strong underline-offset-2">Abrir documento{m.body ? `: ${m.body}` : ""}</a>;
     default: return null;
   }
 }
 
-const STATUS: Record<string, [string, string]> = { pending: ["enviando…", ""], sent: ["✓", ""], delivered: ["✓✓", ""], read: ["✓✓", "text-gold"], simulado: ["simulado", ""], failed: ["não enviada", "text-alert font-semibold"] };
+const STATUS: Record<string, [string, string]> = { pending: ["enviando…", ""], sent: ["✓", ""], delivered: ["✓✓", ""], read: ["✓✓", "text-gold-ink"], simulado: ["simulado", ""], failed: ["não enviada", "text-alert font-semibold"] };
 
 const dayLabel = (iso: string) => {
   const d = new Date(iso), t = new Date(); const y = new Date(); y.setDate(t.getDate() - 1);
@@ -36,19 +36,19 @@ export function Conversation({ messages }: { messages: Msg[] }) {
   useEffect(() => { end.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [messages.length]);
   return (
     <div className="flex-1 overflow-y-auto scroll-thin px-4 py-4 flex flex-col gap-1.5 bg-[radial-gradient(circle_at_1px_1px,rgb(18_18_18/0.035)_1px,transparent_0)] [background-size:18px_18px]">
-      {messages.length === 0 && <p className="m-auto text-center text-muted text-[13px] max-w-[30ch]">Nenhuma mensagem ainda. A conversa aparece aqui assim que o cliente escrever.</p>}
+      {messages.length === 0 && <p className="m-auto text-center text-muted text-sm max-w-[30ch]">Nenhuma mensagem ainda. A conversa aparece aqui assim que o cliente escrever.</p>}
       <AnimatePresence initial={false}>
         {messages.map((m, idx) => {
           const day = dayLabel(m.createdAt); const showDay = idx === 0 || dayLabel(messages[idx - 1].createdAt) !== day;
           const out = m.direction === "out";
           return (
             <motion.div key={m.id} layout="position" initial={{ opacity: 0, y: 10, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={SPRING} className="flex flex-col">
-              {showDay && <p className="self-center my-2 text-[11px] font-medium text-muted bg-paper border border-line rounded-full px-2.5 py-0.5 first-letter:uppercase">{day}</p>}
-              <div className={`max-w-[78%] rounded-[16px] px-3.5 py-2 text-[14px] leading-relaxed shadow-[var(--shadow-card)] ${out ? "self-end bg-[#f3ead9] rounded-br-[5px]" : "self-start bg-paper border border-line rounded-bl-[5px]"} ${m.status === "pending" ? "opacity-60" : ""}`}>
+              {showDay && <p className="self-center my-2 text-xs font-medium text-muted bg-paper border border-line rounded-full px-2.5 py-0.5 first-letter:uppercase">{day}</p>}
+              <div className={`max-w-[78%] rounded-[var(--radius-card)] px-3.5 py-2 text-base leading-relaxed shadow-[var(--shadow-card)] ${out ? "self-end bg-[#f3ead9] rounded-br-[5px]" : "self-start bg-paper border border-line rounded-bl-[5px]"} ${m.status === "pending" ? "opacity-60" : ""}`}>
                 {m.quotedBody && (
-                  <span className={`block mb-1.5 -mx-1 px-2.5 py-1.5 rounded-[10px] border-l-2 border-gold/70 text-[12.5px] text-graphite line-clamp-3 ${out ? "bg-paper/60" : "bg-paper-2"}`}>{m.quotedBody}</span>
+                  <span className={`block mb-1.5 -mx-1 px-2.5 py-1.5 rounded-[var(--radius-control)] border-l-2 border-gold/70 text-sm text-graphite line-clamp-3 ${out ? "bg-paper/60" : "bg-paper-2"}`}>{m.quotedBody}</span>
                 )}
-                {m.deleted && <span className="block text-[11.5px] font-medium text-alert/80 mb-0.5">Apagada pela cliente no WhatsApp</span>}
+                {m.deleted && <span className="block text-xs font-medium text-alert/80 mb-0.5">Apagada pela cliente no WhatsApp</span>}
                 <span className={m.deleted ? "block line-through decoration-alert/50 opacity-60" : "contents"}>
                 {m.hasMedia && m.kind !== "text" ? (
                   <><Media m={m} />{m.body && m.kind !== "document" && <span className="block whitespace-pre-wrap break-words">{m.body}</span>}</>
@@ -66,7 +66,7 @@ export function Conversation({ messages }: { messages: Msg[] }) {
                   {new Date(m.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
                   {out && STATUS[m.status] && <span className={`ml-0.5 ${STATUS[m.status][1]}`} aria-label={`Status: ${m.status}`}>{STATUS[m.status][0]}</span>}
                 </span>
-                {out && m.status === "failed" && <span className="block text-[11.5px] text-alert mt-1">Não chegou na cliente. Copie o texto e envie de novo.</span>}
+                {out && m.status === "failed" && <span className="block text-xs text-alert mt-1">Não chegou na cliente. Copie o texto e envie de novo.</span>}
               </div>
             </motion.div>
           );

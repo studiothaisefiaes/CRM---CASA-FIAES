@@ -30,24 +30,24 @@ export function WhatsAppChannels({ channels }: { channels: Ch[] }) {
   return (
     <div>
       <div className="flex items-start justify-between gap-4 mb-4">
-        <p className="text-[13.5px] text-graphite max-w-[64ch]">Cada número conecta escaneando um QR code com o celular, como no WhatsApp Web. O número continua funcionando normalmente no celular, e as conversas passam a aparecer no CRM.</p>
+        <p className="text-sm text-graphite max-w-[64ch]">Cada número conecta escaneando um QR code com o celular, como no WhatsApp Web. O número continua funcionando normalmente no celular, e as conversas passam a aparecer no CRM.</p>
         <Button size="sm" className="h-9 shrink-0" onClick={() => { setErr(null); setNaming(true); }}><IconPlus size={16} />Conectar número</Button>
       </div>
       {channels.length === 0 ? (
-        <div className="rounded-[16px] border border-line bg-paper"><Empty title="Nenhum número conectado" action={<Button onClick={() => setNaming(true)}>Conectar o primeiro número</Button>}>Conecte o WhatsApp da Casa para os leads entrarem sozinhos no funil.</Empty></div>
+        <div className="rounded-[var(--radius-card)] border border-line bg-paper"><Empty title="Nenhum número conectado" action={<Button onClick={() => setNaming(true)}>Conectar o primeiro número</Button>}>Conecte o WhatsApp da Casa para os leads entrarem sozinhos no funil.</Empty></div>
       ) : (
         <ul className="grid sm:grid-cols-2 gap-3">
           {channels.map((c) => (
-            <motion.li key={c.id} layout transition={SPRING} className="rounded-[16px] border border-line bg-paper p-5">
+            <motion.li key={c.id} layout transition={SPRING} className="rounded-[var(--radius-card)] border border-line bg-paper p-5">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <span className={`size-10 rounded-[12px] grid place-items-center ${c.status === "conectado" ? "bg-ok-soft text-ok" : "bg-paper-2 text-muted"}`}><IconWhatsApp /></span>
-                  <div><p className="font-medium">{c.name}</p><p className="text-[12.5px] text-muted">{c.phone ? formatPhoneClient(c.phone) : "número aparece ao conectar"}</p></div>
+                  <span className={`size-10 rounded-[var(--radius-control)] grid place-items-center ${c.status === "conectado" ? "bg-ok-soft text-ok" : "bg-paper-2 text-muted"}`}><IconWhatsApp /></span>
+                  <div><p className="font-medium">{c.name}</p><p className="text-sm text-muted">{c.phone ? formatPhoneClient(c.phone) : "número aparece ao conectar"}</p></div>
                 </div>
                 <Badge tone={STATUS[c.status][1]}>{c.status === "conectado" && <span className="size-1.5 rounded-full bg-ok animate-pulse" />}{STATUS[c.status][0]}</Badge>
               </div>
               <div className="flex items-center justify-between mt-4">
-                <p className="text-[12px] text-muted">{c.lastEventAt ? `Último sinal ${relTime(c.lastEventAt)}` : "Sem sinal ainda"}</p>
+                <p className="text-xs text-muted">{c.lastEventAt ? `Último sinal ${relTime(c.lastEventAt)}` : "Sem sinal ainda"}</p>
                 <div className="flex gap-2">
                   {c.status !== "conectado" && <Button size="sm" onClick={() => setQrFor(c)}>Ler QR code</Button>}
                   {c.status === "conectado" && <Button size="sm" variant="secondary" onClick={() => setConfirm({ ch: c, remove: false })}>Desconectar</Button>}
@@ -114,7 +114,7 @@ function QrDialog({ channel, onClose }: { channel: Ch | null; onClose: () => voi
     <Dialog open={!!channel} onClose={onClose} title={channel ? `Conectar ${channel.name}` : ""} width={560}
       footer={st.s === "conectado" ? <Button onClick={onClose}>Concluir</Button> : <Button variant="secondary" onClick={onClose}>Fechar</Button>}>
       <div className="grid sm:grid-cols-[240px_1fr] gap-6 items-center">
-        <div className="relative size-[240px] mx-auto rounded-[18px] border border-line bg-white grid place-items-center overflow-hidden">
+        <div className="relative size-[240px] mx-auto rounded-[var(--radius-panel)] border border-line bg-white grid place-items-center overflow-hidden">
           <AnimatePresence mode="wait">
             {st.s === "gerando" && <motion.div key="g" exit={{ opacity: 0 }} className="skeleton size-[200px]" aria-label="Gerando QR code" />}
             {st.s === "aguardando" && (
@@ -131,7 +131,7 @@ function QrDialog({ channel, onClose }: { channel: Ch | null; onClose: () => voi
             )}
             {(st.s === "expirado" || st.s === "erro") && (
               <motion.div key="x" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center px-6">
-                <p className="text-[13px] text-graphite">{st.s === "expirado" ? "O QR code expirou sem leitura." : st.msg}</p>
+                <p className="text-sm text-graphite">{st.s === "expirado" ? "O QR code expirou sem leitura." : st.msg}</p>
                 <Button size="sm" className="mt-3" onClick={() => { refreshes.current = 0; load(); }}><IconRefresh size={15} />Gerar de novo</Button>
               </motion.div>
             )}
@@ -139,15 +139,15 @@ function QrDialog({ channel, onClose }: { channel: Ch | null; onClose: () => voi
         </div>
         <div>
           {st.s === "conectado" ? (
-            <><p className="font-serif text-[24px] font-light">Número conectado.</p><p className="text-[13.5px] text-graphite mt-2">As próximas mensagens deste WhatsApp já entram no funil como leads.</p></>
+            <><p className="font-serif text-[24px] font-light">Número conectado.</p><p className="text-sm text-graphite mt-2">As próximas mensagens deste WhatsApp já entram no funil como leads.</p></>
           ) : (
             <>
-              <ol className="flex flex-col gap-2.5 text-[13.5px]">
+              <ol className="flex flex-col gap-2.5 text-sm">
                 {["Abra o WhatsApp no celular deste número", "Toque em Configurações › Aparelhos conectados", "Toque em Conectar um aparelho", "Aponte a câmera para este QR code"].map((t, i) => (
-                  <li key={t} className="flex gap-3"><span className="size-6 shrink-0 rounded-full bg-paper-2 text-[12px] font-semibold grid place-items-center">{i + 1}</span><span className="pt-0.5">{t}</span></li>
+                  <li key={t} className="flex gap-3"><span className="size-6 shrink-0 rounded-full bg-paper-2 text-xs font-semibold grid place-items-center">{i + 1}</span><span className="pt-0.5">{t}</span></li>
                 ))}
               </ol>
-              {st.s === "aguardando" && <p className="text-[12px] text-muted mt-4 tabular" aria-live="polite">Novo código em {left}s · aguardando leitura…</p>}
+              {st.s === "aguardando" && <p className="text-xs text-muted mt-4 tabular" aria-live="polite">Novo código em {left}s · aguardando leitura…</p>}
             </>
           )}
         </div>

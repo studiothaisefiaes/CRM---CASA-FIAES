@@ -22,25 +22,25 @@ export default async function ContatosPage({ searchParams }: PageProps<"/contato
   return (
     <main className="pb-12">
       <PageHeader title="Contatos" subtitle={`${data.total.toLocaleString("pt-BR")} contato${data.total === 1 ? "" : "s"}`}
-        actions={<><SearchBox initial={q ?? ""} /><Link href={clientes ? "/contatos" : "/contatos?clientes=1"} className={`h-9 px-3 inline-flex items-center rounded-[10px] border text-[13px] ${clientes ? "bg-ink text-paper border-ink" : "border-line-strong"}`}>Só clientes</Link>{user.role === "gestor" && <ImportButton />}</>} />
+        actions={<><SearchBox initial={q ?? ""} /><Link href={clientes ? "/contatos" : "/contatos?clientes=1"} className={`h-9 px-3 inline-flex items-center rounded-[var(--radius-control)] border text-sm ${clientes ? "bg-ink text-paper border-ink" : "border-line-strong"}`}>Só clientes</Link>{user.role === "gestor" && <ImportButton />}</>} />
       <div className="px-5 lg:px-8">
         {data.rows.length === 0 ? (
-          <div className="rounded-[18px] border border-line bg-paper"><Empty title={q ? "Nada encontrado" : "Nenhum contato ainda"}>{q ? "Tente outro nome ou telefone." : "Os contatos aparecem quando alguém manda mensagem no WhatsApp, ou importando o histórico de clientes."}</Empty></div>
+          <div className="rounded-[var(--radius-panel)] border border-line bg-paper"><Empty title={q ? "Nada encontrado" : "Nenhum contato ainda"}>{q ? "Tente outro nome ou telefone." : "Os contatos aparecem quando alguém manda mensagem no WhatsApp, ou importando o histórico de clientes."}</Empty></div>
         ) : (
           <>
-          <ul className="sm:hidden rounded-[18px] border border-line bg-paper divide-y divide-line/70">
+          <ul className="sm:hidden rounded-[var(--radius-panel)] border border-line bg-paper divide-y divide-line/70">
             {data.rows.map((c) => (
               <li key={c.id}>
                 <Link href={c.lastDealId ? `/funil?lead=${c.lastDealId}` : `/contatos?q=${encodeURIComponent(c.phone)}`} className="flex items-center justify-between gap-3 px-4 py-3 active:bg-paper-2">
-                  <span className="min-w-0"><span className="block font-medium truncate">{c.name ?? "Sem nome"}</span><span className="block text-[12.5px] text-muted tabular">{formatPhoneClient(c.phone)}</span></span>
+                  <span className="min-w-0"><span className="block font-medium truncate">{c.name ?? "Sem nome"}</span><span className="block text-sm text-muted tabular">{formatPhoneClient(c.phone)}</span></span>
                   {c.isClient ? <Badge tone="ok">Cliente</Badge> : <Badge>Lead</Badge>}
                 </Link>
               </li>
             ))}
           </ul>
-          <div className="hidden sm:block rounded-[18px] border border-line bg-paper overflow-x-auto">
-            <table className="w-full text-[13.5px] min-w-[720px]">
-              <thead><tr className="text-left text-[12px] text-muted border-b border-line">
+          <div className="hidden sm:block rounded-[var(--radius-panel)] border border-line bg-paper overflow-x-auto">
+            <table className="w-full text-sm min-w-[720px]">
+              <thead><tr className="text-left text-xs text-muted border-b border-line">
                 <th className="font-medium px-5 py-3">Nome</th><th className="font-medium px-3">Telefone</th><th className="font-medium px-3">E-mail</th><th className="font-medium px-3">Situação</th><th className="font-medium px-3">Último atendimento</th><th className="font-medium px-3 text-right pr-5">Leads</th>
               </tr></thead>
               <tbody>
@@ -60,11 +60,11 @@ export default async function ContatosPage({ searchParams }: PageProps<"/contato
           </>
         )}
         {pages > 1 && (
-          <nav className="flex items-center justify-between mt-4 text-[13px]" aria-label="Páginas">
+          <nav className="flex items-center justify-between mt-4 text-sm" aria-label="Páginas">
             <span className="text-muted">Página {data.page} de {pages}</span>
             <div className="flex gap-2">
-              {data.page > 1 && <Link href={`/contatos${qs(data.page - 1)}`} className="h-9 px-3 inline-flex items-center rounded-[10px] border border-line-strong">Anterior</Link>}
-              {data.page < pages && <Link href={`/contatos${qs(data.page + 1)}`} className="h-9 px-3 inline-flex items-center rounded-[10px] border border-line-strong">Próxima</Link>}
+              {data.page > 1 && <Link href={`/contatos${qs(data.page - 1)}`} className="h-9 px-3 inline-flex items-center rounded-[var(--radius-control)] border border-line-strong">Anterior</Link>}
+              {data.page < pages && <Link href={`/contatos${qs(data.page + 1)}`} className="h-9 px-3 inline-flex items-center rounded-[var(--radius-control)] border border-line-strong">Próxima</Link>}
             </div>
           </nav>
         )}

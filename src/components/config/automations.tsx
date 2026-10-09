@@ -42,33 +42,33 @@ export function AutomationsList({ items, stages, runs }: { items: Item[]; stages
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <p className="text-[13.5px] text-graphite max-w-[60ch]">Regras que o CRM roda sozinho a cada minuto. Ligue, desligue ou edite: cada mudança fica guardada e dá para voltar à versão anterior.</p>
+        <p className="text-sm text-graphite max-w-[60ch]">Regras que o CRM roda sozinho a cada minuto. Ligue, desligue ou edite: cada mudança fica guardada e dá para voltar à versão anterior.</p>
         <Button size="sm" className="h-9 shrink-0" onClick={() => setEditing("new")}><IconPlus size={16} />Nova automação</Button>
       </div>
       {GROUPS.map((g) => { const list = items.filter((a) => g.types.includes((a.trigger as Trigger).type)); if (!list.length) return null; return (
       <section key={g.title} className="mb-7">
-      <h3 className="flex items-baseline gap-2 mb-2.5"><span className="font-serif text-[20px]">{g.title}</span><span className="text-[12.5px] text-muted">{g.hint}</span></h3>
+      <h3 className="flex items-baseline gap-2 mb-2.5"><span className="font-serif text-[20px]">{g.title}</span><span className="text-sm text-muted">{g.hint}</span></h3>
       <ul className="flex flex-col gap-3">
         <AnimatePresence initial={false}>
           {list.map((a, i) => {
             const t = a.trigger as Trigger; const conds = a.conditions as { type: "etapa_em"; stages: string[] }[]; const acts = a.actions as Action[];
             return (
               <motion.li key={a.id} layout transition={SPRING} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0, transition: { delay: i * 0.04 } }} exit={{ opacity: 0 }}
-                className={`rounded-[16px] border bg-paper p-4 lg:p-5 flex gap-4 items-start transition-colors ${a.enabled ? "border-line" : "border-line opacity-70"}`}>
-                <span className={`size-9 shrink-0 rounded-[10px] grid place-items-center ${a.enabled ? "bg-gold-soft text-gold-ink" : "bg-paper-2 text-muted"}`}>
+                className={`rounded-[var(--radius-card)] border bg-paper p-4 lg:p-5 flex gap-4 items-start transition-colors ${a.enabled ? "border-line" : "border-line opacity-70"}`}>
+                <span className={`size-9 shrink-0 rounded-[var(--radius-control)] grid place-items-center ${a.enabled ? "bg-gold-soft text-gold-ink" : "bg-paper-2 text-muted"}`}>
                   {t.type === "sem_resposta_minutos" || t.type === "parado_dias" ? <IconClock size={17} /> : t.type === "sem_retorno_cliente_dias" ? <IconRefresh size={17} /> : t.type === "aniversario_em_dias" ? <IconCake size={17} /> : t.type === "data_cobranca" ? <IconMoney size={17} /> : <IconCalendar size={17} />}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="font-medium text-[15px]">{a.name}</p>
-                  <p className="text-[13.5px] text-graphite mt-1 leading-relaxed">
+                  <p className="font-medium text-base">{a.name}</p>
+                  <p className="text-sm text-graphite mt-1 leading-relaxed">
                     <b className="text-gold-ink font-semibold">Quando</b> {describeTrigger(t)}
                     {conds[0]?.stages?.length ? <> <b className="text-gold-ink font-semibold">· Se</b> estiver em {conds[0].stages.map((k) => stages.find((s) => s.key === k)?.name ?? k).join(", ")}</> : null}
                     {" "}<b className="text-gold-ink font-semibold">· Então</b> {acts.map((x) => describeAction(x, stages)).join(" e ")}
                   </p>
-                  <p className="text-[11.5px] text-muted mt-1.5">{runs[a.id] ? <b className="text-graphite font-semibold">Disparou {runs[a.id]}× nos últimos 7 dias · </b> : "Não disparou nos últimos 7 dias · "}versão {a.version}, alterada {relTime(a.updatedAt)}</p>
+                  <p className="text-xs text-muted mt-1.5">{runs[a.id] ? <b className="text-graphite font-semibold">Disparou {runs[a.id]}× nos últimos 7 dias · </b> : "Não disparou nos últimos 7 dias · "}versão {a.version}, alterada {relTime(a.updatedAt)}</p>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
-                  <button className="text-[13px] text-graphite hover:text-ink underline-offset-2 hover:underline" onClick={() => setEditing(a)}>Editar</button>
+                  <button className="text-sm text-graphite hover:text-ink underline-offset-2 hover:underline" onClick={() => setEditing(a)}>Editar</button>
                   <Switch checked={a.enabled} label={`${a.enabled ? "Desligar" : "Ligar"} ${a.name}`} onChange={(v) => start(async () => { const r = await toggleAutomationAction(a.id, v); toast(r.ok ? (v ? "Automação ligada" : "Automação desligada") : r.error, r.ok ? "ok" : "error"); })} />
                 </div>
               </motion.li>
@@ -111,35 +111,35 @@ function Editor({ item, stages, onClose }: { item: Item | "new" | null; stages: 
     <Dialog open={open} onClose={onClose} title={isNew ? "Nova automação" : "Editar automação"} width={640}
       footer={<>
         {!isNew && (confirmDel
-          ? <span className="mr-auto flex items-center gap-2 text-[13px]">Apagar de vez?<Button size="sm" variant="danger" onClick={() => start(async () => { const r = await deleteAutomationAction((item as Item).id); if (r.ok) { toast("Automação apagada"); onClose(); } else toast(r.error, "error"); })}>Apagar</Button><Button size="sm" variant="ghost" onClick={() => setConfirmDel(false)}>Não</Button></span>
+          ? <span className="mr-auto flex items-center gap-2 text-sm">Apagar de vez?<Button size="sm" variant="danger" onClick={() => start(async () => { const r = await deleteAutomationAction((item as Item).id); if (r.ok) { toast("Automação apagada"); onClose(); } else toast(r.error, "error"); })}>Apagar</Button><Button size="sm" variant="ghost" onClick={() => setConfirmDel(false)}>Não</Button></span>
           : <Button variant="ghost" className="mr-auto text-alert hover:bg-alert-soft" onClick={() => setConfirmDel(true)}>Apagar</Button>)}
         <Button variant="secondary" onClick={() => start(async () => { const r = await previewAutomationAction(v); setPreview(r.ok ? `Agora, ${r.data!.count} lead${r.data!.count === 1 ? "" : "s"} se encaixa${r.data!.count === 1 ? "" : "m"} nesta regra${r.data!.sample.length ? `: ${r.data!.sample.join(", ")}` : ""}.` : r.error); })}>Testar</Button>
         <Button onClick={() => start(async () => { const r = await saveAutomationAction(isNew ? null : (item as Item).id, v); if (r.ok) { toast("Automação salva"); onClose(); } else setErr(r.error); })} loading={pending}>Salvar</Button>
       </>}>
       <div className="flex flex-col gap-5">
-        <label className="block"><span className="text-[12.5px] font-medium text-graphite">Nome</span>
+        <label className="block"><span className="text-sm font-medium text-graphite">Nome</span>
           <Input className="mt-1.5" value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} placeholder="Ex.: Lead sem resposta em 5 minutos" /></label>
         <Block label="Quando">
           <div className="flex flex-wrap gap-2 items-center">
             <Select className="w-auto" value={v.trigger.type} onChange={(e) => setTrigger(e.target.value as Trigger["type"])}>
               {Object.entries(TRIGGER_LABELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
             </Select>
-            {unit && !stageBased && <span className="inline-flex items-center gap-2"><Input type="number" min={unit === "dias" && v.trigger.type === "aniversario_em_dias" ? 0 : 1} className="w-20" value={amount} onChange={(e) => setTrigger(v.trigger.type, Math.max(0, Number(e.target.value)))} /><span className="text-[13px] text-graphite">{unit}</span></span>}
+            {unit && !stageBased && <span className="inline-flex items-center gap-2"><Input type="number" min={unit === "dias" && v.trigger.type === "aniversario_em_dias" ? 0 : 1} className="w-20" value={amount} onChange={(e) => setTrigger(v.trigger.type, Math.max(0, Number(e.target.value)))} /><span className="text-sm text-graphite">{unit}</span></span>}
           </div>
           {(v.trigger.type === "sem_resposta_minutos" || v.trigger.type === "parado_dias") && (
-            <label className="flex items-center gap-2 mt-2.5 text-[13px] text-graphite">
+            <label className="flex items-center gap-2 mt-2.5 text-sm text-graphite">
               <input type="checkbox" checked={stageBased} onChange={(e) => setV({ ...v, trigger: { ...v.trigger, ...(v.trigger.type === "sem_resposta_minutos" ? { useStageSla: e.target.checked } : { useStageLimit: e.target.checked }) } as Trigger })} />
               Usar o {v.trigger.type === "sem_resposta_minutos" ? "prazo de resposta" : "limite parado"} de cada etapa (Configurações › Etapas)
             </label>
           )}
         </Block>
         <Block label="Se (opcional)">
-          <p className="text-[12.5px] text-muted mb-2">Só vale para leads nestas etapas. Nenhuma marcada = todas.</p>
+          <p className="text-sm text-muted mb-2">Só vale para leads nestas etapas. Nenhuma marcada = todas.</p>
           <div className="flex flex-wrap gap-1.5">
             {stages.map((s) => {
               const on = stagesSel.includes(s.key);
               return <button key={s.key} type="button" aria-pressed={on} onClick={() => { const next = on ? stagesSel.filter((k) => k !== s.key) : [...stagesSel, s.key]; setV({ ...v, conditions: next.length ? [{ type: "etapa_em", stages: next }] : [] }); }}
-                className={`h-8 px-3 rounded-full text-[12.5px] border transition-colors ${on ? "bg-ink text-paper border-ink" : "border-line-strong hover:bg-paper-2"}`}>{s.name}</button>;
+                className={`h-8 px-3 rounded-full text-sm border transition-colors ${on ? "bg-ink text-paper border-ink" : "border-line-strong hover:bg-paper-2"}`}>{s.name}</button>;
             })}
           </div>
         </Block>
@@ -151,23 +151,23 @@ function Editor({ item, stages, onClose }: { item: Item | "new" | null; stages: 
                   {Object.entries(ACTION_LABELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                 </Select>
                 {"message" in a && (a.type === "enviar_mensagem"
-                  ? <textarea className="flex-1 min-w-[220px] rounded-[10px] border border-control/70 px-3 py-2 text-[14px] min-h-20" value={a.message} onChange={(e) => setAction(i, { ...a, message: e.target.value })} aria-label="Texto da mensagem" />
+                  ? <textarea className="flex-1 min-w-[220px] rounded-[var(--radius-control)] border border-control/70 px-3 py-2 text-base min-h-20" value={a.message} onChange={(e) => setAction(i, { ...a, message: e.target.value })} aria-label="Texto da mensagem" />
                   : <Input className="flex-1 min-w-[220px]" value={a.message} onChange={(e) => setAction(i, { ...a, message: e.target.value })} />)}
                 {a.type === "mover_para_etapa" && <Select className="w-auto" value={a.stage} onChange={(e) => setAction(i, { ...a, stage: e.target.value })}>{stages.map((s) => <option key={s.key} value={s.key}>{s.name}</option>)}</Select>}
                 {v.actions.length > 1 && <button type="button" aria-label="Remover ação" onClick={() => setV({ ...v, actions: v.actions.filter((_, j) => j !== i) })} className="size-8 grid place-items-center rounded-[8px] text-muted hover:bg-paper-2"><IconClose size={14} /></button>}
               </div>
             ))}
-            {v.actions.length < 4 && <button type="button" onClick={() => setV({ ...v, actions: [...v.actions, newAction("alertar_responsavel")] })} className="self-start text-[13px] text-gold-ink hover:underline">+ Adicionar ação</button>}
-            <p className="text-[12px] text-muted">Nas mensagens você pode usar {"{nome}"}, {"{etapa}"}, {"{minutos}"}, {"{dias}"} e, em agendamentos, {"{data}"} e {"{hora}"}.</p>
-            {v.actions.some((x) => x.type === "enviar_mensagem") && <p className="text-[12.5px] bg-gold-soft text-gold-ink rounded-[10px] px-3 py-2">Esta automação manda mensagem de verdade para as clientes, pelo número da conversa, só no horário de atendimento. Revise o texto antes de ligar.</p>}
+            {v.actions.length < 4 && <button type="button" onClick={() => setV({ ...v, actions: [...v.actions, newAction("alertar_responsavel")] })} className="self-start text-sm text-gold-ink hover:underline">+ Adicionar ação</button>}
+            <p className="text-xs text-muted">Nas mensagens você pode usar {"{nome}"}, {"{etapa}"}, {"{minutos}"}, {"{dias}"} e, em agendamentos, {"{data}"} e {"{hora}"}.</p>
+            {v.actions.some((x) => x.type === "enviar_mensagem") && <p className="text-sm bg-gold-soft text-gold-ink rounded-[var(--radius-control)] px-3 py-2">Esta automação manda mensagem de verdade para as clientes, pelo número da conversa, só no horário de atendimento. Revise o texto antes de ligar.</p>}
           </div>
         </Block>
-        <AnimatePresence>{preview && <motion.p initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="text-[13px] bg-gold-soft text-gold-ink rounded-[10px] px-3 py-2">{preview}</motion.p>}</AnimatePresence>
-        {err && <p className="text-[13px] text-alert" role="alert">{err}</p>}
+        <AnimatePresence>{preview && <motion.p initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="text-sm bg-gold-soft text-gold-ink rounded-[var(--radius-control)] px-3 py-2">{preview}</motion.p>}</AnimatePresence>
+        {err && <p className="text-sm text-alert" role="alert">{err}</p>}
         {!isNew && (
           <div className="border-t border-line pt-4">
-            {!details ? <button type="button" className="text-[13px] text-graphite hover:text-ink underline" onClick={() => start(async () => { const r = await automationDetailsAction((item as Item).id); if (r.ok) setDetails(r.data as never); })}>Ver versões e últimas execuções</button> : (
-              <div className="grid sm:grid-cols-2 gap-5 text-[13px]">
+            {!details ? <button type="button" className="text-sm text-graphite hover:text-ink underline" onClick={() => start(async () => { const r = await automationDetailsAction((item as Item).id); if (r.ok) setDetails(r.data as never); })}>Ver versões e últimas execuções</button> : (
+              <div className="grid sm:grid-cols-2 gap-5 text-sm">
                 <div><p className="font-semibold mb-1.5">Versões</p>
                   <ul className="flex flex-col gap-1">{details.versions.map((x) => (
                     <li key={x.version} className="flex justify-between gap-2"><span>v{x.version} · {relTime(x.createdAt)}{x.user ? ` · ${x.user.split(" ")[0]}` : ""}</span>

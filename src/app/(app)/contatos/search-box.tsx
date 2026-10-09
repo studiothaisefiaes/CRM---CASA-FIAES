@@ -9,7 +9,7 @@ export function SearchBox({ initial }: { initial: string }) {
   return (
     <label className="relative"><span className="sr-only">Buscar</span>
       <IconSearch size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Nome, telefone ou e-mail" className="h-9 w-60 pl-9 pr-3 rounded-[10px] border border-line-strong bg-paper text-[13px] outline-none focus:border-ink" />
+      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Nome, telefone ou e-mail" className="h-9 w-60 pl-9 pr-3 rounded-[var(--radius-control)] border border-line-strong bg-paper text-sm outline-none focus:border-ink" />
     </label>
   );
 }

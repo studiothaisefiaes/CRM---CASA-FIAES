@@ -20,14 +20,14 @@ export function TeamEditor({ me, members }: { me: string; members: M[] }) {
   return (
     <div>
       <div className="flex items-start justify-between gap-4 mb-4">
-        <p className="text-[13.5px] text-graphite max-w-[60ch]"><b>Gestão</b> vê tudo e mexe nas configurações. <b>Atendimento</b> vê o funil, atende e vê os próprios números.</p>
+        <p className="text-sm text-graphite max-w-[60ch]"><b>Gestão</b> vê tudo e mexe nas configurações. <b>Atendimento</b> vê o funil, atende e vê os próprios números.</p>
         <Button size="sm" className="h-9 shrink-0" onClick={() => { setOpen(true); setLink(null); setV({ name: "", email: "", role: "atendente" }); }}><IconPlus size={16} />Convidar pessoa</Button>
       </div>
-      <ul className="rounded-[16px] border border-line bg-paper divide-y divide-line/70">
+      <ul className="rounded-[var(--radius-card)] border border-line bg-paper divide-y divide-line/70">
         {members.map((m) => (
           <li key={m.id} className={`grid grid-cols-[36px_1fr] sm:grid-cols-[36px_1fr_auto_150px_110px] items-center gap-3 px-4 py-3 ${m.active ? "" : "opacity-55"}`}>
-            <span className="size-9 rounded-full bg-paper-3 grid place-items-center text-[12px] font-semibold">{initials(m.name)}</span>
-            <div className="min-w-0 flex-1"><p className="font-medium text-[14px]">{m.name}{m.id === me && <span className="text-muted font-normal"> (você)</span>}</p><p className="text-[12.5px] text-muted">{m.email}</p></div>
+            <span className="size-9 rounded-full bg-paper-3 grid place-items-center text-xs font-semibold">{initials(m.name)}</span>
+            <div className="min-w-0 flex-1"><p className="font-medium text-base">{m.name}{m.id === me && <span className="text-muted font-normal"> (você)</span>}</p><p className="text-sm text-muted">{m.email}</p></div>
             <span className="col-start-2 sm:col-start-auto flex gap-1.5">{m.pending && <Badge tone="gold">Convite pendente</Badge>}{!m.active && <Badge>Desativado</Badge>}</span>
             <Select className="col-start-2 sm:col-start-auto w-full h-9" aria-label={`Papel de ${m.name}`} value={m.role} disabled={pending} onChange={(e) => start(async () => { const r = await setMemberAction(m.id, { role: e.target.value as M["role"] }); toast(r.ok ? "Papel alterado" : r.error, r.ok ? "ok" : "error"); })}>
               <option value="atendente">Atendimento</option><option value="gestor">Gestão</option>
@@ -51,7 +51,7 @@ export function TeamEditor({ me, members }: { me: string; members: M[] }) {
             <Field label="Nome" htmlFor="t-name"><Input id="t-name" value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} /></Field>
             <Field label="E-mail" htmlFor="t-email"><Input id="t-email" type="email" value={v.email} onChange={(e) => setV({ ...v, email: e.target.value })} /></Field>
             <Field label="Papel" htmlFor="t-role"><Select id="t-role" value={v.role} onChange={(e) => setV({ ...v, role: e.target.value as M["role"] })}><option value="atendente">Atendimento</option><option value="gestor">Gestão</option></Select></Field>
-            {err && <p className="text-[13px] text-alert" role="alert">{err}</p>}
+            {err && <p className="text-sm text-alert" role="alert">{err}</p>}
             <button type="submit" hidden />
           </form>
         )}

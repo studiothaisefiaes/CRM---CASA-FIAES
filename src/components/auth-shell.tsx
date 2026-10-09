@@ -7,12 +7,12 @@ export function AuthShell({ title, subtitle, children }: { title: string; subtit
         <svg className="absolute -left-10 bottom-10 w-[140%] text-gold/30" viewBox="0 0 600 160" aria-hidden>
           <path d="M0 120 C60 120 70 40 120 48 C170 56 140 140 100 124 C60 108 110 28 180 52 C250 76 236 150 206 140 C170 128 214 40 290 66 C350 86 346 140 320 134 C290 128 330 52 400 78 C460 100 520 104 600 90" fill="none" stroke="currentColor" strokeWidth="1.4" />
         </svg>
-        <p className="text-[13px] text-paper/60">Casa Fiaes, Salvador</p>
+        <p className="text-sm text-paper/60">Casa Fiaes, Salvador</p>
         <div className="relative">
           <p className="font-serif text-[56px] leading-[0.95] font-light">Nenhum lead<br /><em className="text-gold">esquecido.</em></p>
           <p className="mt-5 text-paper/70 max-w-[36ch]">Cada conversa do WhatsApp vira um atendimento acompanhado, do primeiro &quot;oi&quot; ao agendamento.</p>
         </div>
-        <p className="text-[12px] text-paper/40">CRM Casa Fiaes</p>
+        <p className="text-xs text-paper/40">CRM Casa Fiaes</p>
       </section>
       <section className="flex items-center justify-center p-6 sm:p-12">
         <div className="w-full max-w-[380px]">

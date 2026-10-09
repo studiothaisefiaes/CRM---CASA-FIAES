@@ -19,7 +19,7 @@ export function LoginForm({ voltar }: { voltar?: string }) {
       </Field>
       {state.error && (
         <motion.p key={state.error} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: [6, -4, 0] }} transition={{ duration: 0.35, ease: EASE }}
-          className="text-[13px] text-alert bg-alert-soft rounded-[10px] px-3 py-2" role="alert">
+          className="text-sm text-alert bg-alert-soft rounded-[var(--radius-control)] px-3 py-2" role="alert">
           {state.error}
         </motion.p>
       )}

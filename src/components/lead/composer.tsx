@@ -42,12 +42,12 @@ export function Composer({ dealId, firstName, quickReplies, onOptimistic, onSent
       <AnimatePresence>
         {matches.length > 0 && (
           <motion.ul initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }} transition={{ duration: 0.16, ease: EASE }}
-            className="absolute left-3 right-3 bottom-full mb-2 bg-paper border border-line rounded-[14px] shadow-[var(--shadow-pop)] overflow-hidden" role="listbox" aria-label="Respostas prontas">
+            className="absolute left-3 right-3 bottom-full mb-2 bg-paper border border-line rounded-[var(--radius-card)] shadow-[var(--shadow-pop)] overflow-hidden" role="listbox" aria-label="Respostas prontas">
             {matches.map((q, i) => (
               <li key={q.id} role="option" aria-selected={i === sel}>
                 <button type="button" onMouseEnter={() => setSel(i)} onClick={() => fill(q)} className={`w-full text-left px-3.5 py-2.5 ${i === sel ? "bg-paper-2" : ""}`}>
-                  <span className="text-[12px] font-semibold text-gold-ink">/{q.label}</span>
-                  <span className="block text-[13px] text-graphite truncate">{render(q.body)}</span>
+                  <span className="text-xs font-semibold text-gold-ink">/{q.label}</span>
+                  <span className="block text-sm text-graphite truncate">{render(q.body)}</span>
                 </button>
               </li>
             ))}
@@ -67,13 +67,13 @@ export function Composer({ dealId, firstName, quickReplies, onOptimistic, onSent
             if (e.key === "Escape" && text.trim()) { e.stopPropagation(); e.nativeEvent.stopImmediatePropagation(); (e.target as HTMLTextAreaElement).blur(); return; }
             if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
           }}
-          className="flex-1 resize-none bg-paper-2 rounded-[12px] px-3.5 py-2.5 text-[16px] lg:text-[14px] leading-relaxed outline-none focus:bg-paper focus:shadow-[0_0_0_1px_var(--color-ink),0_0_0_4px_rgb(184_134_63/0.2)] transition-shadow max-h-40" />
+          className="flex-1 resize-none bg-paper-2 rounded-[var(--radius-control)] px-3.5 py-2.5 text-[16px] lg:text-base leading-relaxed outline-none focus:bg-paper focus:shadow-[0_0_0_1px_var(--color-ink),0_0_0_4px_rgb(184_134_63/0.2)] transition-shadow max-h-40" />
         <motion.button type="button" onClick={send} disabled={!text.trim() || pending} whileTap={{ scale: 0.92 }} aria-label="Enviar"
-          className="size-11 shrink-0 grid place-items-center rounded-[12px] bg-ink text-paper disabled:opacity-35 transition-opacity">
+          className="size-11 shrink-0 grid place-items-center rounded-[var(--radius-control)] bg-ink text-paper disabled:opacity-35 transition-opacity">
           {pending ? <span className="size-4 rounded-full border-2 border-paper border-r-transparent animate-spin" /> : <IconSend size={18} />}
         </motion.button>
       </div>
-      <p className="text-[11px] text-muted mt-1.5 px-1 hidden sm:block"><b className="text-graphite">/</b> respostas prontas · Enter envia · Shift+Enter quebra linha</p>
+      <p className="text-xs text-muted mt-1.5 px-1 hidden sm:block"><b className="text-graphite">/</b> respostas prontas · Enter envia · Shift+Enter quebra linha</p>
     </div>
   );
 }

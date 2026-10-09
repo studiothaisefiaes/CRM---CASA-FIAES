@@ -16,15 +16,15 @@ export function Toolbar({ people, origins }: { people: { id: string; name: strin
   const activeFilters = (sp.get("dono") ? 1 : 0) + (sp.get("origem") ? 1 : 0);
   const set = (k: string, v: string) => { const p = new URLSearchParams(sp.toString()); if (v) p.set(k, v); else p.delete(k); p.delete("lead"); router.replace(`/funil${p.size ? `?${p}` : ""}`, { scroll: false }); };
   useEffect(() => { const t = setTimeout(() => { if ((sp.get("q") ?? "") !== q) set("q", q); }, 280); return () => clearTimeout(t); }); // eslint-disable-line react-hooks/exhaustive-deps
-  const sel = "h-9 rounded-[10px] border border-line-strong bg-paper px-3 pr-7 text-[13px] appearance-none cursor-pointer";
+  const sel = "h-9 rounded-[var(--radius-control)] border border-line-strong bg-paper px-3 pr-7 text-sm appearance-none cursor-pointer";
   return (
     <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
       <label className="relative flex-1 sm:flex-none">
         <span className="sr-only">Buscar</span>
         <IconSearch size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar nome ou telefone" className="h-9 w-full sm:w-56 pl-9 pr-3 rounded-[10px] border border-line-strong bg-paper text-[16px] sm:text-[13px] outline-none focus:border-ink" />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar nome ou telefone" className="h-9 w-full sm:w-56 pl-9 pr-3 rounded-[var(--radius-control)] border border-line-strong bg-paper text-[16px] sm:text-sm outline-none focus:border-ink" />
       </label>
-      <button type="button" onClick={() => setFilters((f) => !f)} aria-expanded={filters} className="sm:hidden h-9 px-3 rounded-[10px] border border-line-strong text-[13px]">Filtros{activeFilters ? ` (${activeFilters})` : ""}</button>
+      <button type="button" onClick={() => setFilters((f) => !f)} aria-expanded={filters} className="sm:hidden h-9 px-3 rounded-[var(--radius-control)] border border-line-strong text-sm">Filtros{activeFilters ? ` (${activeFilters})` : ""}</button>
       <div className={`${filters ? "flex" : "hidden"} sm:flex w-full sm:w-auto gap-2 order-last sm:order-none`}>
         <select aria-label="Responsável" value={sp.get("dono") ?? ""} onChange={(e) => set("dono", e.target.value)} className={`${sel} flex-1 sm:flex-none`}>
           <option value="">Toda a equipe</option>{people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
