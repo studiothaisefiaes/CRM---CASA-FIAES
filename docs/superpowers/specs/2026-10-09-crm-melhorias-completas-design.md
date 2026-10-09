@@ -83,10 +83,12 @@ A stack continua a mesma: Next 16.4 App Router, Drizzle/Postgres, worker com pg-
   - **só esses abrem no navegador** (`inline`); todo o resto vai com `Content-Disposition: attachment` e `application/octet-stream`;
   - todas as respostas levam `nosniff` e `Content-Security-Policy: sandbox`;
   - o nome do arquivo é sanitizado.
-- **S2 Cabeçalhos globais** (`next.config.ts` `headers()`):
+- **S2 Cabeçalhos globais** (`next.config.ts` `headers()` + CSP no `proxy.ts`):
   - CSP com `default-src 'self'`, `img-src 'self' data: blob:`, `media-src 'self' blob:` e `connect-src 'self'`;
   - em dev, `'unsafe-eval'` e o websocket do HMR;
-  - `script-src` usa nonce se o Next 16 suportar no App Router, senão `'self' 'unsafe-inline'` documentado;
+  - `script-src 'self' 'nonce-…' 'strict-dynamic'`, com o nonce gerado por requisição no `proxy.ts` (guia oficial `content-security-policy.md` do Next 16; o app já é 100% dinâmico);
+  - `style-src 'self' 'unsafe-inline'`, porque o Motion anima por atributo `style`;
+  - o cabeçalho de segurança da página fica no `proxy.ts`; os demais vão no `next.config.ts`;
   - `nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy` (câmera e geolocalização off, notificações on), `X-Frame-Options: DENY`.
 - **S3 Rate limit pelo IP real:** o IP vem de `TRUSTED_PROXY_HOPS` (env, padrão 1 atrás do Caddy). Fora disso, usa o IP da conexão. Cobre o login, o convite e o webhook (este por segredo e por limite).
 - **S4 Retenção:** um job diário marca `media_purged_at` e apaga o arquivo da mídia com mais de `retencao_midia_meses` (padrão 12). O registro da mensagem fica, e a tela mostra "mídia expirada".
