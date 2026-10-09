@@ -2,8 +2,8 @@ import { z } from "zod";
 
 /** Gatilhos: o "Quando" de uma automação. */
 export const triggerSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("sem_resposta_minutos"), minutes: z.number().int().min(1).max(10_080) }),
-  z.object({ type: z.literal("parado_dias"), days: z.number().int().min(1).max(365) }),
+  z.object({ type: z.literal("sem_resposta_minutos"), minutes: z.number().int().min(1).max(10_080), useStageSla: z.boolean().optional() }),
+  z.object({ type: z.literal("parado_dias"), days: z.number().int().min(1).max(365), useStageLimit: z.boolean().optional() }),
   z.object({ type: z.literal("sem_retorno_cliente_dias"), days: z.number().int().min(1).max(365) }),
   z.object({ type: z.literal("aniversario_em_dias"), days: z.number().int().min(0).max(60) }),
   z.object({ type: z.literal("data_cobranca") }),

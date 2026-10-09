@@ -1,13 +1,18 @@
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "../db";
-import { channels, contacts, deals } from "../db/schema";
+import { channels, contacts, deals, messages } from "../db/schema";
 import { whatsapp } from "../whatsapp/evolution";
 import { recordOutbound } from "./deals";
+import { emit } from "./events";
 import { env } from "../env";
 
 export class SendError extends Error {}
 
-/** Envia texto pelo WhatsApp a partir do card e registra como resposta. */
+/**
+ * Envia texto pelo WhatsApp a partir do card.
+ * 1) grava a mensagem como "enviando" (com quem enviou), 2) chama a Evolution, 3) confirma e registra como resposta.
+ * Se falhar, a mensagem fica marcada como "falhou" na conversa e o lead continua esperando resposta.
+ */
 export async function sendFromCrm(dealId: string, text: string, userId: string) {
   const body = text.trim();
   if (!body) throw new SendError("Escreva uma mensagem antes de enviar.");
@@ -15,23 +20,32 @@ export async function sendFromCrm(dealId: string, text: string, userId: string) 
   const [row] = await db.select({ deal: deals, phone: contacts.phoneE164 }).from(deals)
     .innerJoin(contacts, eq(contacts.id, deals.contactId)).where(eq(deals.id, dealId));
   if (!row) throw new SendError("Lead não encontrado.");
-  let [channel] = row.deal.channelId
-    ? await db.select().from(channels).where(and(eq(channels.id, row.deal.channelId), eq(channels.status, "conectado")))
-    : [];
-  if (!channel) [channel] = await db.select().from(channels).where(eq(channels.status, "conectado")).limit(1);
+
+  // Responde sempre pelo mesmo número em que a cliente escreveu.
+  let channel = row.deal.channelId ? (await db.select().from(channels).where(eq(channels.id, row.deal.channelId)))[0] : undefined;
+  if (channel && channel.status !== "conectado") {
+    throw new SendError(`O WhatsApp "${channel.name}" está desconectado. Leia o QR code de novo em Configurações › WhatsApp.`);
+  }
+  if (!channel) channel = (await db.select().from(channels).where(eq(channels.status, "conectado")).limit(1))[0];
 
   if (!channel) {
-    if (env().DEV_TOOLS) {
-      // Ambiente de desenvolvimento sem número pareado: registra como "simulado" para testar o fluxo.
-      return recordOutbound({ dealId, channelId: null, body, userId, status: "simulado" });
-    }
+    if (env().DEV_TOOLS) return recordOutbound({ dealId, channelId: null, body, userId, status: "simulado" });
     throw new SendError("Nenhum WhatsApp conectado. Conecte um número em Configurações › WhatsApp.");
   }
+
+  const [pending] = await db.insert(messages).values({
+    dealId, contactId: row.deal.contactId, channelId: channel.id, direction: "out", kind: "text", body, status: "pending", sentByUserId: userId,
+  }).returning({ id: messages.id });
+  await emit("mensagem_enviando", { dealId });
+
   let externalId: string | null = null;
   try {
     ({ externalId } = await whatsapp().sendText(channel.instanceName, row.phone, body));
   } catch (e) {
-    throw new SendError(e instanceof Error ? `Não foi possível enviar: ${e.message}` : "Não foi possível enviar.");
+    const msg = e instanceof Error ? e.message : "erro desconhecido";
+    await db.update(messages).set({ status: "failed", error: msg.slice(0, 300) }).where(eq(messages.id, pending.id));
+    await emit("mensagem_falhou", { dealId });
+    throw new SendError(`Não foi possível enviar: ${msg}`);
   }
-  return recordOutbound({ dealId, channelId: channel.id, externalId, body, userId, status: "sent" });
+  return recordOutbound({ dealId, channelId: channel.id, externalId, body, userId, status: "sent", claimMessageId: pending.id });
 }

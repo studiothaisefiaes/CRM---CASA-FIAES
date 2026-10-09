@@ -12,7 +12,8 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/relatorios/[
   const { tipo } = await ctx.params;
   const sp = req.nextUrl.searchParams;
   const period = (["hoje", "7d", "mes", "ano"].includes(sp.get("periodo") ?? "") ? sp.get("periodo") : "mes") as Period;
-  const f = { period, ownerId: sp.get("dono") || null, origin: sp.get("origem") || null };
+  const f = { period, ownerId: user.role === "gestor" ? sp.get("dono") || null : user.id, origin: sp.get("origem") || null };
+  if ((tipo === "financeiro" || tipo === "cobrancas") && user.role !== "gestor") return new Response("só a gestão", { status: 403 });
   let csv: string;
   switch (tipo) {
     case "funil": { const r = await funnel(f); const base = r[0]?.reached || 1; csv = toCsv(["Etapa", "Leads que passaram", "% do total"], r.map((s) => [s.name, s.reached, Math.round((s.reached / base) * 100)])); break; }

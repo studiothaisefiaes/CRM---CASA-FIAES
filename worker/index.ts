@@ -1,4 +1,5 @@
 import "dotenv/config";
+process.env.TZ ??= "America/Bahia";
 import { PgBoss } from "pg-boss";
 import { runRules } from "../src/server/rules/engine";
 import { retryFailedWebhooks } from "../src/server/whatsapp/webhook";

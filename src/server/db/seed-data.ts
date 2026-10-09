@@ -27,17 +27,20 @@ export const DEFAULT_QUICK_REPLIES = [
 
 export const DEFAULT_AUTOMATIONS: (AutomationInput & { key: string })[] = [
   {
-    key: "lead_2min", name: "Lead sem resposta em 2 minutos", enabled: true,
-    trigger: { type: "sem_resposta_minutos", minutes: 2 },
+    key: "lead_2min", name: "Lead novo sem resposta no prazo", enabled: true,
+    trigger: { type: "sem_resposta_minutos", minutes: 2, useStageSla: true },
     conditions: [{ type: "etapa_em", stages: ["lead"] }],
-    actions: [
-      { type: "alertar_responsavel", message: "{nome} está esperando resposta há {minutos} min" },
-      { type: "alertar_gestao", message: "Lead {nome} sem resposta há {minutos} min" },
-    ],
+    actions: [{ type: "alertar_responsavel", message: "{nome} está esperando resposta há {minutos} min" }],
   },
   {
-    key: "atendimento_3min", name: "Conversa sem resposta em 3 minutos", enabled: true,
-    trigger: { type: "sem_resposta_minutos", minutes: 3 },
+    key: "gestao_10min", name: "Avisar a gestão: sem resposta há 10 minutos", enabled: true,
+    trigger: { type: "sem_resposta_minutos", minutes: 10 },
+    conditions: [{ type: "etapa_em", stages: ["lead", "atendimento", "followup_1", "followup_2", "followup_3", "followup_4"] }],
+    actions: [{ type: "alertar_gestao", message: "{nome} está sem resposta há {minutos} min" }],
+  },
+  {
+    key: "atendimento_3min", name: "Conversa sem resposta no prazo", enabled: true,
+    trigger: { type: "sem_resposta_minutos", minutes: 3, useStageSla: true },
     conditions: [{ type: "etapa_em", stages: ["atendimento", "agendado", "followup_1", "followup_2", "followup_3", "followup_4"] }],
     actions: [{ type: "alertar_responsavel", message: "{nome} respondeu e está esperando há {minutos} min" }],
   },
@@ -51,8 +54,8 @@ export const DEFAULT_AUTOMATIONS: (AutomationInput & { key: string })[] = [
     ],
   },
   {
-    key: "parado_1dia", name: "Lead parado há mais de 1 dia", enabled: true,
-    trigger: { type: "parado_dias", days: 1 },
+    key: "parado_1dia", name: "Lead parado além do limite da etapa", enabled: true,
+    trigger: { type: "parado_dias", days: 1, useStageLimit: true },
     conditions: [{ type: "etapa_em", stages: ["lead", "atendimento", "followup_1", "followup_2", "followup_3", "followup_4"] }],
     actions: [{ type: "alertar_responsavel", message: "{nome} está parado em {etapa} há {dias} dia(s)" }],
   },

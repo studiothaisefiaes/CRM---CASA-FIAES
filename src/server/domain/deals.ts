@@ -1,10 +1,15 @@
 import { and, asc, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
 import { db, type Tx } from "../db";
-import { contacts, deals, messages, stages, users, type Stage } from "../db/schema";
+import { alerts, contacts, deals, messages, stages, users, type Stage } from "../db/schema";
 import { normalizePhone } from "./phone";
 import { emit, logEvent } from "./events";
 
 export const CLOSED_KINDS = ["fechado", "perdido"] as const;
+
+/** O contato já tem outro lead aberto; reabrir este criaria duplicidade. */
+export class ReopenConflict extends Error {
+  constructor(public openDealId: string) { super("Este contato já tem outro lead em andamento."); }
+}
 
 export async function getStages(tx: Tx | typeof db = db): Promise<Stage[]> {
   return tx.select().from(stages).where(eq(stages.active, true)).orderBy(asc(stages.position));
@@ -90,9 +95,12 @@ export async function recordInbound(input: InboundInput): Promise<InboundResult>
     }).onConflictDoNothing().returning({ id: messages.id });
     if (!msg) return { duplicate: true as const, dealId: deal.id };
 
+    // Mensagem antiga reprocessada depois da resposta da Casa não reabre a espera.
+    const atIso = at.toISOString();
     await tx.update(deals).set({
-      lastInboundAt: at,
-      awaitingReplySince: sql`coalesce(${deals.awaitingReplySince}, ${at.toISOString()}::timestamptz)`,
+      lastInboundAt: sql`greatest(${deals.lastInboundAt}, ${atIso}::timestamptz)`,
+      awaitingReplySince: sql`case when ${atIso}::timestamptz > coalesce(${deals.lastOutboundAt}, '-infinity'::timestamptz)
+        then coalesce(${deals.awaitingReplySince}, ${atIso}::timestamptz) else ${deals.awaitingReplySince} end`,
       channelId: deal.channelId ?? input.channelId,
     }).where(eq(deals.id, deal.id));
     await logEvent(tx, deal.id, "mensagem_recebida", { messageId: msg.id });
@@ -118,6 +126,8 @@ export type OutboundInput = {
   fromPhone?: boolean;
   status?: string;
   at?: Date;
+  /** Mensagem já gravada como "pending" pelo envio do CRM: atualiza em vez de inserir. */
+  claimMessageId?: string;
 };
 
 /** Mensagem enviada pela Casa (pelo CRM ou pelo celular): conta como resposta e move Lead → Atendimento. */
@@ -138,11 +148,15 @@ export async function recordOutbound(input: OutboundInput) {
     const [deal] = await tx.select().from(deals).where(eq(deals.id, dealId));
     if (!deal) return { skipped: "sem_lead_aberto" as const };
 
-    const [msg] = await tx.insert(messages).values({
-      dealId, contactId: deal.contactId, channelId: input.channelId ?? deal.channelId, externalId: input.externalId ?? null,
-      direction: "out", kind: input.kind ?? "text", body: input.body ?? null, status: input.status ?? "sent",
-      sentByUserId: input.userId ?? null, fromPhone: !!input.fromPhone, createdAt: at,
-    }).onConflictDoNothing().returning({ id: messages.id });
+    const [msg] = input.claimMessageId
+      ? await tx.update(messages).set({ status: sql`case when ${messages.status} in ('pending','sent') then ${input.status ?? "sent"} else ${messages.status} end`,
+          externalId: sql`coalesce(${messages.externalId}, ${input.externalId ?? null})`, channelId: input.channelId ?? deal.channelId })
+          .where(eq(messages.id, input.claimMessageId)).returning({ id: messages.id })
+      : await tx.insert(messages).values({
+          dealId, contactId: deal.contactId, channelId: input.channelId ?? deal.channelId, externalId: input.externalId ?? null,
+          direction: "out", kind: input.kind ?? "text", body: input.body ?? null, status: input.status ?? "sent",
+          sentByUserId: input.userId ?? null, fromPhone: !!input.fromPhone, createdAt: at,
+        }).onConflictDoNothing().returning({ id: messages.id });
     if (!msg) return { duplicate: true as const, dealId };
 
     const responder = input.userId ?? deal.ownerId ?? null;
@@ -156,6 +170,9 @@ export async function recordOutbound(input: OutboundInput) {
       ownerId: deal.ownerId ?? input.userId ?? null,
     }).where(eq(deals.id, dealId));
     await logEvent(tx, dealId, "mensagem_enviada", { messageId: msg.id, fromPhone: !!input.fromPhone }, input.userId ?? null);
+    // Respondeu: os alertas de espera deste lead se resolvem sozinhos.
+    await tx.update(alerts).set({ resolvedAt: at, readAt: sql`coalesce(${alerts.readAt}, ${at.toISOString()}::timestamptz)` })
+      .where(and(eq(alerts.dealId, dealId), eq(alerts.type, "sem_resposta_minutos"), sql`${alerts.resolvedAt} is null`));
 
     const [stage] = await tx.select().from(stages).where(eq(stages.id, deal.stageId));
     if (stage?.kind === "lead") await moveDealTx(tx, dealId, "atendimento", input.userId ?? null, "respondido", at);
@@ -172,6 +189,11 @@ export async function moveDealTx(tx: Tx, dealId: string, stageKey: string, userI
   if (deal.stageId === to.id) return deal;
   const [from] = await tx.select().from(stages).where(eq(stages.id, deal.stageId));
   const closing = to.kind === "fechado" || to.kind === "perdido";
+  if (deal.closedAt && !closing) {
+    // Reabrir: só se o contato não tiver outro lead aberto (nunca dois abertos ao mesmo tempo).
+    const other = await findOpenDeal(deal.contactId, tx);
+    if (other && other.id !== deal.id) throw new ReopenConflict(other.id);
+  }
   const [updated] = await tx.update(deals).set({
     stageId: to.id, stageEnteredAt: at, closedAt: closing ? at : null,
     awaitingReplySince: closing ? null : deal.awaitingReplySince,

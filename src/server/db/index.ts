@@ -6,7 +6,7 @@ const globalForDb = globalThis as unknown as { __crmPool?: Pool };
 
 export const pool =
   globalForDb.__crmPool ??
-  new Pool({ connectionString: process.env.DATABASE_URL, max: 10, idleTimeoutMillis: 30_000 });
+  new Pool({ connectionString: process.env.DATABASE_URL, max: 15, idleTimeoutMillis: 30_000, connectionTimeoutMillis: 5_000 });
 if (process.env.NODE_ENV !== "production") globalForDb.__crmPool = pool;
 
 export const db = drizzle(pool, { schema });

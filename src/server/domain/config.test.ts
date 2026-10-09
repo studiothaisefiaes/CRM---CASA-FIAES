@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { automations, users } from "../db/schema";
-import { saveAutomation, restoreAutomation, setMember, addListItem, previewAutomation } from "./config";
+import { saveAutomation, restoreAutomation, setMember, addListItem } from "./config";
+import { previewCandidates } from "../rules/preview";
 import { recordInbound } from "./deals";
 import { resetDb } from "../../../test/db";
 
@@ -30,8 +31,9 @@ describe("configurações", () => {
   });
 
   it("prévia diz quantos leads seriam afetados", async () => {
-    await recordInbound({ channelId: null, externalId: "p1", phoneRaw: "71999990000", body: "oi", at: new Date(Date.now() - 10 * 60_000) });
-    const r = await previewAutomation({ name: "teste", enabled: true, trigger: { type: "sem_resposta_minutos", minutes: 5 }, conditions: [{ type: "etapa_em", stages: ["lead"] }], actions: [{ type: "alertar_gestao", message: "aviso" }] });
+    const now = new Date("2026-10-13T13:00:00Z"); // terça, 10h
+    await recordInbound({ channelId: null, externalId: "p1", phoneRaw: "71999990000", body: "oi", at: new Date(now.getTime() - 10 * 60_000) });
+    const r = await previewCandidates({ name: "teste", enabled: true, trigger: { type: "sem_resposta_minutos", minutes: 5 }, conditions: [{ type: "etapa_em", stages: ["lead"] }], actions: [{ type: "alertar_gestao", message: "aviso" }] }, now);
     expect(r.count).toBe(1);
   });
 

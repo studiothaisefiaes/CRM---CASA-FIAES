@@ -1,0 +1,2 @@
+ALTER TABLE "webhook_events" ADD COLUMN "attempts" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX "deals_one_open_per_contact" ON "deals" USING btree ("contact_id") WHERE "deals"."closed_at" is null;

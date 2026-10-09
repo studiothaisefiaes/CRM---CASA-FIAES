@@ -15,10 +15,11 @@ const PAY: Record<string, string> = { pix: "Pix", cartao: "Cartão", boleto: "Bo
 const secs = (s: number) => (s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}` : `${Math.round(s / 3600)}h`);
 
 export default async function RelatoriosPage({ searchParams }: PageProps<"/relatorios">) {
-  await requireUser();
+  const user = await requireUser();
   const sp = await searchParams;
   const period = (["hoje", "7d", "mes", "ano"].includes(String(sp.periodo)) ? sp.periodo : "mes") as Period;
-  const f = { period, ownerId: typeof sp.dono === "string" ? sp.dono : null, origin: typeof sp.origem === "string" ? sp.origem : null };
+  // Atendimento vê os próprios números; a gestão vê todos e filtra por pessoa.
+  const f = { period, ownerId: user.role === "gestor" ? (typeof sp.dono === "string" ? sp.dono : null) : user.id, origin: typeof sp.origem === "string" ? sp.origem : null };
   const qs = new URLSearchParams({ periodo: period, ...(f.ownerId ? { dono: f.ownerId } : {}), ...(f.origin ? { origem: f.origin } : {}) }).toString();
   const [fun, resp, orig, obj, fin, sum, people, originList] = await Promise.all([funnel(f), responseTimes(f), origins(f), objections(f), finance(f), summary(f), activeUsers(), getOrigins()]);
   const base = fun[0]?.reached ?? 0;
@@ -26,7 +27,7 @@ export default async function RelatoriosPage({ searchParams }: PageProps<"/relat
   const convRate = sum.leads ? Math.round((sum.won / sum.leads) * 100) : 0;
   return (
     <main className="pb-14">
-      <PageHeader title="Relatórios" subtitle={`${PERIOD_LABEL[period]} · números reais do CRM`} actions={<PeriodTabs people={people} origins={originList} />} />
+      <PageHeader title="Relatórios" subtitle={`${PERIOD_LABEL[period]} · números reais do CRM`} actions={<PeriodTabs people={user.role === "gestor" ? people : []} origins={originList} />} />
       <div className="px-5 lg:px-8 flex flex-col gap-5 max-w-[1280px]">
         <Stagger className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {[["Leads no período", sum.leads, "int"], ["Fechados", sum.won, "int"], ["Conversão", convRate, "pct"], ["Total fechado", fin.totalCents, "brl"]].map(([l, v, k]) => (

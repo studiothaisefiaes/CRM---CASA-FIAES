@@ -39,9 +39,10 @@ export async function findInvite(token: string) {
 
 export async function acceptInvite(token: string, password: string) {
   if (!isValidPassword(password)) throw new Error("A senha precisa ter pelo menos 8 caracteres.");
-  const u = await findInvite(token);
+  const passwordHash = await hashPassword(password);
+  // Atômico: só um aceite por convite, mesmo com dois cliques simultâneos.
+  const [u] = await db.update(users).set({ passwordHash, inviteTokenHash: null, inviteExpiresAt: null })
+    .where(and(eq(users.inviteTokenHash, hashToken(token)), gt(users.inviteExpiresAt, new Date()))).returning();
   if (!u) throw new Error("Este convite expirou ou já foi usado. Peça um novo à gestão.");
-  await db.update(users).set({ passwordHash: await hashPassword(password), inviteTokenHash: null, inviteExpiresAt: null })
-    .where(eq(users.id, u.id));
   return u;
 }

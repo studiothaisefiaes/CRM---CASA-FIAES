@@ -23,5 +23,7 @@ export function env(): Env {
     throw new Error(`Configuração inválida no .env: ${issues}`);
   }
   cached = parsed.data;
+  // Simulador nunca liga em produção, mesmo com a flag esquecida.
+  if (cached.NODE_ENV === "production") cached.DEV_TOOLS = false;
   return cached;
 }

@@ -1,7 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import { assertUser } from "@/server/auth/session";
 import { moveDeal } from "@/server/domain/deals";
 import { updateDeal, createManualLead, type DealPatch } from "@/server/domain/updates";
@@ -17,7 +17,7 @@ export async function moveDealAction(dealId: string, stageKey: string, extra?: D
     const user = await assertUser();
     z.string().uuid().parse(dealId);
     if (extra && Object.keys(extra).length) await updateDeal(dealId, extra, user.id);
-    await moveDeal(dealId, stageKey, user.id, "manual");
+    await moveDeal(dealId, z.string().min(1).max(40).parse(stageKey), user.id, "manual");
     revalidatePath("/funil"); revalidatePath("/");
     return { ok: true };
   } catch (e) { return fail(e); }
@@ -26,6 +26,7 @@ export async function moveDealAction(dealId: string, stageKey: string, extra?: D
 export async function updateDealAction(dealId: string, patch: DealPatch): Promise<ActionResult> {
   try {
     const user = await assertUser();
+    if (patch.ownerId !== undefined && user.role !== "gestor") throw new Error("Só a gestão troca o responsável pelo lead.");
     await updateDeal(z.string().uuid().parse(dealId), patch, user.id);
     revalidatePath("/funil");
     return { ok: true };
@@ -54,8 +55,9 @@ export async function markAlertsReadAction(ids?: string[]): Promise<ActionResult
   try {
     const user = await assertUser();
     const now = new Date();
-    if (ids?.length) for (const id of ids) await db.update(alerts).set({ readAt: now }).where(and(eq(alerts.id, id), isNull(alerts.readAt)));
-    else await db.update(alerts).set({ readAt: now }).where(and(eq(alerts.userId, user.id), isNull(alerts.readAt)));
+    const mine = user.role === "gestor" ? or(eq(alerts.userId, user.id), eq(alerts.audience, "gestao")) : eq(alerts.userId, user.id);
+    const valid = z.array(z.string().uuid()).max(500).parse(ids ?? []);
+    await db.update(alerts).set({ readAt: now }).where(and(mine, isNull(alerts.readAt), valid.length ? inArray(alerts.id, valid) : undefined));
     return { ok: true };
   } catch (e) { return fail(e); }
 }

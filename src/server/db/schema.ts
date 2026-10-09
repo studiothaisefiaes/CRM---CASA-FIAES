@@ -105,6 +105,8 @@ export const deals = pgTable("deals", {
   index("deals_stage_idx").on(t.stageId),
   index("deals_contact_idx").on(t.contactId),
   index("deals_owner_idx").on(t.ownerId),
+  // Nunca dois leads abertos para o mesmo contato.
+  uniqueIndex("deals_one_open_per_contact").on(t.contactId).where(sql`${t.closedAt} is null`),
 ]);
 
 export const messages = pgTable("messages", {
@@ -190,7 +192,14 @@ export const webhookEvents = pgTable("webhook_events", {
   receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
   processedAt: timestamp("processed_at", { withTimezone: true }),
   error: text("error"),
+  attempts: integer("attempts").notNull().default(0),
 }, (t) => [uniqueIndex("webhook_events_uq").on(t.provider, t.externalId)]);
+
+export const settings = pgTable("settings", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").$type<unknown>().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 export const auditLog = pgTable("audit_log", {
   id: id(),

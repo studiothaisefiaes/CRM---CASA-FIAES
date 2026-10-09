@@ -1,6 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 import { db, type Tx } from "../db";
-import { alerts, automationRuns, automations, stages, type Automation } from "../db/schema";
+import { alerts, automationRuns, automations, deals, settings, stages, type Automation } from "../db/schema";
+import { businessMinutesBetween, isOpen, DEFAULT_HOURS, type BusinessHours } from "../../lib/business-hours";
 import { formatPhone } from "../domain/phone";
 import { logEvent, emit } from "../domain/events";
 import { moveDealTx } from "../domain/deals";
@@ -15,20 +16,30 @@ type Candidate = {
 
 function localDate(d: Date) { return new Date(d.getTime() + TZ_OFFSET_MIN * 60_000); }
 
-export async function candidatesFor(trigger: Trigger, now: Date): Promise<Candidate[]> {
+export async function getBusinessHours(): Promise<BusinessHours> {
+  const [r] = await db.select().from(settings).where(eq(settings.key, "business_hours"));
+  return (r?.value as BusinessHours | undefined) ?? DEFAULT_HOURS;
+}
+
+export async function candidatesFor(trigger: Trigger, now: Date, hours?: BusinessHours): Promise<Candidate[]> {
+  const bh = hours ?? (await getBusinessHours());
   const base = sql`select d.id as "dealId", d.owner_id as "ownerId", s.key as "stageKey", s.name as "stageName",
-    c.name as "contactName", c.phone_e164 as phone`;
+    c.name as "contactName", c.phone_e164 as phone, s.sla_minutes as "slaMinutes"`;
   const from = sql`from deals d join stages s on s.id = d.stage_id join contacts c on c.id = d.contact_id`;
   let q;
   switch (trigger.type) {
     case "sem_resposta_minutos":
+      // filtrado depois em minutos de expediente
       q = sql`${base}, d.awaiting_reply_since as since ${from}
         where d.closed_at is null and d.awaiting_reply_since is not null
-          and d.awaiting_reply_since <= ${new Date(now.getTime() - trigger.minutes * 60_000).toISOString()}::timestamptz`;
+          and d.awaiting_reply_since <= ${new Date(now.getTime() - Math.min(trigger.minutes, 1) * 60_000).toISOString()}::timestamptz`;
       break;
     case "parado_dias":
-      q = sql`${base}, d.stage_entered_at as since ${from}
-        where d.closed_at is null and d.stage_entered_at <= ${new Date(now.getTime() - trigger.days * 86_400_000).toISOString()}::timestamptz`;
+      q = trigger.useStageLimit
+        ? sql`${base}, d.stage_entered_at as since ${from}
+            where d.closed_at is null and s.stale_days is not null and d.stage_entered_at <= ${now.toISOString()}::timestamptz - make_interval(days => s.stale_days)`
+        : sql`${base}, d.stage_entered_at as since ${from}
+            where d.closed_at is null and d.stage_entered_at <= ${new Date(now.getTime() - trigger.days * 86_400_000).toISOString()}::timestamptz`;
       break;
     case "sem_retorno_cliente_dias":
       q = sql`${base}, d.stage_entered_at as since ${from}
@@ -55,7 +66,17 @@ export async function candidatesFor(trigger: Trigger, now: Date): Promise<Candid
           and d.recontact_at > ${new Date(now.getTime() - 7 * 86_400_000).toISOString()}::timestamptz`;
       break;
   }
-  const rows = (await db.execute(q)).rows as (Omit<Candidate, "windowKey"> & { since: string | Date | null })[];
+  let rows = (await db.execute(q)).rows as (Omit<Candidate, "windowKey"> & { since: string | Date | null; slaMinutes: number | null })[];
+  if (trigger.type === "sem_resposta_minutos") {
+    // Prazo em minutos de expediente: madrugada e domingo não contam como atraso.
+    rows = rows.filter((r) => {
+      const limit = trigger.useStageSla ? r.slaMinutes : trigger.minutes;
+      if (!limit) return false;
+      const waited = businessMinutesBetween(new Date(r.since!).getTime(), now.getTime(), bh);
+      (r as { waited?: number }).waited = waited;
+      return waited >= limit;
+    });
+  }
   return rows.map((r) => {
     const since = r.since ? new Date(r.since) : null;
     const elapsedMin = since ? Math.floor((now.getTime() - since.getTime()) / 60_000) : 0;
@@ -65,7 +86,8 @@ export async function candidatesFor(trigger: Trigger, now: Date): Promise<Candid
     else if (trigger.type === "sem_retorno_cliente_dias") windowKey = `silencio:${r.stageKey}:${since!.toISOString()}`;
     else if (trigger.type === "aniversario_em_dias") windowKey = `aniversario:${localDate(now).getUTCFullYear()}`;
     else windowKey = `${trigger.type}:${since!.toISOString()}`;
-    return { ...r, windowKey, minutes: elapsedMin, days: Math.floor(elapsedMin / 1440) };
+    const waited = (r as { waited?: number }).waited;
+    return { ...r, windowKey, minutes: waited ?? elapsedMin, days: Math.floor(elapsedMin / 1440) };
   });
 }
 
@@ -116,18 +138,25 @@ async function execute(tx: Tx, a: Action, c: Candidate, auto: Automation, trigge
 /** Roda todas as automações ligadas. Idempotente: a mesma janela nunca dispara duas vezes. */
 export async function runRules(now = new Date()) {
   const list = await db.select().from(automations).where(eq(automations.enabled, true));
-  const summary = { automations: list.length, fired: 0, alerts: 0, moved: 0, errors: [] as string[] };
+  const summary = { automations: list.length, fired: 0, alerts: 0, moved: 0, errors: [] as string[], closed: false };
+  const hours = await getBusinessHours();
+  // Fora do expediente nada dispara: os avisos e movimentos esperam a Casa abrir.
+  if (!isOpen(now.getTime(), hours)) { summary.closed = true; return summary; }
   const touched = new Set<string>();
   for (const auto of list) {
     const trigger = triggerSchema.safeParse(auto.trigger);
     const conds = conditionSchema.array().safeParse(auto.conditions);
     const acts = actionSchema.array().safeParse(auto.actions);
     if (!trigger.success || !conds.success || !acts.success) { summary.errors.push(`${auto.name}: configuração inválida`); continue; }
-    let cands = await candidatesFor(trigger.data, now);
+    let cands = await candidatesFor(trigger.data, now, hours);
     for (const cond of conds.data) if (cond.type === "etapa_em") cands = cands.filter((c) => cond.stages.includes(c.stageKey));
     for (const c of cands) {
       try {
         await db.transaction(async (tx) => {
+          // Confere o estado de novo, com o lead travado: se mudou de etapa nesse meio-tempo, não age sobre dado velho.
+          const [cur] = await tx.select({ key: stages.key }).from(deals).innerJoin(stages, eq(stages.id, deals.stageId))
+            .where(eq(deals.id, c.dealId)).for("update", { of: deals });
+          if (!cur || cur.key !== c.stageKey) return;
           const [run] = await tx.insert(automationRuns).values({ automationId: auto.id, dealId: c.dealId, windowKey: c.windowKey, createdAt: now })
             .onConflictDoNothing().returning({ id: automationRuns.id });
           if (!run) return;

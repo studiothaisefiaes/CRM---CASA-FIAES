@@ -9,7 +9,7 @@ import { channels } from "@/server/db/schema";
 /** Simula a Evolution chamando o webhook (só desenvolvimento). */
 export async function simulateAction(input: { phone: string; name: string; text: string; fromMe: boolean; ad: boolean }) {
   if (!env().DEV_TOOLS) notFound();
-  await assertUser();
+  await assertUser("gestor");
   const [ch] = await db.select().from(channels).limit(1);
   const id = "SIM" + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 6).toUpperCase();
   const r = await ingestEvolution({

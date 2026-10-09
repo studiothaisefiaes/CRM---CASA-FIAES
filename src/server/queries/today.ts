@@ -22,8 +22,8 @@ export async function getToday(user: SessionUser) {
     q(sql`c.birth_month is not null and make_date(extract(year from ${todayLocal})::int, c.birth_month, least(c.birth_day, 28)) between ${todayLocal} and ${todayLocal} + 7
           and d.id = (select d2.id from deals d2 where d2.contact_id = c.id order by d2.created_at desc limit 1)`,
       sql`null`, sql`c.birth_month, c.birth_day`, sql`lpad(c.birth_day::text,2,'0') || '/' || lpad(c.birth_month::text,2,'0')`),
-    q(sql`((d.charge_at - ${sql.raw(OFFSET)})::date = ${todayLocal}) or ((d.recontact_at - ${sql.raw(OFFSET)})::date = ${todayLocal})`,
-      sql`coalesce(d.charge_at, d.recontact_at)`, sql`2`, sql`case when (d.charge_at - ${sql.raw(OFFSET)})::date = ${todayLocal} then 'Cobrança' else 'Recontato' end`),
+    q(sql`(((d.charge_at - ${sql.raw(OFFSET)})::date = ${todayLocal}) or ((d.recontact_at - ${sql.raw(OFFSET)})::date = ${todayLocal}))`,
+      sql`case when (d.charge_at - ${sql.raw(OFFSET)})::date = ${todayLocal} then d.charge_at else d.recontact_at end`, sql`2`, sql`case when (d.charge_at - ${sql.raw(OFFSET)})::date = ${todayLocal} then 'Cobrança' else 'Recontato' end`),
     db.execute(sql`select
         count(*) filter (where (d.created_at - ${sql.raw(OFFSET)})::date = ${todayLocal})::int as novos,
         count(*) filter (where d.closed_at is null)::int as abertos,

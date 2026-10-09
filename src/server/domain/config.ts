@@ -109,6 +109,7 @@ export async function createChannel(name: string, userId: string) {
 export async function channelQr(id: string) {
   const [c] = await db.select().from(channels).where(eq(channels.id, id));
   if (!c) throw new Error("Número não encontrado");
+  await whatsapp().syncWebhook?.(c.instanceName).catch((e) => console.error("[whatsapp] syncWebhook", e));
   const r = await whatsapp().connect(c.instanceName);
   const status = r.status === "conectado" ? "conectado" : r.status === "aguardando_qr" ? "aguardando_qr" : c.status;
   await db.update(channels).set({ status, ...(r.status === "aguardando_qr" ? { lastQrAt: new Date() } : {}) }).where(eq(channels.id, id));

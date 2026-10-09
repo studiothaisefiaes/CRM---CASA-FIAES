@@ -6,7 +6,7 @@ import { recordInbound, recordOutbound, moveDeal } from "../domain/deals";
 import { runRules } from "./engine";
 import { resetDb } from "../../../test/db";
 
-const T0 = new Date("2026-10-09T13:00:00Z");
+const T0 = new Date("2026-10-13T13:00:00Z"); // terça-feira, 10h em Salvador (expediente)
 const min = (n: number) => new Date(T0.getTime() + n * 60_000);
 const day = (n: number) => new Date(T0.getTime() + n * 86_400_000);
 
@@ -23,22 +23,53 @@ describe("motor de automações", () => {
     await db.insert(users).values({ name: "Ana", email: "ana@c.com", role: "atendente", passwordHash: "x" });
   });
 
-  it("lead sem resposta: alerta só depois de 2 minutos, para responsável e gestão", async () => {
+  it("lead sem resposta: alerta ao responsável no prazo da etapa (2 min) e à gestão só aos 10 min", async () => {
     await lead();
     await runRules(min(1));
     expect((await db.select().from(alerts)).length).toBe(0);
     const s = await runRules(min(2));
-    expect(s.alerts).toBe(2);
-    const rows = await db.select().from(alerts);
-    expect(rows.map((r) => r.audience).sort()).toEqual(["gestao", "responsavel"]);
-    expect(rows.find((r) => r.audience === "responsavel")!.message).toContain("Mariana");
+    expect(s.alerts).toBe(1);
+    let rows = await db.select().from(alerts);
+    expect(rows[0].audience).toBe("responsavel");
+    expect(rows[0].message).toContain("Mariana");
     expect(rows[0].severity).toBe("urgente");
+    await runRules(min(10));
+    rows = await db.select().from(alerts);
+    expect(rows.map((r) => r.audience).sort()).toEqual(["gestao", "responsavel"]);
+  });
+
+  it("prazo da etapa editado vale para o alerta", async () => {
+    await db.update(stages).set({ slaMinutes: 5 }).where(eq(stages.key, "lead"));
+    await lead();
+    await runRules(min(3));
+    expect((await db.select().from(alerts)).length).toBe(0);
+    await runRules(min(5));
+    expect((await db.select().from(alerts)).length).toBe(1);
+  });
+
+  it("fora do expediente nada dispara; o atraso conta só em horário de atendimento", async () => {
+    const sunday = new Date("2026-10-11T13:00:00Z"); // domingo
+    await lead("71999812244", sunday);
+    expect((await runRules(new Date(sunday.getTime() + 60 * 60_000))).closed).toBe(true);
+    // segunda 08:01: só 1 min de expediente → ainda não atrasou
+    await runRules(new Date("2026-10-12T11:01:00Z"));
+    expect((await db.select().from(alerts)).length).toBe(0);
+    await runRules(new Date("2026-10-12T11:02:30Z"));
+    expect((await db.select().from(alerts)).length).toBe(1);
+  });
+
+  it("responder resolve os alertas de espera", async () => {
+    const id = await lead();
+    await runRules(min(3));
+    await recordOutbound({ dealId: id, channelId: null, body: "oi", at: min(4) });
+    const [a] = await db.select().from(alerts);
+    expect(a.resolvedAt).not.toBeNull();
   });
 
   it("idempotente: rodar várias vezes não repete o alerta", async () => {
     await lead();
     await runRules(min(3)); await runRules(min(4)); await runRules(min(5));
-    expect((await db.select().from(alerts)).length).toBe(2);
+    expect((await db.select().from(alerts)).length).toBe(1);
   });
 
   it("depois de respondido, nova espera gera novo alerta", async () => {
@@ -47,7 +78,7 @@ describe("motor de automações", () => {
     await recordOutbound({ dealId: id, channelId: null, body: "oi", at: min(4) });
     await recordInbound({ channelId: null, externalId: "m2", phoneRaw: "71999812244", body: "e aí?", at: min(10) });
     await runRules(min(14)); // Atendimento: 3 min
-    expect((await db.select().from(alerts)).filter((a) => a.type === "sem_resposta_minutos").length).toBe(3);
+    expect((await db.select().from(alerts)).filter((a) => a.type === "sem_resposta_minutos").length).toBe(2);
   });
 
   it("cliente sumiu: vai para Follow-up 1 e depois um por dia, sem pular etapas", async () => {
