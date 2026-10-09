@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
 import { db, type Tx } from "../db";
-import { alerts, contacts, deals, messages, stages, users, type Stage } from "../db/schema";
+import { alerts, auditLog, contacts, deals, messages, stages, users, type Stage } from "../db/schema";
 import { normalizePhone } from "./phone";
 import { emit, logEvent } from "./events";
 import { getBusinessHours } from "./hours";
@@ -80,7 +80,7 @@ export type MediaNode = { key: Record<string, unknown>; message: Record<string, 
 /** Tipos que costumam só encerrar a conversa (figurinha de "obrigada"). */
 const closesConversation = (kind?: string) => kind === "sticker";
 
-export type InboundResult = { skipped: "telefone_invalido" } | { duplicate: true; dealId: string } | { dealId: string; created: boolean; messageId: string };
+export type InboundResult = { skipped: "telefone_invalido" } | { ignored: true } | { duplicate: true; dealId: string } | { dealId: string; created: boolean; messageId: string };
 
 /** Mensagem recebida do cliente: cria contato/lead se precisar, registra e põe o card "esperando resposta". */
 export async function recordInbound(input: InboundInput): Promise<InboundResult> {
@@ -89,6 +89,11 @@ export async function recordInbound(input: InboundInput): Promise<InboundResult>
   const at = input.at ?? new Date();
   const result = await db.transaction(async (tx) => {
     const contact = await upsertContact(tx, phone, input.pushName);
+    if (contact.ignored) {
+      await tx.insert(messages).values({ dealId: null, contactId: contact.id, channelId: input.channelId, externalId: input.externalId, direction: "in",
+        kind: input.kind ?? "text", body: input.body ?? null, media: input.media ?? null, quotedBody: input.quotedBody ?? null, status: "received", createdAt: at }).onConflictDoNothing();
+      return { ignored: true as const };
+    }
     let deal = await findOpenDeal(contact.id, tx);
     let created = false;
     if (!deal) {
@@ -123,7 +128,7 @@ export async function recordInbound(input: InboundInput): Promise<InboundResult>
     if (stage?.kind === "followup") await moveDealTx(tx, deal.id, "atendimento", null, "cliente_respondeu", at);
     return { dealId: deal.id, created, messageId: msg.id };
   });
-  if ("dealId" in result && !("duplicate" in result)) await emit(result.created ? "lead_criado" : "mensagem_recebida", { dealId: result.dealId });
+  if ("dealId" in result && "created" in result) await emit(result.created ? "lead_criado" : "mensagem_recebida", { dealId: result.dealId });
   return result;
 }
 
@@ -160,6 +165,11 @@ export async function recordOutbound(input: OutboundInput) {
       const c = input.fromPhone ? await upsertContact(tx, phone, null)
         : (await tx.select().from(contacts).where(eq(contacts.phoneE164, phone)))[0];
       if (!c) return { skipped: "sem_contato" as const };
+      if (c.ignored) {
+        await tx.insert(messages).values({ dealId: null, contactId: c.id, channelId: input.channelId, externalId: input.externalId ?? null, direction: "out",
+          kind: input.kind ?? "text", body: input.body ?? null, status: input.status ?? "sent", fromPhone: !!input.fromPhone, media: input.media ?? null, createdAt: at }).onConflictDoNothing();
+        return { skipped: "contato_ignorado" as const };
+      }
       contactId = c.id;
     }
     if (!dealId && contactId) dealId = (await findOpenDeal(contactId, tx))?.id ?? null;
@@ -277,7 +287,7 @@ export async function importHistoryChat(channelId: string | null, phoneRaw: stri
     const contact = await upsertContact(tx, phone, name);
     let deal = await findOpenDeal(contact.id, tx);
     let created = false;
-    if (!deal && now.getTime() - lastAt.getTime() <= HISTORY_LEAD_DAYS * 86_400_000) {
+    if (!deal && !contact.ignored && now.getTime() - lastAt.getTime() <= HISTORY_LEAD_DAYS * 86_400_000) {
       const stage = await stageByKey(lastOut ? "atendimento" : "lead", tx);
       const clientWaiting = lastIn && (!lastOut || lastIn > lastOut) && now.getTime() - lastIn.getTime() <= HISTORY_WAITING_HOURS * 3_600_000;
       const waitingSince = clientWaiting ? inbound.find((m) => !lastOut || m.at > lastOut)!.at : null;
@@ -306,4 +316,25 @@ export async function importHistoryChat(channelId: string | null, phoneRaw: stri
     }
     return { dealId: deal?.id ?? null, created, inserted };
   });
+}
+
+/**
+ * "Não é cliente": tira a conversa do funil (conversa pessoal, fornecedor, engano).
+ * As mensagens continuam guardadas no contato; mensagens novas não abrem lead nem alerta até "voltar a acompanhar".
+ */
+export async function ignoreContact(dealId: string, userId: string) {
+  return db.transaction(async (tx) => {
+    const [d] = await tx.select().from(deals).where(eq(deals.id, dealId));
+    if (!d) throw new Error("Lead não encontrado");
+    await tx.update(contacts).set({ ignored: true }).where(eq(contacts.id, d.contactId));
+    await tx.update(messages).set({ dealId: null }).where(eq(messages.dealId, dealId));
+    await tx.delete(deals).where(eq(deals.id, dealId)); // eventos, alertas e execuções saem junto (cascade)
+    await tx.insert(auditLog).values({ userId, action: "ignorou_contato", entity: "contact", entityId: d.contactId, data: { dealId } });
+    return { contactId: d.contactId };
+  }).then(async (r) => { await emit("lead_removido", { dealId }); return r; });
+}
+
+export async function unignoreContact(contactId: string, userId: string) {
+  await db.update(contacts).set({ ignored: false }).where(eq(contacts.id, contactId));
+  await db.insert(auditLog).values({ userId, action: "voltou_a_acompanhar", entity: "contact", entityId: contactId, data: {} });
 }

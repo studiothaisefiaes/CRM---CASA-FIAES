@@ -6,6 +6,7 @@ import { ingestEvolution, parseContent, retryFailedWebhooks } from "./webhook";
 import { setWhatsappProvider } from "./evolution";
 import { checkConnections } from "./watchdog";
 import { normalizePhone } from "../domain/phone";
+import { ignoreContact } from "../domain/deals";
 import { resetDb } from "../../../test/db";
 
 // Achados da auditoria com o número real (09/10): cada teste reproduz um caso que aconteceu de verdade.
@@ -93,6 +94,17 @@ describe("auditoria do número real", () => {
       .toEqual({ kind: "contact", body: "Bia · +55 71 98888-7777" });
     expect(parseContent({ locationMessage: { degreesLatitude: -12.98, degreesLongitude: -38.5, name: "Casa Fiaes" } } as never))
       .toEqual({ kind: "location", body: "Casa Fiaes · https://maps.google.com/?q=-12.98,-38.5" });
+  });
+
+  it("ignorar contato tira o lead do funil, guarda as mensagens e não abre lead com mensagem nova", async () => {
+    await ingestEvolution(up("IG1", false, text("oi primo")));
+    const [d] = await db.select().from(deals); const [u] = await db.select().from(users);
+    await ignoreContact(d.id, u.id);
+    expect(await db.select().from(deals)).toHaveLength(0);
+    await ingestEvolution(up("IG2", false, text("e aí?")));
+    expect(await db.select().from(deals)).toHaveLength(0);
+    expect((await db.select().from(messages)).length).toBe(2);
+    expect((await db.select().from(contacts))[0].ignored).toBe(true);
   });
 
   it("resposta citando outra mensagem guarda o trecho citado", async () => {

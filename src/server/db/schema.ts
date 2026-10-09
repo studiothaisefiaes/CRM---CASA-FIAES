@@ -59,6 +59,8 @@ export const contacts = pgTable("contacts", {
   /** Foto de perfil do WhatsApp baixada (relativo a MEDIA_DIR); avatarCheckedAt evita buscar de novo toda hora. */
   avatarPath: text("avatar_path"),
   avatarCheckedAt: timestamp("avatar_checked_at", { withTimezone: true }),
+  /** "Não é cliente" (conversa pessoal, fornecedor): mensagens ficam guardadas, mas não abre lead nem alerta. */
+  ignored: boolean("ignored").notNull().default(false),
   createdAt: createdAt(),
 }, (t) => [uniqueIndex("contacts_phone_uq").on(t.phoneE164)]);
 
