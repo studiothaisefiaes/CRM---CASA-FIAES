@@ -10,40 +10,81 @@ O mesmo desenho do local vai para o servidor. Nada depende de serviço pago alé
 
 ## Passos
 
+Primeira instalação, na ordem:
+
+1. **Código e `.env`.**
+   ```bash
+   git clone <repo da Casa Fiaes> /opt/crm && cd /opt/crm
+   cp .env.example .env   # gerar segredos novos: openssl rand -hex 32
+   ```
+   Ajustar no `.env`:
+   - `DATABASE_URL=postgresql://crm:<senha forte>@localhost:5433/crm` (e `PG_PASSWORD` igual)
+   - `APP_URL=https://crm.<dominio>`
+   - `WEBHOOK_PUBLIC_URL=http://host.docker.internal:3000` (a Evolution chama o app pela rede do Docker)
+   - `DEV_TOOLS=false`
+   - `TRUSTED_PROXY_HOPS=1` (o Caddy fica na frente; sem isso o rate limit usa o IP errado. Em dev local, `0`)
+   - `BACKUP_DIR=/var/backups/casa-fiaes-crm` (fora do repositório)
+2. **Infraestrutura.** `docker compose up -d`
+3. **Extensão `pg_trgm` (busca).** A migração 0008 faz `CREATE EXTENSION IF NOT EXISTS pg_trgm`. Desde o PG13 ela é "trusted", mas se o papel da aplicação não puder criá-la, crie antes como superusuário (no Docker o `POSTGRES_USER` `crm` já é), senão `db:migrate` falha:
+   ```bash
+   docker compose exec -T db psql -U crm -d crm -c 'CREATE EXTENSION IF NOT EXISTS pg_trgm;'
+   ```
+4. **App.**
+   ```bash
+   npm ci && npm run db:migrate && npm run db:seed && npm run build
+   npm run seed:admin -- --email gestao@<dominio> --name "Gestão"
+   ```
+5. **Processos (pm2).** `crm-web` (`next start -p 3000`) e `crm-worker` (`tsx worker/index.ts`), com reinício automático por memória:
+   ```bash
+   pm2 start deploy/ecosystem.config.cjs
+   pm2 save && pm2 startup
+   ```
+6. **Caddy.** Copiar `deploy/Caddyfile.example` para `/etc/caddy/Caddyfile`, trocar o domínio e `sudo systemctl reload caddy`. O `flush_interval -1` é necessário para o tempo real (SSE). No DNS do domínio: registro **A** `crm` → IP do VPS.
+7. **Checagem de saúde.**
+   ```bash
+   curl -s https://crm.<dominio>/api/health
+   ```
+   Esperado: HTTP 200 e `"status":"ok"` com `db: true`, `worker.ok: true` e cada número do WhatsApp em `whatsapp`. `degraded` (200) significa worker parado ou número desconectado; `down` (503) é banco fora. Cadastrar um monitor externo (UptimeRobot ou similar) nessa URL.
+8. **Backup diário.** Agendar o `scripts/backup.sh` e rodar `bash scripts/restore-test.sh` uma vez para provar que a restauração funciona (ver `docs/backup-restauracao.md`).
+9. **Conectar os números do WhatsApp** (QR code) pela tela de canais.
+
+## Atualizar (cada versão)
+
+Antes de subir, marque a versão atual para poder voltar e faça um backup:
+
 ```bash
-# 1. código
-git clone <repo da Casa Fiaes> /opt/crm && cd /opt/crm
-cp .env.example .env   # gerar segredos novos: openssl rand -hex 32
-#   DATABASE_URL=postgresql://crm:<senha forte>@localhost:5433/crm
-#   APP_URL=https://crm.<dominio>
-#   WEBHOOK_PUBLIC_URL=http://host.docker.internal:3000   (Evolution chama o app pela rede do Docker)
-#   DEV_TOOLS=false
-# 2. infraestrutura
-docker compose up -d
-# 3. extensão pg_trgm (busca) — a migração 0008 faz CREATE EXTENSION IF NOT EXISTS pg_trgm.
-#    Desde o PG13 ela é "trusted", mas se o papel da aplicação (crm) não puder criá-la,
-#    crie antes como superusuário (no Docker o POSTGRES_USER `crm` já é), senão db:migrate falha:
-docker compose exec -T db psql -U crm -d crm -c 'CREATE EXTENSION IF NOT EXISTS pg_trgm;'
-# 4. app
-npm ci && npm run db:migrate && npm run db:seed && npm run build
-npm run seed:admin -- --email gestao@<dominio> --name "Gestão"
-pm2 start "npm run start" --name crm-app
-pm2 start "npm run worker" --name crm-worker
-pm2 save && pm2 startup
+cd /opt/crm
+git tag -f anterior            # ou use a tag da versão que está no ar (ex.: v1.4.0)
+bash scripts/backup.sh
+git pull
+npm ci && npm run db:migrate && npm run build
+pm2 reload crm-web crm-worker
+curl -s https://crm.<dominio>/api/health   # confere status ok
 ```
 
-Caddy (`/etc/caddy/Caddyfile`):
+As migrações são só aditivas (sem `DROP` de tabela/coluna), então o código antigo continua funcionando com o banco já migrado.
 
-```
-crm.<dominio> {
-  encode zstd gzip
-  reverse_proxy localhost:3000 {
-    flush_interval -1   # necessário para o tempo real (SSE)
-  }
-}
-```
+## Rollback
 
-No DNS do domínio: registro **A** `crm` → IP do VPS.
+Se a versão nova falhar na checagem de saúde ou se comportar mal:
+
+1. **Voltar o código** (resolve quase tudo, porque as migrações são aditivas):
+   ```bash
+   cd /opt/crm
+   git checkout <tag anterior>   # a tag marcada antes da atualização
+   npm ci && npm run build
+   pm2 reload crm-web crm-worker
+   curl -s https://crm.<dominio>/api/health
+   ```
+2. **Só se os dados foram corrompidos** (migração ou script que alterou dados): restaurar o backup feito antes da atualização, com o app parado. Atenção: tudo que entrou depois desse backup (mensagens, leads) é perdido.
+   ```bash
+   pm2 stop crm-web crm-worker
+   bash scripts/restore.sh ~/backups/casa-fiaes-crm/<pasta do backup> --dump crm --yes-overwrite-production
+   git checkout <tag anterior> && npm ci && npm run build
+   pm2 restart crm-web crm-worker
+   ```
+   Detalhes (mídia, sessão do WhatsApp, banco da Evolution) em `docs/backup-restauracao.md`.
+3. Voltar ao `main`/versão nova depois da correção: `git checkout main && git pull`.
 
 ## Migrar os dados do local (opcional)
 
@@ -56,8 +97,8 @@ Os números de WhatsApp precisam ser **conectados de novo** (QR code) no servido
 
 ## Backup e operação
 
-- Backup diário: `pg_dump -Fc` às 03h via cron, guardando 7 diários + 4 semanais, e cópia fora do VPS.
-- Testar restauração uma vez por mês num banco temporário.
+- Backup diário às 03h via cron (`scripts/backup.sh`), 14 dias de retenção, fora do repositório, com cópia fora do VPS. Roteiro completo em `docs/backup-restauracao.md`.
+- Testar a restauração uma vez por mês: `bash scripts/restore-test.sh` (usa só o banco temporário `crm_restore_test`).
 - Logs do Docker com driver `local` (já configurado) para o disco não encher.
-- Atualizações: `git pull && npm ci && npm run db:migrate && npm run build && pm2 restart crm-app crm-worker`.
-- Alerta de falha silenciosa: o CRM já avisa a gestão quando um número desconecta; adicionar um monitor externo de `/api/health`.
+- Atualizações e volta: seções "Atualizar" e "Rollback" acima.
+- Alerta de falha silenciosa: o CRM já avisa a gestão quando um número desconecta; o monitor externo de `/api/health` cobre o resto.
