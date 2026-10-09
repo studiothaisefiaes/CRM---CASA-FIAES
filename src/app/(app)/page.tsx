@@ -1,9 +1,10 @@
+import { seconds } from "@/lib/format";
 import Link from "next/link";
 import { requireUser } from "@/server/auth/session";
 import { getToday, type TodayItem } from "@/server/queries/today";
 import { WaitingList } from "@/components/today/waiting-list";
 import { Stagger } from "@/components/today/stagger";
-import { IconCalendar, IconCake, IconMoney, IconRefresh } from "@/components/icons";
+import { IconCalendar, IconCake, IconMoney, IconRefresh, IconArrowRight } from "@/components/icons";
 import { formatPhoneClient } from "@/lib/phone-client";
 
 export const metadata = { title: "Hoje" };
@@ -19,25 +20,36 @@ export default async function HojePage({ searchParams }: PageProps<"/">) {
   const sp = await searchParams;
   const late = t.late;
   const date = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long", timeZone: "America/Bahia" });
-  const stats = [
-    { label: "Esperando resposta", value: t.waiting.length, tone: late ? "text-alert" : "text-ink", note: late ? `${late} atrasado${late > 1 ? "s" : ""}` : "nenhum atrasado" },
-    { label: "Leads novos hoje", value: t.counts.novos, tone: "text-ink", note: `${t.counts.abertos} em andamento` },
-    { label: "Agendados hoje", value: t.scheduled.length, tone: "text-ink", note: "avaliações e atendimentos" },
-    { label: "Atrasos hoje", value: t.counts.atrasos, tone: t.counts.atrasos ? "text-alert" : "text-ink", note: "respostas fora do prazo" },
-  ];
+  const fmt = seconds;
+  const next = t.waiting[0];
   return (
     <main className="px-5 lg:px-8 pt-6 lg:pt-9 pb-12 max-w-[1240px]">
       {sp.aviso === "sem-permissao" && <p className="mb-5 text-[13px] bg-gold-soft text-gold-ink rounded-[10px] px-3 py-2">Só a gestão tem acesso às configurações.</p>}
       <p className="text-[13px] text-muted first-letter:uppercase">{date}</p>
       <h1 className="font-serif text-[40px] lg:text-[48px] leading-none font-light mt-1">{greeting()}, {user.name.split(" ")[0]}.</h1>
-      <Stagger className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-8">
-        {stats.map((s) => (
-          <div key={s.label} className="rounded-[16px] border border-line bg-paper p-4 lg:p-5">
-            <p className="text-[12.5px] text-graphite">{s.label}</p>
-            <p className={`font-serif text-[44px] leading-none font-light mt-2 tabular ${s.tone}`}>{s.value}</p>
-            <p className="text-[12px] text-muted mt-2">{s.note}</p>
+      <Stagger className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-8" itemClassNames={["col-span-2", "", ""]}>
+        <div className={`h-full rounded-[18px] p-5 lg:p-6 flex flex-wrap items-end justify-between gap-x-4 gap-y-4 ${late ? "bg-alert-soft border border-alert/40" : "bg-ink text-paper"}`}>
+          <div>
+            <p className={`text-[13px] ${late ? "text-alert" : "text-paper/70"}`}>Esperando resposta agora</p>
+            <p className={`font-serif text-[64px] leading-none font-light mt-2 tabular ${late ? "text-alert" : ""}`}>{t.waiting.length}</p>
+            <p className={`text-[12.5px] mt-2 ${late ? "text-alert" : "text-paper/60"}`}>{late ? `${late} além do prazo` : t.waiting.length ? "todos dentro do prazo" : "ninguém esperando"}</p>
           </div>
-        ))}
+          {next && (
+            <Link href={`/funil?lead=${next.id}`} className={`h-11 px-4 rounded-[12px] inline-flex items-center gap-2 text-[14px] font-semibold shrink-0 transition-transform active:scale-[0.98] ${late ? "bg-alert text-white" : "bg-gold text-ink"}`}>
+              Atender próximo <IconArrowRight size={16} />
+            </Link>
+          )}
+        </div>
+        <div className="h-full rounded-[16px] border border-line bg-paper p-4 lg:p-5">
+          <p className="text-[12.5px] text-graphite">Tempo médio de resposta</p>
+          <p className={`font-serif text-[34px] leading-none font-light mt-2 tabular ${t.resp.n && t.resp.avg > t.resp.goal ? "text-alert" : "text-ink"}`}>{t.resp.n ? fmt(t.resp.avg) : "—"}</p>
+          <p className="text-[12px] text-muted mt-2">{t.resp.n ? `${t.resp.within} de ${t.resp.n} dentro da meta de ${fmt(t.resp.goal)}` : `meta: ${fmt(t.resp.goal)}`}</p>
+        </div>
+        <div className="h-full rounded-[16px] border border-line bg-paper p-4 lg:p-5">
+          <p className="text-[12.5px] text-graphite">Hoje</p>
+          <p className="font-serif text-[34px] leading-none font-light mt-2 tabular">{t.counts.novos} <span className="text-[15px] text-graphite font-sans">novos</span></p>
+          <p className="text-[12px] text-muted mt-2">{t.scheduled.length} agendado{t.scheduled.length === 1 ? "" : "s"} · {t.counts.abertos} em andamento</p>
+        </div>
       </Stagger>
       <div className="grid lg:grid-cols-[1.35fr_1fr] gap-5 mt-6">
         <section className="rounded-[18px] border border-line bg-paper">

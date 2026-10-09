@@ -24,11 +24,14 @@ export default async function FunilPage({ searchParams }: PageProps<"/funil">) {
     leadId && /^[0-9a-f-]{36}$/.test(leadId) ? getDealDetail(leadId) : Promise.resolve(null),
   ]);
   const open = board.filter((s) => !["fechado", "perdido"].includes(s.kind)).reduce((n, s) => n + s.cards.length, 0);
+  const waiting = board.flatMap((s) => s.cards).filter((c) => c.awaitingReplySince && c.id !== leadId)
+    .sort((a, b) => (a.awaitingReplySince! < b.awaitingReplySince! ? -1 : 1));
+  const nextId = waiting[0]?.id ?? null;
   return (
     <main>
       <PageHeader title="Funil" subtitle={`${open} lead${open === 1 ? "" : "s"} em andamento`} actions={<Toolbar people={people} origins={origins} />} />
       <Board stages={board} lostReasons={lostReasons} />
-      <LeadSheetPresence d={detail} />
+      <LeadSheetPresence d={detail} nextId={nextId} />
     </main>
   );
 }

@@ -8,6 +8,7 @@ export const triggerSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("aniversario_em_dias"), days: z.number().int().min(0).max(60) }),
   z.object({ type: z.literal("data_cobranca") }),
   z.object({ type: z.literal("data_recontato") }),
+  z.object({ type: z.literal("agendamento_em_horas"), hours: z.number().int().min(1).max(168) }),
 ]);
 
 /** Condições: o "Se". */
@@ -15,12 +16,13 @@ export const conditionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("etapa_em"), stages: z.array(z.string()).min(1) }),
 ]);
 
-/** Ações: o "Então". Mensagens aceitam {nome}, {etapa}, {minutos}, {dias}. */
+/** Ações: o "Então". Mensagens aceitam {nome}, {etapa}, {minutos}, {dias}, {data}, {hora}. */
 export const actionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("alertar_responsavel"), message: z.string().min(3).max(200) }),
   z.object({ type: z.literal("alertar_gestao"), message: z.string().min(3).max(200) }),
   z.object({ type: z.literal("mover_para_etapa"), stage: z.string() }),
   z.object({ type: z.literal("mover_para_proximo_followup") }),
+  z.object({ type: z.literal("enviar_mensagem"), message: z.string().min(3).max(1000) }),
 ]);
 
 export const automationInputSchema = z.object({
@@ -43,6 +45,7 @@ export const TRIGGER_LABELS: Record<Trigger["type"], string> = {
   aniversario_em_dias: "Faltar X dias para o aniversário",
   data_cobranca: "Chegar a data de cobrança",
   data_recontato: "Chegar a data de recontato",
+  agendamento_em_horas: "Faltar X horas para o agendamento",
 };
 
 export const ACTION_LABELS: Record<Action["type"], string> = {
@@ -50,4 +53,5 @@ export const ACTION_LABELS: Record<Action["type"], string> = {
   alertar_gestao: "Avisar a gestão",
   mover_para_etapa: "Mover para a etapa",
   mover_para_proximo_followup: "Mover para o próximo follow-up",
+  enviar_mensagem: "Enviar mensagem à cliente no WhatsApp",
 };

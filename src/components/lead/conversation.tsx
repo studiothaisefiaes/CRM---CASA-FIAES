@@ -4,7 +4,9 @@ import { AnimatePresence, motion } from "motion/react";
 import { IconMic } from "@/components/icons";
 import { SPRING } from "@/lib/motion";
 
-export type Msg = { id: string; direction: "in" | "out"; kind: string; body: string | null; status: string; createdAt: string; sender: string | null; fromPhone: boolean };
+export type Msg = { id: string; direction: "in" | "out"; kind: string; body: string | null; status: string; createdAt: string; sender: string | null; fromPhone: boolean; error?: string | null };
+
+const STATUS: Record<string, [string, string]> = { pending: ["enviando…", ""], sent: ["✓", ""], delivered: ["✓✓", ""], read: ["✓✓", "text-gold"], simulado: ["simulado", ""], failed: ["não enviada", "text-alert font-semibold"] };
 
 const dayLabel = (iso: string) => {
   const d = new Date(iso), t = new Date(); const y = new Date(); y.setDate(t.getDate() - 1);
@@ -35,11 +37,12 @@ export function Conversation({ messages }: { messages: Msg[] }) {
                 ) : (
                   <>{m.kind !== "text" && <span className="text-graphite italic">{KIND_LABEL[m.kind]}: </span>}<span className="whitespace-pre-wrap break-words">{m.body}</span></>
                 )}
-                <span className="block text-[10.5px] text-muted mt-1 text-right">
-                  {out && (m.fromPhone ? "pelo celular · " : m.sender ? `${m.sender.split(" ")[0]} · ` : "")}
-                  {m.status === "simulado" ? "simulado · " : m.status === "pending" ? "enviando… · " : ""}
+                <span className="flex items-center justify-end gap-1 text-[10.5px] text-muted mt-1" title={m.status === "failed" && m.error ? m.error : undefined}>
+                  {out && (m.fromPhone ? "pelo celular · " : m.sender ? `${m.sender.split(" ")[0]} · ` : "automática · ")}
                   {new Date(m.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                  {out && STATUS[m.status] && <span className={`ml-0.5 ${STATUS[m.status][1]}`} aria-label={`Status: ${m.status}`}>{STATUS[m.status][0]}</span>}
                 </span>
+                {out && m.status === "failed" && <span className="block text-[11.5px] text-alert mt-1">Não chegou na cliente. Copie o texto e envie de novo.</span>}
               </div>
             </motion.div>
           );

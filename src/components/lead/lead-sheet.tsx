@@ -9,7 +9,8 @@ import { AutoField } from "./fields";
 import { StageDialogs, type PendingMove } from "@/components/pipeline/stage-dialogs";
 import { moveDealAction } from "@/app/(app)/funil/actions";
 import { useToast } from "@/components/ui/toast";
-import { IconClose, IconPhone, IconMail, IconInstagram, IconWhatsApp, IconCake } from "@/components/icons";
+import { IconClose, IconPhone, IconMail, IconInstagram, IconWhatsApp, IconCake, IconClock, IconArrowRight } from "@/components/icons";
+import { useUrgency } from "@/components/pipeline/timer";
 import { Badge } from "@/components/ui/badge";
 import { formatPhoneClient } from "@/lib/phone-client";
 import { relTime, money, PAYMENT_LABEL } from "@/lib/format";
@@ -35,22 +36,34 @@ const EVENT_TEXT = (e: DealDetail["events"][number]): string => {
   }
 };
 
-export function LeadSheet({ d }: { d: DealDetail }) {
+export function LeadSheet({ d, nextId }: { d: DealDetail; nextId?: string | null }) {
   const router = useRouter();
   const sp = useSearchParams();
   const toast = useToast();
   const [, start] = useTransition();
   const [tab, setTab] = useState<"conversa" | "dados" | "historico">("conversa");
+  const [sideTab, setSideTab] = useState<"dados" | "historico">("dados");
+  const [answered, setAnswered] = useState(false);
+  const { urgency, label: waitLabel } = useUrgency(d.deal.awaitingReplySince ? new Date(d.deal.awaitingReplySince).toISOString() : null, d.stage.slaMinutes);
   const [optimistic, setOptimistic] = useState<string | null>(null);
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
 
   const close = () => { const p = new URLSearchParams(sp.toString()); p.delete("lead"); router.push(`/funil${p.size ? `?${p}` : ""}`, { scroll: false }); };
-  useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === "Escape" && !document.querySelector("[role=dialog][aria-modal]")) close(); }; window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k); });
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || document.querySelector("[role=dialog][aria-modal]")) return;
+      // Não fecha o card se há texto sendo digitado (evita perder a resposta).
+      const el = document.activeElement as HTMLInputElement | HTMLTextAreaElement | null;
+      if (el && (el.tagName === "TEXTAREA" || el.tagName === "INPUT") && el.value?.trim()) return;
+      close();
+    };
+    window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k);
+  });
 
   const name = d.contact.name?.trim() || formatPhoneClient(d.contact.phoneE164);
   const firstName = d.contact.name?.trim().split(/\s+/)[0] ?? "";
   const msgs: Msg[] = useMemo(() => {
-    const base = d.messages.map((m) => ({ id: m.id, direction: m.direction, kind: m.kind, body: m.body, status: m.status, createdAt: new Date(m.createdAt).toISOString(), sender: m.sender, fromPhone: m.fromPhone }));
+    const base = d.messages.map((m) => ({ id: m.id, direction: m.direction, kind: m.kind, body: m.body, status: m.status, createdAt: new Date(m.createdAt).toISOString(), sender: m.sender, fromPhone: m.fromPhone, error: m.error }));
     return optimistic ? [...base, { id: "optimistic", direction: "out" as const, kind: "text", body: optimistic, status: "pending", createdAt: new Date().toISOString(), sender: null, fromPhone: false }] : base;
   }, [d.messages, optimistic]);
 
@@ -70,11 +83,11 @@ export function LeadSheet({ d }: { d: DealDetail }) {
           <b>Já é cliente</b>{d.contact.clientSince ? ` desde ${new Date(d.contact.clientSince).getFullYear()}` : ""}{d.contact.lastServiceAt ? ` · último atendimento ${new Date(d.contact.lastServiceAt).toLocaleDateString("pt-BR")}` : ""}
         </div>
       )}
-      <AutoField dealId={d.deal.id} name="name" label="Nome" value={d.contact.name ?? ""} placeholder="Nome da cliente" />
+      <AutoField dealId={d.deal.id} name="name" label="Nome" value={d.contact.name ?? ""} placeholder="Adicionar nome" />
       <div className="grid grid-cols-2 gap-x-4 gap-y-3.5">
-        <AutoField dealId={d.deal.id} name="email" label="E-mail" kind="email" value={d.contact.email ?? ""} placeholder="nome@email.com" />
-        <AutoField dealId={d.deal.id} name="instagram" label="Instagram" value={d.contact.instagram ? `@${d.contact.instagram}` : ""} placeholder="@perfil" />
-        <AutoField dealId={d.deal.id} name="birthday" label="Aniversário" kind="birthday" value={birthday} placeholder="14/11" icon={<IconCake size={12} />} />
+        <AutoField dealId={d.deal.id} name="email" label="E-mail" kind="email" value={d.contact.email ?? ""} placeholder="Adicionar e-mail" />
+        <AutoField dealId={d.deal.id} name="instagram" label="Instagram" value={d.contact.instagram ? `@${d.contact.instagram}` : ""} placeholder="Adicionar @" />
+        <AutoField dealId={d.deal.id} name="birthday" label="Aniversário" kind="birthday" value={birthday} placeholder="dd/mm" icon={<IconCake size={12} />} />
         <AutoField dealId={d.deal.id} name="origin" label="Origem" kind="select" value={d.deal.origin} options={[...new Set([...d.origins.map((o) => o.label), d.deal.origin])].map((o) => ({ value: o, label: o }))} />
         <AutoField dealId={d.deal.id} name="objectionId" label="Objeção" kind="select" value={d.deal.objectionId ?? ""} options={d.objections.map((o) => ({ value: o.id, label: o.label }))} />
         <AutoField dealId={d.deal.id} name="ownerId" label="Responsável" kind="select" value={d.deal.ownerId ?? ""} options={d.people.map((p) => ({ value: p.id, label: p.name }))} />
@@ -126,14 +139,27 @@ export function LeadSheet({ d }: { d: DealDetail }) {
             </div>
             <button onClick={close} className="size-9 grid place-items-center rounded-[10px] text-muted hover:bg-paper-2 hover:text-ink" aria-label="Fechar"><IconClose /></button>
           </div>
+          <AnimatePresence initial={false}>
+            {waitLabel && !answered && (
+              <motion.div key="wait" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.25, ease: EASE }}>
+                <p className={`mt-3 inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-[13px] font-semibold ${urgency === "late" ? "bg-alert text-white" : urgency === "warn" ? "bg-gold-soft text-gold-ink" : "bg-paper-2 text-ink"}`} suppressHydrationWarning>
+                  <IconClock size={14} />Esperando resposta há {waitLabel}{d.stage.slaMinutes ? <span className="font-normal opacity-80">· prazo {d.stage.slaMinutes} min</span> : null}
+                </p>
+              </motion.div>
+            )}
+          </AnimatePresence>
           <div className="flex flex-wrap items-center gap-2 mt-3">
             <label className="relative">
               <span className="sr-only">Etapa</span>
-              <select value={d.stage.key} onChange={(e) => moveTo(e.target.value)} className="h-9 pl-3 pr-8 rounded-[10px] bg-ink text-paper text-[13px] font-medium appearance-none cursor-pointer">
+              <select aria-label="Etapa" value={d.stage.key} onChange={(e) => moveTo(e.target.value)} className="h-9 pl-3 pr-8 rounded-[10px] border border-line-strong bg-paper text-[13px] font-medium appearance-none cursor-pointer hover:bg-paper-2">
                 {d.stages.map((s) => <option key={s.id} value={s.key}>{s.name}</option>)}
               </select>
-              <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-paper/70 text-[10px]">▼</span>
+              <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted text-[10px]">▼</span>
             </label>
+            {["lead", "atendimento", "followup"].includes(d.stage.kind) && <button type="button" onClick={() => moveTo("agendado")} className="h-9 px-3 rounded-[10px] bg-ink text-paper text-[13px] font-medium hover:bg-ink-2">Agendar</button>}
+            {d.stage.kind === "agendado" && <button type="button" onClick={() => moveTo("fechado")} className="h-9 px-3 rounded-[10px] bg-ok text-white text-[13px] font-medium hover:brightness-110">Fechar venda</button>}
+            {!["fechado", "perdido"].includes(d.stage.kind) && <button type="button" onClick={() => moveTo("perdido")} className="h-9 px-3 rounded-[10px] text-[13px] text-alert hover:bg-alert-soft">Perdido</button>}
+            <span className="w-px h-6 bg-line mx-1 hidden sm:block" aria-hidden />
             <a href={`tel:${d.contact.phoneE164}`} className="h-9 px-3 inline-flex items-center gap-1.5 rounded-[10px] border border-line-strong text-[13px] hover:bg-paper-2"><IconPhone size={15} />Ligar</a>
             <a href={wa} target="_blank" rel="noreferrer" className="h-9 px-3 inline-flex items-center gap-1.5 rounded-[10px] border border-line-strong text-[13px] hover:bg-paper-2"><IconWhatsApp size={15} />WhatsApp</a>
             {d.contact.email && <a href={`mailto:${d.contact.email}`} className="h-9 px-3 inline-flex items-center gap-1.5 rounded-[10px] border border-line-strong text-[13px] hover:bg-paper-2"><IconMail size={15} />E-mail</a>}
@@ -152,13 +178,29 @@ export function LeadSheet({ d }: { d: DealDetail }) {
         <div className="flex-1 min-h-0 grid lg:grid-cols-[1fr_360px]">
           <section className={`min-h-0 flex-col ${tab === "conversa" ? "flex" : "hidden"} lg:flex`}>
             <Conversation messages={msgs} />
-            <Composer dealId={d.deal.id} firstName={firstName} quickReplies={d.quickReplies} onOptimistic={setOptimistic} />
+            <AnimatePresence>
+              {answered && nextId && (
+                <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="px-3 pt-2">
+                  <button type="button" onClick={() => router.push(`/funil?lead=${nextId}`, { scroll: false })}
+                    className="w-full h-10 rounded-[12px] bg-gold-soft text-gold-ink text-[13.5px] font-semibold inline-flex items-center justify-center gap-2 hover:brightness-[0.98]">
+                    Próximo da fila esperando resposta <IconArrowRight size={15} />
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <Composer dealId={d.deal.id} firstName={firstName} quickReplies={d.quickReplies} onOptimistic={setOptimistic} onSent={() => setAnswered(true)} slaSeconds={d.stage.slaMinutes ? d.stage.slaMinutes * 60 : null} />
           </section>
           <section className={`min-h-0 overflow-y-auto scroll-thin border-l border-line px-5 py-4 ${tab === "conversa" ? "hidden" : "block"} lg:block bg-paper-2/40`}>
-            <div className={`${tab === "historico" ? "hidden" : ""} lg:block`}>{details}</div>
-            <div className={`${tab === "dados" ? "hidden" : ""} lg:block lg:mt-6`}>
-              <p className="text-[11.5px] font-medium text-muted mb-3 hidden lg:block">Histórico</p>{timeline}
+            <div className="hidden lg:flex gap-1 bg-paper-2 rounded-[10px] p-1 mb-4" role="tablist" aria-label="Painel do lead">
+              {(["dados", "historico"] as const).map((t) => (
+                <button key={t} role="tab" aria-selected={sideTab === t} onClick={() => setSideTab(t)} className="relative flex-1 h-8 text-[13px] rounded-[8px]">
+                  {sideTab === t && <motion.span layoutId="lead-side-tab" transition={SPRING} className="absolute inset-0 bg-paper rounded-[8px] shadow-[var(--shadow-card)]" />}
+                  <span className="relative">{t === "dados" ? "Dados" : `Histórico (${d.events.length})`}</span>
+                </button>
+              ))}
             </div>
+            <div className={`${tab === "historico" ? "hidden" : ""} ${sideTab === "dados" ? "lg:block" : "lg:hidden"}`}>{details}</div>
+            <div className={`${tab === "dados" ? "hidden" : ""} ${sideTab === "historico" ? "lg:block" : "lg:hidden"}`}>{timeline}</div>
           </section>
         </div>
       </motion.aside>
@@ -168,6 +210,6 @@ export function LeadSheet({ d }: { d: DealDetail }) {
   );
 }
 
-export function LeadSheetPresence({ d }: { d: DealDetail | null }) {
-  return <AnimatePresence>{d && <LeadSheet key={d.deal.id} d={d} />}</AnimatePresence>;
+export function LeadSheetPresence({ d, nextId }: { d: DealDetail | null; nextId?: string | null }) {
+  return <AnimatePresence>{d && <LeadSheet key={d.deal.id} d={d} nextId={nextId} />}</AnimatePresence>;
 }

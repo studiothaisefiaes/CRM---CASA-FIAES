@@ -28,8 +28,10 @@ test("mensagem no WhatsApp vira lead, responder pelo card move para Atendimento"
   await expect(sheet.getByText("Vim pelo Instagram")).toBeVisible();
   await sheet.getByLabel("Mensagem").fill("/aval");
   await sheet.getByRole("listbox", { name: "Respostas prontas" }).getByRole("option").first().click();
+  await expect(sheet.getByLabel("Mensagem")).toHaveValue(/avaliação gratuita/);
+  await page.waitForTimeout(500); // trava de revisão após preencher resposta pronta
   await sheet.getByLabel("Mensagem").press("Enter");
-  await expect(sheet.getByText(/avaliação gratuita/).first()).toBeVisible();
+  await expect(sheet.getByLabel("Mensagem")).toHaveValue("");
   await expect(sheet.getByRole("combobox", { name: "Etapa" })).toHaveValue("atendimento");
   await page.keyboard.press("Escape");
   await expect(page.getByRole("region", { name: /^Atendimento,/ }).getByText("Mariana Couto")).toBeVisible();
@@ -46,8 +48,8 @@ test("resposta pelo celular também conta", async ({ page }) => {
 test("lead sem resposta fica vermelho e gera alerta", async ({ page }) => {
   await login(page);
   await simulate(page, { phone: "71 99123-4567", name: "Camila Santana", text: "Qual o valor das luzes?" });
-  // Volta o relógio da espera em 3 minutos e roda o motor de automações uma vez.
-  ageLead("+5571991234567", 3);
+  // Volta o relógio da espera em 11 minutos e roda o motor: a responsável é avisada aos 2 min e a gestão aos 10.
+  ageLead("+5571991234567", 11);
   await page.goto("/funil");
   const card = page.getByRole("region", { name: /^Lead,/ }).getByRole("link", { name: /Camila Santana/ });
   await expect(card).toHaveClass(/border-alert/);
@@ -106,7 +108,7 @@ test("relatório exporta CSV que abre no Excel", async ({ page }) => {
   await login(page);
   await page.goto("/relatorios");
   await expect(page.getByRole("heading", { name: "Funil" })).toBeVisible();
-  const [dl] = await Promise.all([page.waitForEvent("download"), page.getByRole("link", { name: "Excel (CSV)" }).first().click()]);
+  const [dl] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Exportar" }).click().then(() => page.getByRole("link", { name: "Funil por etapa" }).click())]);
   expect(dl.suggestedFilename()).toMatch(/casa-fiaes-funil-.*\.csv/);
   const content = await (await dl.createReadStream()).toArray();
   const text = Buffer.concat(content).toString("utf8");

@@ -9,7 +9,7 @@ describe("seed", () => {
   it("é idempotente", async () => {
     await seed(db); await seed(db);
     expect((await db.select().from(stages)).length).toBe(9);
-    expect((await db.select().from(automations)).length).toBe(8);
+    expect((await db.select().from(automations)).length).toBe(9);
     expect((await db.select().from(lists)).length).toBe(22);
   });
 });

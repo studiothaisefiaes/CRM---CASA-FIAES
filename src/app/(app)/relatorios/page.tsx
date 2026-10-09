@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { seconds } from "@/lib/format";
 import { requireUser } from "@/server/auth/session";
 import { funnel, responseTimes, origins, objections, finance, summary, PERIOD_LABEL, type Period } from "@/server/reports";
 import { activeUsers } from "@/server/domain/deals";
@@ -7,12 +8,12 @@ import { PageHeader } from "@/components/page-header";
 import { PeriodTabs } from "@/components/reports/period-tabs";
 import { Bar, CountUp } from "@/components/reports/bars";
 import { Stagger } from "@/components/today/stagger";
-import { IconDownload } from "@/components/icons";
+import { ExportMenu } from "@/components/reports/export-menu";
 import { formatPhoneClient } from "@/lib/phone-client";
 
 export const metadata = { title: "Relatórios" };
 const PAY: Record<string, string> = { pix: "Pix", cartao: "Cartão", boleto: "Boleto", dinheiro: "Dinheiro" };
-const secs = (s: number) => (s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}` : `${Math.round(s / 3600)}h`);
+const secs = seconds;
 
 export default async function RelatoriosPage({ searchParams }: PageProps<"/relatorios">) {
   const user = await requireUser();
@@ -23,11 +24,17 @@ export default async function RelatoriosPage({ searchParams }: PageProps<"/relat
   const qs = new URLSearchParams({ periodo: period, ...(f.ownerId ? { dono: f.ownerId } : {}), ...(f.origin ? { origem: f.origin } : {}) }).toString();
   const [fun, resp, orig, obj, fin, sum, people, originList] = await Promise.all([funnel(f), responseTimes(f), origins(f), objections(f), finance(f), summary(f), activeUsers(), getOrigins()]);
   const base = fun[0]?.reached ?? 0;
+  const fus = fun.filter((s) => s.kind === "followup");
+  const funnelRows = [
+    ...fun.filter((s) => !["followup", "perdido", "fechado"].includes(s.kind)).map((s) => ({ ...s, detail: undefined as string | undefined })),
+    ...(fus.length ? [{ key: "followup", name: "Follow-up", kind: "followup", reached: fus[0].reached, detail: fus.map((f) => `${f.name}: ${f.reached}`).join(" · ") }] : []),
+    ...fun.filter((s) => s.kind === "fechado").map((s) => ({ ...s, detail: undefined as string | undefined })),
+  ];
   const maxResp = Math.max(...resp.map((r) => r.avgSeconds), resp[0]?.goalSeconds ?? 120, 1);
   const convRate = sum.leads ? Math.round((sum.won / sum.leads) * 100) : 0;
   return (
     <main className="pb-14">
-      <PageHeader title="Relatórios" subtitle={`${PERIOD_LABEL[period]} · números reais do CRM`} actions={<PeriodTabs people={user.role === "gestor" ? people : []} origins={originList} />} />
+      <PageHeader title="Relatórios" subtitle={`${PERIOD_LABEL[period]} · números reais do CRM`} actions={<><PeriodTabs people={user.role === "gestor" ? people : []} origins={originList} /><ExportMenu qs={qs} gestor={user.role === "gestor"} /></>} />
       <div className="px-5 lg:px-8 flex flex-col gap-5 max-w-[1280px]">
         <Stagger className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {[["Leads no período", sum.leads, "int"], ["Fechados", sum.won, "int"], ["Conversão", convRate, "pct"], ["Total fechado", fin.totalCents, "brl"]].map(([l, v, k]) => (
@@ -39,18 +46,18 @@ export default async function RelatoriosPage({ searchParams }: PageProps<"/relat
         </Stagger>
         <div className="grid lg:grid-cols-2 gap-5">
           <Panel title="Funil" csv={`funil?${qs}`}>
-            {base === 0 ? <Empty /> : fun.filter((s) => s.kind !== "perdido").map((s, i) => (
+            {base === 0 ? <Empty /> : funnelRows.map((s, i) => (
               <div key={s.key} className="grid grid-cols-[110px_1fr_70px] items-center gap-3 py-1.5">
-                <span className="text-[13px]">{s.name}</span><Bar value={s.reached} max={base} delay={i * 0.06} tone={s.kind === "fechado" ? "ok" : "gold"} />
+                <span className="text-[13px]" title={s.detail}>{s.name}</span><Bar value={s.reached} max={base} delay={i * 0.06} tone={s.kind === "fechado" ? "ok" : "gold"} />
                 <span className="text-[12.5px] text-right tabular"><b>{s.reached}</b> <span className="text-muted">{Math.round((s.reached / base) * 100)}%</span></span>
               </div>
             ))}
           </Panel>
-          <Panel title="Tempo de resposta por pessoa" csv={`resposta?${qs}`} note={resp[0] ? `Meta: ${secs(resp[0].goalSeconds)} · linha tracejada` : undefined}>
+          <Panel title="Tempo de resposta por pessoa" csv={`resposta?${qs}`} note={resp[0] ? `Meta: ${secs(resp[0].goalSeconds)} (linha vermelha). Mediana: o tempo típico, sem distorção de um atraso isolado.` : undefined}>
             {resp.length === 0 ? <Empty /> : resp.map((r, i) => (
               <div key={r.userId ?? "x"} className="py-2">
                 <div className="flex justify-between text-[13px] mb-1.5"><span className="font-medium">{r.name}</span>
-                  <span className="tabular"><b className={r.avgSeconds > r.goalSeconds ? "text-alert" : "text-ok"}>{secs(r.avgSeconds)}</b> <span className="text-muted">média · {Math.round((r.withinGoal / r.responses) * 100)}% na meta · {r.alerts} atraso{r.alerts === 1 ? "" : "s"}</span></span></div>
+                  <span className="tabular"><b className={r.medianSeconds > r.goalSeconds ? "text-alert" : "text-ok"}>{secs(r.medianSeconds)}</b> <span className="text-muted">mediana · {secs(r.avgSeconds)} média · {Math.round((r.withinGoal / r.responses) * 100)}% na meta · {r.alerts} atraso{r.alerts === 1 ? "" : "s"}</span></span></div>
                 <Bar value={r.avgSeconds} max={maxResp * 1.1} goal={r.goalSeconds} delay={i * 0.06} tone={r.avgSeconds > r.goalSeconds ? "alert" : "ink"} />
               </div>
             ))}
@@ -84,7 +91,7 @@ export default async function RelatoriosPage({ searchParams }: PageProps<"/relat
                 ))}</div>
               </div>
               <div>
-                <div className="flex items-center justify-between mb-2"><p className="text-[13px] font-semibold">Cobranças a vencer</p><a href={`/api/relatorios/cobrancas?${qs}`} className="text-[12.5px] text-gold-ink inline-flex items-center gap-1 hover:underline"><IconDownload size={13} />CSV</a></div>
+                <div className="flex items-center justify-between mb-2"><p className="text-[13px] font-semibold">Cobranças a vencer</p></div>
                 {fin.upcoming.length === 0 ? <p className="text-[13px] text-muted">Nenhuma cobrança marcada.</p> : (
                   <ul className="divide-y divide-line/70">{fin.upcoming.slice(0, 8).map((c) => (
                     <li key={c.id} className="flex justify-between py-2 text-[13px]"><span>{c.name ?? formatPhoneClient(c.phone)}</span><span className="text-muted tabular">{new Date(c.chargeAt).toLocaleDateString("pt-BR")}{c.valueCents ? ` · ${(c.valueCents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}` : ""}</span></li>
@@ -99,12 +106,11 @@ export default async function RelatoriosPage({ searchParams }: PageProps<"/relat
   );
 }
 
-function Panel({ title, csv, note, children, className = "" }: { title: string; csv: string; note?: string; children: ReactNode; className?: string }) {
+function Panel({ title, note, children, className = "" }: { title: string; csv?: string; note?: string; children: ReactNode; className?: string }) {
   return (
     <section className={`rounded-[18px] border border-line bg-paper p-5 ${className}`}>
-      <header className="flex items-center justify-between mb-3">
-        <div><h2 className="font-serif text-[22px] font-light">{title}</h2>{note && <p className="text-[12px] text-muted">{note}</p>}</div>
-        <a href={`/api/relatorios/${csv}`} className="h-8 px-3 inline-flex items-center gap-1.5 rounded-[9px] border border-line-strong text-[12.5px] hover:bg-paper-2"><IconDownload size={14} />Excel (CSV)</a>
+      <header className="mb-3">
+        <h2 className="font-serif text-[22px] font-light">{title}</h2>{note && <p className="text-[12px] text-muted">{note}</p>}
       </header>
       {children}
     </section>

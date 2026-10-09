@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db } from "../db";
-import { channels, contacts, deals, messages } from "../db/schema";
+import { alerts, channels, contacts, deals, messages } from "../db/schema";
 import { whatsapp } from "../whatsapp/evolution";
 import { recordOutbound } from "./deals";
 import { emit } from "./events";
@@ -48,4 +48,27 @@ export async function sendFromCrm(dealId: string, text: string, userId: string) 
     throw new SendError(`Não foi possível enviar: ${msg}`);
   }
   return recordOutbound({ dealId, channelId: channel.id, externalId, body, userId, status: "sent", claimMessageId: pending.id });
+}
+
+/** Mensagem enviada por automação (ex.: lembrete). Usa o número do lead; falha vira alerta para a gestão. */
+export async function sendAutomated(dealId: string, text: string) {
+  const [row] = await db.select({ deal: deals, phone: contacts.phoneE164, name: contacts.name }).from(deals)
+    .innerJoin(contacts, eq(contacts.id, deals.contactId)).where(eq(deals.id, dealId));
+  if (!row) return;
+  let channel = row.deal.channelId ? (await db.select().from(channels).where(eq(channels.id, row.deal.channelId)))[0] : undefined;
+  if (!channel || channel.status !== "conectado") channel = row.deal.channelId ? undefined : (await db.select().from(channels).where(eq(channels.status, "conectado")).limit(1))[0];
+  if (!channel) {
+    if (env().DEV_TOOLS) return recordOutbound({ dealId, channelId: null, body: text, status: "simulado", automated: true });
+    await db.insert(alerts).values({ dealId, audience: "gestao", type: "envio_automatico_falhou", severity: "info",
+      message: `Não foi possível enviar a mensagem automática para ${row.name ?? row.phone}: WhatsApp desconectado.`, dedupeKey: `auto:${dealId}:${text.slice(0, 40)}` }).onConflictDoNothing();
+    return;
+  }
+  const [pending] = await db.insert(messages).values({ dealId, contactId: row.deal.contactId, channelId: channel.id, direction: "out", kind: "text", body: text, status: "pending" }).returning({ id: messages.id });
+  try {
+    const { externalId } = await whatsapp().sendText(channel.instanceName, row.phone, text);
+    return recordOutbound({ dealId, channelId: channel.id, externalId, body: text, status: "sent", claimMessageId: pending.id, automated: true });
+  } catch (e) {
+    await db.update(messages).set({ status: "failed", error: (e instanceof Error ? e.message : String(e)).slice(0, 300) }).where(eq(messages.id, pending.id));
+    throw e;
+  }
 }

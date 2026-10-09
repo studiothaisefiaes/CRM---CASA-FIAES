@@ -1,6 +1,12 @@
 // Som curto de alerta gerado no navegador (sem arquivo de áudio).
 let ctx: AudioContext | null = null;
+const MUTE_KEY = "cf-silencio-ate";
+export function isMuted() { try { return Number(localStorage.getItem(MUTE_KEY) ?? 0) > Date.now(); } catch { return false; } }
+export function muteFor(minutes: number) { try { localStorage.setItem(MUTE_KEY, String(Date.now() + minutes * 60_000)); } catch { /* sem storage */ } }
+export function unmute() { try { localStorage.removeItem(MUTE_KEY); } catch { /* sem storage */ } }
+
 export function playAlert() {
+  if (isMuted()) return;
   try {
     ctx ??= new AudioContext();
     const t = ctx.currentTime;

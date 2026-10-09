@@ -10,9 +10,10 @@
   --color-ink: #121212;
   --color-ink-2: #2a2a29;
   --color-graphite: #5c5c5c;
-  --color-muted: #8a857d;
+  --color-muted: #6f6a62; /* 5:1 sobre o papel (WCAG AA) */
   --color-line: #e4e1db;
   --color-line-strong: #d3cfc7;
+  --color-control: #a39d92; /* borda de campos: 3:1 (WCAG 1.4.11) */
   --color-gold: #b8863f;
   --color-gold-ink: #7a5524;
   --color-gold-soft: #f3e9d8;

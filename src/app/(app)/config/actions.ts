@@ -13,6 +13,7 @@ async function run<T>(fn: (uid: string) => Promise<T>, path: string): Promise<R<
 }
 
 export const updateStageAction = async (id: string, v: Parameters<typeof cfg.updateStage>[1]) => run((u) => cfg.updateStage(id, v, u), "/config/etapas");
+export const saveHoursAction = async (v: unknown) => run((u) => cfg.saveBusinessHours(v, u), "/config/etapas");
 export const moveStageAction = async (id: string, dir: -1 | 1) => run((u) => cfg.moveStage(id, dir, u), "/config/etapas");
 export const saveAutomationAction = async (id: string | null, v: AutomationInput) => run((u) => cfg.saveAutomation(id, v, u), "/config/automacoes");
 export const toggleAutomationAction = async (id: string, on: boolean) => run((u) => cfg.toggleAutomation(id, on, u), "/config/automacoes");

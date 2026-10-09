@@ -7,7 +7,7 @@ import { moveDeal } from "@/server/domain/deals";
 import { updateDeal, createManualLead, type DealPatch } from "@/server/domain/updates";
 import { sendFromCrm } from "@/server/domain/send";
 import { db } from "@/server/db";
-import { alerts } from "@/server/db/schema";
+import { alerts, deals } from "@/server/db/schema";
 
 export type ActionResult<T = undefined> = { ok: true; data?: T } | { ok: false; error: string };
 const fail = (e: unknown): { ok: false; error: string } => ({ ok: false, error: e instanceof z.ZodError ? e.issues[0]?.message ?? "Dados inválidos" : e instanceof Error ? e.message : "Algo deu errado. Tente de novo." });
@@ -33,12 +33,14 @@ export async function updateDealAction(dealId: string, patch: DealPatch): Promis
   } catch (e) { return fail(e); }
 }
 
-export async function sendMessageAction(dealId: string, text: string): Promise<ActionResult> {
+export async function sendMessageAction(dealId: string, text: string): Promise<ActionResult<{ waitedSeconds: number | null }>> {
   try {
     const user = await assertUser();
-    await sendFromCrm(z.string().uuid().parse(dealId), text, user.id);
+    const id = z.string().uuid().parse(dealId);
+    const [before] = await db.select({ since: deals.awaitingReplySince }).from(deals).where(eq(deals.id, id));
+    await sendFromCrm(id, text, user.id);
     revalidatePath("/funil"); revalidatePath("/");
-    return { ok: true };
+    return { ok: true, data: { waitedSeconds: before?.since ? Math.round((Date.now() - before.since.getTime()) / 1000) : null } };
   } catch (e) { return fail(e); }
 }
 

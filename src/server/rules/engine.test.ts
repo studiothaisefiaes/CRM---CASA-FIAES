@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
-import { alerts, automations, contacts, deals, stages, users, automationRuns } from "../db/schema";
+import { alerts, automations, contacts, deals, messages, stages, users, automationRuns } from "../db/schema";
 import { recordInbound, recordOutbound, moveDeal } from "../domain/deals";
 import { runRules } from "./engine";
 import { resetDb } from "../../../test/db";
@@ -120,6 +120,21 @@ describe("motor de automações", () => {
     expect((await db.select().from(alerts)).some((a) => a.type === "data_cobranca")).toBe(true);
     await runRules(min(61));
     expect(await stageOf(id)).toBe("atendimento");
+  });
+
+  it("lembrete do agendamento: manda a mensagem com data e hora, sem contar como resposta", async () => {
+    process.env.DEV_TOOLS = "true";
+    const id = await lead();
+    await moveDeal(id, "agendado", null);
+    await db.update(deals).set({ scheduledAt: new Date(T0.getTime() + 20 * 3_600_000), awaitingReplySince: new Date(T0.getTime() - 60_000) }).where(eq(deals.id, id));
+    await db.update(automations).set({ enabled: true }).where(eq(automations.key, "lembrete_agendamento"));
+    const s = await runRules(T0);
+    expect(s.sent).toBe(1);
+    const out = (await db.select().from(messages)).filter((m) => m.direction === "out");
+    expect(out[0].body).toMatch(/Mariana[\s\S]*quarta-feira[\s\S]*06:00/);
+    expect((await db.select().from(deals).where(eq(deals.id, id)))[0].awaitingReplySince).not.toBeNull();
+    await runRules(new Date(T0.getTime() + 60_000));
+    expect((await db.select().from(messages)).filter((m) => m.direction === "out").length).toBe(1);
   });
 
   it("automação desligada não roda e configuração inválida é reportada", async () => {

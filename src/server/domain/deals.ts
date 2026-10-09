@@ -128,6 +128,8 @@ export type OutboundInput = {
   at?: Date;
   /** Mensagem já gravada como "pending" pelo envio do CRM: atualiza em vez de inserir. */
   claimMessageId?: string;
+  /** Enviada por automação (lembrete): não conta como resposta nem move etapa. */
+  automated?: boolean;
 };
 
 /** Mensagem enviada pela Casa (pelo CRM ou pelo celular): conta como resposta e move Lead → Atendimento. */
@@ -159,6 +161,11 @@ export async function recordOutbound(input: OutboundInput) {
         }).onConflictDoNothing().returning({ id: messages.id });
     if (!msg) return { duplicate: true as const, dealId };
 
+    if (input.automated) {
+      await tx.update(deals).set({ lastOutboundAt: at }).where(eq(deals.id, dealId));
+      await logEvent(tx, dealId, "mensagem_enviada", { messageId: msg.id, automatica: true }, null);
+      return { dealId, messageId: msg.id };
+    }
     const responder = input.userId ?? deal.ownerId ?? null;
     if (deal.awaitingReplySince) {
       const waited = Math.max(0, Math.round((at.getTime() - deal.awaitingReplySince.getTime()) / 1000));

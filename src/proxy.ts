@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 // Checagem otimista: só olha se o cookie existe. A verificação real fica na DAL (src/server/auth/session.ts).
-const PUBLIC = ["/login", "/convite", "/api/webhooks", "/api/health"];
+const PUBLIC = ["/login", "/convite", "/api/webhooks", "/api/health", "/manifest.webmanifest"];
 
 export default function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;

@@ -9,9 +9,11 @@ import { actionSchema, conditionSchema, triggerSchema, type Action, type Trigger
 
 export const TZ_OFFSET_MIN = -180; // America/Bahia (UTC-3, sem horário de verão)
 
+type Outbox = { dealId: string; text: string }[];
+
 type Candidate = {
   dealId: string; ownerId: string | null; stageKey: string; stageName: string; contactName: string | null; phone: string;
-  windowKey: string; minutes?: number; days?: number;
+  windowKey: string; minutes?: number; days?: number; since?: string | Date | null;
 };
 
 function localDate(d: Date) { return new Date(d.getTime() + TZ_OFFSET_MIN * 60_000); }
@@ -60,6 +62,11 @@ export async function candidatesFor(trigger: Trigger, now: Date, hours?: Busines
         where d.charge_at is not null and d.charge_at <= ${now.toISOString()}::timestamptz
           and d.charge_at > ${new Date(now.getTime() - 7 * 86_400_000).toISOString()}::timestamptz`;
       break;
+    case "agendamento_em_horas":
+      q = sql`${base}, d.scheduled_at as since ${from}
+        where d.closed_at is null and d.scheduled_at is not null and d.scheduled_at > ${now.toISOString()}::timestamptz
+          and d.scheduled_at <= ${new Date(now.getTime() + trigger.hours * 3_600_000).toISOString()}::timestamptz`;
+      break;
     case "data_recontato":
       q = sql`${base}, d.recontact_at as since ${from}
         where d.recontact_at is not null and d.recontact_at <= ${now.toISOString()}::timestamptz
@@ -96,14 +103,18 @@ const NEXT_FOLLOWUP: Record<string, string | undefined> = {
 };
 
 function render(tpl: string, c: Candidate, stageName: string) {
+  const when = c.since ? new Date(c.since) : null;
+  const tz = { timeZone: "America/Bahia" } as const;
   return tpl
+    .replaceAll("{data}", when ? when.toLocaleDateString("pt-BR", { ...tz, weekday: "long", day: "2-digit", month: "long" }) : "")
+    .replaceAll("{hora}", when ? when.toLocaleTimeString("pt-BR", { ...tz, hour: "2-digit", minute: "2-digit" }) : "")
     .replaceAll("{nome}", c.contactName?.trim() || formatPhone(c.phone))
     .replaceAll("{etapa}", stageName)
     .replaceAll("{minutos}", String(c.minutes ?? 0))
     .replaceAll("{dias}", String(Math.max(1, c.days ?? 0)));
 }
 
-async function execute(tx: Tx, a: Action, c: Candidate, auto: Automation, trigger: Trigger, now: Date, ctx: { stageName: string }) {
+async function execute(tx: Tx, a: Action, c: Candidate, auto: Automation, trigger: Trigger, now: Date, ctx: { stageName: string; outbox: Outbox }) {
   const severity = trigger.type === "sem_resposta_minutos" ? "urgente" : "info";
   const dedupeBase = `${auto.id}:${c.dealId}:${c.windowKey}`;
   switch (a.type) {
@@ -124,6 +135,11 @@ async function execute(tx: Tx, a: Action, c: Candidate, auto: Automation, trigge
       ctx.stageName = s?.name ?? a.stage;
       return "movido";
     }
+    case "enviar_mensagem": {
+      // O envio acontece depois do commit (nunca segurar o lead travado esperando a Evolution).
+      ctx.outbox.push({ dealId: c.dealId, text: render(a.message, c, ctx.stageName) });
+      return "mensagem";
+    }
     case "mover_para_proximo_followup": {
       const next = NEXT_FOLLOWUP[c.stageKey];
       if (!next) return null;
@@ -138,11 +154,12 @@ async function execute(tx: Tx, a: Action, c: Candidate, auto: Automation, trigge
 /** Roda todas as automações ligadas. Idempotente: a mesma janela nunca dispara duas vezes. */
 export async function runRules(now = new Date()) {
   const list = await db.select().from(automations).where(eq(automations.enabled, true));
-  const summary = { automations: list.length, fired: 0, alerts: 0, moved: 0, errors: [] as string[], closed: false };
+  const summary: { automations: number; fired: number; alerts: number; moved: number; sent?: number; errors: string[]; closed: boolean } = { automations: list.length, fired: 0, alerts: 0, moved: 0, errors: [], closed: false };
   const hours = await getBusinessHours();
   // Fora do expediente nada dispara: os avisos e movimentos esperam a Casa abrir.
   if (!isOpen(now.getTime(), hours)) { summary.closed = true; return summary; }
   const touched = new Set<string>();
+  const outbox: Outbox = [];
   for (const auto of list) {
     const trigger = triggerSchema.safeParse(auto.trigger);
     const conds = conditionSchema.array().safeParse(auto.conditions);
@@ -161,18 +178,23 @@ export async function runRules(now = new Date()) {
             .onConflictDoNothing().returning({ id: automationRuns.id });
           if (!run) return;
           summary.fired++;
-          const ctx = { stageName: c.stageName };
+          const ctx = { stageName: c.stageName, outbox: [] as Outbox };
           const results: string[] = [];
           for (const a of acts.data) { const r = await execute(tx, a, c, auto, trigger.data, now, ctx); if (r) results.push(r); }
           summary.alerts += results.filter((r) => r === "alerta").length;
           summary.moved += results.filter((r) => r === "movido").length;
           await tx.update(automationRuns).set({ result: { acoes: results } }).where(eq(automationRuns.id, run.id));
           touched.add(c.dealId);
+          outbox.push(...ctx.outbox);
         });
       } catch (e) {
         summary.errors.push(`${auto.name} / ${c.dealId}: ${e instanceof Error ? e.message : e}`);
       }
     }
+  }
+  for (const m of outbox) {
+    try { const { sendAutomated } = await import("../domain/send"); await sendAutomated(m.dealId, m.text); summary.sent = (summary.sent ?? 0) + 1; }
+    catch (e) { summary.errors.push(`envio automático ${m.dealId}: ${e instanceof Error ? e.message : e}`); }
   }
   if (touched.size) await emit("regras", { deals: [...touched].slice(0, 50) });
   return summary;

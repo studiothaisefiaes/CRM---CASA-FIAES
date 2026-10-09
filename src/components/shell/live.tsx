@@ -1,6 +1,7 @@
 "use client";
 import { createContext, useContext, useEffect, useRef, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import { playAlert } from "./sound";
 
 type LiveEvent = { type: string; dealId?: string; [k: string]: unknown };
 type Listener = (e: LiveEvent) => void;
@@ -21,6 +22,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
         let ev: LiveEvent; try { ev = JSON.parse(m.data); } catch { return; }
         if (ev.type === "conectado") return;
         listeners.current.forEach((l) => l(ev));
+        if (ev.type === "lead_criado") playAlert();
         clearTimeout(timer);
         timer = setTimeout(() => { if (document.visibilityState === "visible") router.refresh(); }, 250);
       };

@@ -72,6 +72,12 @@ export const DEFAULT_AUTOMATIONS: (AutomationInput & { key: string })[] = [
     actions: [{ type: "alertar_responsavel", message: "Hoje é dia de cobrar {nome}" }],
   },
   {
+    key: "lembrete_agendamento", name: "Lembrete do agendamento na véspera", enabled: false,
+    trigger: { type: "agendamento_em_horas", hours: 24 },
+    conditions: [{ type: "etapa_em", stages: ["agendado"] }],
+    actions: [{ type: "enviar_mensagem", message: "Oi, {nome}! Passando para lembrar do seu horário na Casa Fiaes: {data}, às {hora}. Pode confirmar respondendo esta mensagem?" }],
+  },
+  {
     key: "recontato", name: "Dia de recontato", enabled: true,
     trigger: { type: "data_recontato" },
     conditions: [],

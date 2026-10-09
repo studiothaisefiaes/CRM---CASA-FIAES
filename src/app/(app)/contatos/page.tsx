@@ -27,16 +27,27 @@ export default async function ContatosPage({ searchParams }: PageProps<"/contato
         {data.rows.length === 0 ? (
           <div className="rounded-[18px] border border-line bg-paper"><Empty title={q ? "Nada encontrado" : "Nenhum contato ainda"}>{q ? "Tente outro nome ou telefone." : "Os contatos aparecem quando alguém manda mensagem no WhatsApp, ou importando o histórico de clientes."}</Empty></div>
         ) : (
-          <div className="rounded-[18px] border border-line bg-paper overflow-x-auto">
+          <>
+          <ul className="sm:hidden rounded-[18px] border border-line bg-paper divide-y divide-line/70">
+            {data.rows.map((c) => (
+              <li key={c.id}>
+                <Link href={c.lastDealId ? `/funil?lead=${c.lastDealId}` : `/contatos?q=${encodeURIComponent(c.phone)}`} className="flex items-center justify-between gap-3 px-4 py-3 active:bg-paper-2">
+                  <span className="min-w-0"><span className="block font-medium truncate">{c.name ?? "Sem nome"}</span><span className="block text-[12.5px] text-muted tabular">{formatPhoneClient(c.phone)}</span></span>
+                  {c.isClient ? <Badge tone="ok">Cliente</Badge> : <Badge>Lead</Badge>}
+                </Link>
+              </li>
+            ))}
+          </ul>
+          <div className="hidden sm:block rounded-[18px] border border-line bg-paper overflow-x-auto">
             <table className="w-full text-[13.5px] min-w-[720px]">
               <thead><tr className="text-left text-[12px] text-muted border-b border-line">
                 <th className="font-medium px-5 py-3">Nome</th><th className="font-medium px-3">Telefone</th><th className="font-medium px-3">E-mail</th><th className="font-medium px-3">Situação</th><th className="font-medium px-3">Último atendimento</th><th className="font-medium px-3 text-right pr-5">Leads</th>
               </tr></thead>
               <tbody>
                 {data.rows.map((c) => (
-                  <tr key={c.id} className="border-b border-line/70 last:border-0 hover:bg-paper-2/60 transition-colors">
-                    <td className="px-5 py-2.5 font-medium">{c.lastDealId ? <Link href={`/funil?lead=${c.lastDealId}`} className="hover:text-gold-ink">{c.name ?? "Sem nome"}</Link> : (c.name ?? "Sem nome")}</td>
-                    <td className="px-3 tabular text-graphite">{formatPhoneClient(c.phone)}</td>
+                  <tr key={c.id} className="relative border-b border-line/70 last:border-0 hover:bg-paper-2/60 transition-colors">
+                    <td className="px-5 py-2.5 font-medium">{c.lastDealId ? <Link href={`/funil?lead=${c.lastDealId}`} className="hover:text-gold-ink after:absolute after:inset-0">{c.name ?? "Sem nome"}</Link> : (c.name ?? "Sem nome")}</td>
+                    <td className="px-3 tabular text-graphite whitespace-nowrap">{formatPhoneClient(c.phone)}</td>
                     <td className="px-3 text-graphite truncate max-w-[220px]">{c.email ?? "—"}</td>
                     <td className="px-3">{c.isClient ? <Badge tone="ok">Cliente{c.clientSince ? ` desde ${new Date(c.clientSince).getFullYear()}` : ""}</Badge> : <Badge>Lead</Badge>}</td>
                     <td className="px-3 text-graphite">{c.lastServiceAt ? new Date(c.lastServiceAt).toLocaleDateString("pt-BR") : "—"}</td>
@@ -46,6 +57,7 @@ export default async function ContatosPage({ searchParams }: PageProps<"/contato
               </tbody>
             </table>
           </div>
+          </>
         )}
         {pages > 1 && (
           <nav className="flex items-center justify-between mt-4 text-[13px]" aria-label="Páginas">

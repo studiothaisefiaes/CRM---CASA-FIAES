@@ -11,7 +11,7 @@ export async function getMyAlerts(user: SessionUser, limit = 30) {
     .orderBy(desc(alerts.createdAt)).limit(limit);
   return rows.map(({ a, contactName, phone }) => ({
     id: a.id, dealId: a.dealId, type: a.type, severity: a.severity, message: a.message, createdAt: a.createdAt.toISOString(),
-    read: !!a.readAt, contactName, phone,
+    read: !!a.readAt || !!a.resolvedAt, resolved: !!a.resolvedAt, contactName, phone,
   }));
 }
 export type AlertItem = Awaited<ReturnType<typeof getMyAlerts>>[number];

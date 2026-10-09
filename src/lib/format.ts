@@ -9,11 +9,18 @@ export function relTime(iso: string | Date, now = Date.now()) {
   if (a < 86400 * 7) return rtf.format(Math.round(s / 86400), "day");
   return new Date(t).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
 }
+/** Tempo de espera legível: "40 s", "3 min", "1 h 05", "2 d". */
 export function elapsed(fromIso: string, now = Date.now()) {
   const s = Math.max(0, Math.floor((now - new Date(fromIso).getTime()) / 1000));
-  if (s < 3600) return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}`;
-  return `${Math.floor(s / 86400)}d`;
+  if (s < 60) return `${s} s`;
+  if (s < 3600) return `${Math.floor(s / 60)} min`;
+  if (s < 86400) return `${Math.floor(s / 3600)} h ${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}`;
+  return `${Math.floor(s / 86400)} d`;
+}
+export function seconds(s: number) {
+  if (s < 60) return `${s} s`;
+  if (s < 3600) return `${Math.floor(s / 60)} min${s % 60 ? ` ${s % 60} s` : ""}`;
+  return `${Math.floor(s / 3600)} h ${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}`;
 }
 export const money = (cents: number | null | undefined) =>
   cents == null ? "—" : (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: cents % 100 ? 2 : 0 });

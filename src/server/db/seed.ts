@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import type { Db } from "./index";
 import { stages, lists, automations } from "./schema";
 import { DEFAULT_STAGES, DEFAULT_LISTS, DEFAULT_QUICK_REPLIES, DEFAULT_AUTOMATIONS } from "./seed-data";
@@ -13,6 +13,11 @@ export async function seed(db: Db) {
   ];
   await db.insert(lists).values(listRows).onConflictDoNothing();
   await db.insert(automations).values(DEFAULT_AUTOMATIONS.map((a) => ({ ...a }))).onConflictDoNothing({ target: automations.key });
+  // Padrões que mudaram entre versões do sistema: atualiza só as automações que a gestão nunca editou.
+  for (const a of DEFAULT_AUTOMATIONS) {
+    await db.update(automations).set({ name: a.name, trigger: a.trigger, conditions: a.conditions ?? [], actions: a.actions })
+      .where(and(eq(automations.key, a.key), eq(automations.version, 1), isNull(automations.updatedBy)));
+  }
   const [{ n }] = (await db.execute(sql`select count(*)::int as n from stages`)).rows as { n: number }[];
   return { stages: n };
 }

@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
-import { automations, automationVersions, auditLog, channels, lists, stages, users } from "../db/schema";
+import { automations, automationVersions, auditLog, channels, lists, settings, stages, users } from "../db/schema";
 import { automationInputSchema, type AutomationInput } from "../rules/types";
 import { whatsapp } from "../whatsapp/evolution";
 import { createInvite } from "../auth/users";
@@ -30,6 +30,16 @@ export async function moveStage(id: string, dir: -1 | 1, userId: string) {
     await tx.update(stages).set({ position: all[i].position }).where(eq(stages.id, all[j].id));
   });
   await audit(userId, "reordenou", "stage", id, { dir });
+}
+
+/* ---------- Horário de atendimento ---------- */
+const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use HH:MM");
+export const hoursSchema = z.record(z.enum(["0", "1", "2", "3", "4", "5", "6"]), z.union([z.tuple([hhmm, hhmm]), z.null()]))
+  .refine((h) => Object.values(h).every((w) => !w || w[0] < w[1]), "O horário de abrir precisa ser antes do de fechar");
+export async function saveBusinessHours(input: unknown, userId: string) {
+  const v = hoursSchema.parse(input);
+  await db.insert(settings).values({ key: "business_hours", value: v }).onConflictDoUpdate({ target: settings.key, set: { value: v, updatedAt: new Date() } });
+  await audit(userId, "editou", "settings", "business_hours", v as Record<string, unknown>);
 }
 
 /* ---------- Automações (com versões) ---------- */
