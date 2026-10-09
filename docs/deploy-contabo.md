@@ -20,7 +20,11 @@ cp .env.example .env   # gerar segredos novos: openssl rand -hex 32
 #   DEV_TOOLS=false
 # 2. infraestrutura
 docker compose up -d
-# 3. app
+# 3. extensão pg_trgm (busca) — a migração 0008 faz CREATE EXTENSION IF NOT EXISTS pg_trgm.
+#    Desde o PG13 ela é "trusted", mas se o papel da aplicação (crm) não puder criá-la,
+#    crie antes como superusuário (no Docker o POSTGRES_USER `crm` já é), senão db:migrate falha:
+docker compose exec -T db psql -U crm -d crm -c 'CREATE EXTENSION IF NOT EXISTS pg_trgm;'
+# 4. app
 npm ci && npm run db:migrate && npm run db:seed && npm run build
 npm run seed:admin -- --email gestao@<dominio> --name "Gestão"
 pm2 start "npm run start" --name crm-app
