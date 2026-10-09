@@ -15,7 +15,7 @@ type Candidate = {
 
 function localDate(d: Date) { return new Date(d.getTime() + TZ_OFFSET_MIN * 60_000); }
 
-async function candidates(trigger: Trigger, now: Date): Promise<Candidate[]> {
+export async function candidatesFor(trigger: Trigger, now: Date): Promise<Candidate[]> {
   const base = sql`select d.id as "dealId", d.owner_id as "ownerId", s.key as "stageKey", s.name as "stageName",
     c.name as "contactName", c.phone_e164 as phone`;
   const from = sql`from deals d join stages s on s.id = d.stage_id join contacts c on c.id = d.contact_id`;
@@ -123,7 +123,7 @@ export async function runRules(now = new Date()) {
     const conds = conditionSchema.array().safeParse(auto.conditions);
     const acts = actionSchema.array().safeParse(auto.actions);
     if (!trigger.success || !conds.success || !acts.success) { summary.errors.push(`${auto.name}: configuração inválida`); continue; }
-    let cands = await candidates(trigger.data, now);
+    let cands = await candidatesFor(trigger.data, now);
     for (const cond of conds.data) if (cond.type === "etapa_em") cands = cands.filter((c) => cond.stages.includes(c.stageKey));
     for (const c of cands) {
       try {
