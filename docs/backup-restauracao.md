@@ -18,6 +18,8 @@ Variáveis (no `.env` ou no ambiente): `BACKUP_DIR`, `MEDIA_DIR`, `PG_USER` (pad
 
 ## Agendar (Contabo)
 
+Crie antes a pasta do log (senão o cron falha na primeira noite): `mkdir -p ~/backups`.
+
 ```cron
 # crontab -e   (usuário que roda o docker compose, com o projeto em /opt/crm)
 0 3 * * * cd /opt/crm && bash scripts/backup.sh >> $HOME/backups/backup.log 2>&1
@@ -37,16 +39,16 @@ Os dumps contêm dados pessoais de clientes: se o destino for de terceiros, crip
 `scripts/restore.sh <pasta> [--into-db nome] [--dump crm|evolution] [--yes-overwrite-production]`
 
 - Confere o `SHA256SUMS` antes de qualquer coisa; se não bater, nada é restaurado.
-- `crm_test` e `crm_e2e` (bancos dos testes) são sempre recusados.
-- `crm` e `evolution` (produção) só com `--yes-overwrite-production`, e cada dump só vale para o banco de mesmo nome.
-- Qualquer outro nome é criado se não existir (bom para inspecionar um backup sem tocar na produção).
+- Sem a flag, só bancos com prefixo `crm_restore` são aceitos (ex.: `crm_restore_test`, `crm_restore_conferencia`); eles são criados se não existirem. Qualquer outro nome (`crm_test`, `crm_e2e`, etc.) é recusado.
+- `crm` e `evolution` (produção) só com `--yes-overwrite-production`, e cada dump só vale para o banco de mesmo nome. Nesse caso o script **faz um backup de segurança do estado atual (`scripts/backup.sh`) antes** de sobrescrever e aborta, sem tocar no banco, se esse backup falhar.
+- A pasta do backup pode ser relativa ao diretório de onde você chamou o script.
 
 ### Inspecionar um backup sem risco
 
 ```bash
-bash scripts/restore.sh ~/backups/casa-fiaes-crm/2026-10-09_0300 --into-db crm_conferencia
-docker compose exec -T db psql -U crm -d crm_conferencia -c 'select count(*) from deals'
-docker compose exec -T db psql -U crm -d postgres -c 'drop database crm_conferencia'
+bash scripts/restore.sh ~/backups/casa-fiaes-crm/2026-10-09_0300 --into-db crm_restore_conferencia
+docker compose exec -T db psql -U crm -d crm_restore_conferencia -c 'select count(*) from deals'
+docker compose exec -T db psql -U crm -d postgres -c 'drop database crm_restore_conferencia'
 ```
 
 ### Recuperar a produção (desastre ou rollback)
@@ -59,6 +61,8 @@ PASTA=~/backups/casa-fiaes-crm/2026-10-09_0300   # o backup escolhido
 bash scripts/restore.sh "$PASTA" --dump crm --yes-overwrite-production
 bash scripts/restore.sh "$PASTA" --dump evolution --yes-overwrite-production
 ```
+
+Cada `restore.sh --yes-overwrite-production` tira antes um backup de segurança do estado atual (pasta nova em `BACKUP_DIR`), então dá para desfazer a restauração; se esse backup falhar, nada é sobrescrito.
 
 Mídia e sessão do WhatsApp (só se foram perdidas):
 

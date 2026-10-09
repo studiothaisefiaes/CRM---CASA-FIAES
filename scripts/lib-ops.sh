@@ -1,6 +1,7 @@
 # shellcheck shell=bash
 # Funções comuns de backup/restauração. Não executar direto: é carregado por backup.sh, restore.sh e restore-test.sh.
 
+export ORIG_PWD="$PWD"  # diretorio de onde o script foi chamado (caminhos relativos valem a partir dele)
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_DIR" || exit 1
 
@@ -23,10 +24,6 @@ BACKUP_DIR="$(env_get BACKUP_DIR "$HOME/backups/casa-fiaes-crm")"
 MEDIA_DIR="$(env_get MEDIA_DIR "$REPO_DIR/data/media")"
 case "$MEDIA_DIR" in /*) ;; *) MEDIA_DIR="$REPO_DIR/$MEDIA_DIR" ;; esac
 
-# Bancos que nunca recebem restauração (dev/testes automatizados e sistema).
-never_restore_db() {
-  case "$1" in crm_test | crm_e2e | postgres | template0 | template1) return 0 ;; *) return 1 ;; esac
-}
 # Bancos reais: só com --yes-overwrite-production.
 is_production_db() {
   case "$1" in crm | evolution) return 0 ;; *) return 1 ;; esac

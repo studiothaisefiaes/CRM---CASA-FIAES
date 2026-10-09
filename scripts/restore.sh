@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Restaura um dump de uma pasta de backup em um banco do Postgres do docker compose.
 #   restore.sh <pasta> [--into-db nome] [--dump crm|evolution] [--yes-overwrite-production]
-# Sem --into-db o destino é o banco de produção "crm", que exige --yes-overwrite-production.
-# Nunca restaura em crm_test / crm_e2e. Mídia e volume da Evolution: veja docs/backup-restauracao.md.
+# Sem --into-db o destino é o banco de produção "crm", que exige --yes-overwrite-production
+# (e gera antes um backup de segurança com scripts/backup.sh).
+# Sem a flag só restaura em bancos crm_restore*; nunca em crm_test / crm_e2e. Mídia e volume da Evolution: veja docs/backup-restauracao.md.
 set -euo pipefail
 umask 077
 
@@ -23,14 +24,17 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ -n "$folder" ] || usage
-[ -d "$folder" ] || die "pasta de backup não encontrada: $folder"
+# Caminho relativo vale a partir de onde o usuário chamou (a lib faz cd para a raiz do repo).
+folder="$(cd "$ORIG_PWD" && cd "$folder" 2>/dev/null && pwd)" || die "pasta de backup não encontrada"
 case "$which" in crm | evolution) ;; *) die "--dump deve ser crm ou evolution" ;; esac
 into="${into:-$which}"
 [[ "$into" =~ ^[a-z][a-z0-9_]{0,62}$ ]] || die "nome de banco inválido: $into"
 
-never_restore_db "$into" && die "recusado: $into nunca recebe restauração"
-if is_production_db "$into" && [ "$overwrite" -ne 1 ]; then
-  die "recusado: $into é banco de produção. Use --yes-overwrite-production (pare o app e o worker antes)"
+# Lista branca: sem a flag só entram bancos temporários crm_restore*; crm/evolution só com a flag; o resto é recusado.
+if is_production_db "$into"; then
+  [ "$overwrite" -eq 1 ] || die "recusado: $into é banco de produção. Use --yes-overwrite-production (pare o app e o worker antes)"
+elif [[ ! "$into" =~ ^crm_restore[a-z0-9_]*$ ]]; then
+  die "recusado: $into não é permitido. Sem a flag só vale crm_restore* (ex.: crm_restore_test, crm_restore_conferencia)"
 fi
 if is_production_db "$into" && [ "$into" != "$which" ]; then
   die "recusado: não restaura o dump de $which no banco $into"
@@ -52,6 +56,12 @@ elif is_production_db "$into"; then
   log "ATENÇÃO: sobrescrevendo $into (produção)"
 else
   log "banco $into já existe: limpando objetos antes de restaurar"
+fi
+
+if is_production_db "$into"; then
+  # Snapshot do estado atual antes de sobrescrever; se falhar, aborta sem tocar no banco.
+  log "backup de segurança do estado atual antes de sobrescrever $into"
+  bash "$REPO_DIR/scripts/backup.sh" >&2 || die "backup de segurança falhou: nada foi restaurado"
 fi
 
 log "pg_restore de $which.dump em $into"

@@ -18,8 +18,8 @@ module.exports = {
     {
       name: "crm-worker",
       cwd,
-      script: "node_modules/tsx/dist/cli.mjs",
-      args: "worker/index.ts",
+      script: "worker/index.ts",
+      interpreter: `${cwd}/node_modules/.bin/tsx`,
       env: { NODE_ENV: "production" },
       max_memory_restart: "512M",
       autorestart: true,

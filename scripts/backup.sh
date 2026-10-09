@@ -32,7 +32,12 @@ done
 
 if [ -d "$MEDIA_DIR" ]; then
   log "mídia: $MEDIA_DIR"
-  tar czf "$work/media.tgz" -C "$MEDIA_DIR" .
+  # tar sai com 1 quando um arquivo muda durante a leitura (app no ar): só aviso; >= 2 é falha.
+  if tar czf "$work/media.tgz" -C "$MEDIA_DIR" .; then :; else
+    rc=$?
+    [ "$rc" -eq 1 ] || die "tar da mídia falhou (código $rc)"
+    log "aviso: arquivos da mídia mudaram durante a cópia (normal com o app no ar)"
+  fi
 else
   log "pasta de mídia inexistente ($MEDIA_DIR): media.tgz vazio"
   empty="$(mktemp -d)"

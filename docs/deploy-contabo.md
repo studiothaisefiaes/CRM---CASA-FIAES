@@ -23,7 +23,7 @@ Primeira instalação, na ordem:
    - `WEBHOOK_PUBLIC_URL=http://host.docker.internal:3000` (a Evolution chama o app pela rede do Docker)
    - `DEV_TOOLS=false`
    - `TRUSTED_PROXY_HOPS=1` (o Caddy fica na frente; sem isso o rate limit usa o IP errado. Em dev local, `0`)
-   - `BACKUP_DIR=/var/backups/casa-fiaes-crm` (fora do repositório)
+   - `BACKUP_DIR` pode ficar sem definir: o padrão é `$HOME/backups/casa-fiaes-crm` (fora do repositório, sem precisar de root). Se definir, use caminho absoluto, sem `$VAR`
 2. **Infraestrutura.** `docker compose up -d`
 3. **Extensão `pg_trgm` (busca).** A migração 0008 faz `CREATE EXTENSION IF NOT EXISTS pg_trgm`. Desde o PG13 ela é "trusted", mas se o papel da aplicação não puder criá-la, crie antes como superusuário (no Docker o `POSTGRES_USER` `crm` já é), senão `db:migrate` falha:
    ```bash
@@ -39,13 +39,14 @@ Primeira instalação, na ordem:
    pm2 start deploy/ecosystem.config.cjs
    pm2 save && pm2 startup
    ```
+   Smoke test do worker no VPS: `pm2 logs crm-worker --lines 30` sem erro de inicialização e, em até 1 minuto, `worker.ok: true` no `/api/health` (o heartbeat é gravado a cada minuto). Se o `tsx` não subir sob o pm2, o equivalente é `script: "worker/index.ts", interpreter: "node", interpreter_args: "--import tsx"`.
 6. **Caddy.** Copiar `deploy/Caddyfile.example` para `/etc/caddy/Caddyfile`, trocar o domínio e `sudo systemctl reload caddy`. O `flush_interval -1` é necessário para o tempo real (SSE). No DNS do domínio: registro **A** `crm` → IP do VPS.
 7. **Checagem de saúde.**
    ```bash
    curl -s https://crm.<dominio>/api/health
    ```
    Esperado: HTTP 200 e `"status":"ok"` com `db: true`, `worker.ok: true` e cada número do WhatsApp em `whatsapp`. `degraded` (200) significa worker parado ou número desconectado; `down` (503) é banco fora. Cadastrar um monitor externo (UptimeRobot ou similar) nessa URL.
-8. **Backup diário.** Agendar o `scripts/backup.sh` e rodar `bash scripts/restore-test.sh` uma vez para provar que a restauração funciona (ver `docs/backup-restauracao.md`).
+8. **Backup diário.** Criar a pasta do log (`mkdir -p ~/backups`), agendar o `scripts/backup.sh` no cron (ver `docs/backup-restauracao.md`) e rodar `bash scripts/restore-test.sh` uma vez para provar que a restauração funciona (ver `docs/backup-restauracao.md`).
 9. **Conectar os números do WhatsApp** (QR code) pela tela de canais.
 
 ## Atualizar (cada versão)
@@ -76,7 +77,7 @@ Se a versão nova falhar na checagem de saúde ou se comportar mal:
    pm2 reload crm-web crm-worker
    curl -s https://crm.<dominio>/api/health
    ```
-2. **Só se os dados foram corrompidos** (migração ou script que alterou dados): restaurar o backup feito antes da atualização, com o app parado. Atenção: tudo que entrou depois desse backup (mensagens, leads) é perdido.
+2. **Só se os dados foram corrompidos** (migração ou script que alterou dados): restaurar o backup feito antes da atualização, com o app parado. O `restore.sh` tira sozinho um backup de segurança do estado atual antes de sobrescrever. Atenção: tudo que entrou depois desse backup (mensagens, leads) é perdido.
    ```bash
    pm2 stop crm-web crm-worker
    bash scripts/restore.sh ~/backups/casa-fiaes-crm/<pasta do backup> --dump crm --yes-overwrite-production
