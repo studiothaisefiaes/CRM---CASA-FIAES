@@ -1,10 +1,11 @@
 "use client";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { DndContext, DragOverlay, PointerSensor, TouchSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import type { BoardCard, BoardStage } from "@/server/queries/board";
 import { DealCard } from "./deal-card";
+import { useNow } from "./timer";
 import { moveDealAction } from "@/app/(app)/funil/actions";
 import { useToast } from "@/components/ui/toast";
 import { StageDialogs, type PendingMove } from "./stage-dialogs";
@@ -15,7 +16,8 @@ type ListOpt = { id: string; label: string };
 
 export function Board({ stages, lostReasons }: { stages: BoardStage[]; lostReasons: ListOpt[] }) {
   const [board, setBoard] = useState(stages);
-  useEffect(() => setBoard(stages), [stages]);
+  const [prevStages, setPrevStages] = useState(stages);
+  if (stages !== prevStages) { setPrevStages(stages); setBoard(stages); }
   const [activeId, setActiveId] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingMove | null>(null);
   const [, start] = useTransition();
@@ -76,7 +78,8 @@ export function Board({ stages, lostReasons }: { stages: BoardStage[]; lostReaso
 
 function Column({ stage, activeId, filtersQs }: { stage: BoardStage; activeId: string | null; filtersQs: string }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage.id });
-  const late = stage.cards.filter((c) => c.awaitingReplySince && stage.slaMinutes && Date.now() - new Date(c.awaitingReplySince).getTime() >= stage.slaMinutes * 60_000).length;
+  const now = useNow();
+  const late = stage.cards.filter((c) => c.awaitingReplySince && stage.slaMinutes && now - new Date(c.awaitingReplySince).getTime() >= stage.slaMinutes * 60_000).length;
   return (
     <section ref={setNodeRef} aria-label={`${stage.name}, ${stage.cards.length} leads`}
       className={cn("snap-start shrink-0 w-[288px] flex flex-col rounded-[16px] transition-colors duration-200", isOver ? "bg-gold-soft/70 ring-1 ring-gold/40" : "bg-paper-2")}>
@@ -86,7 +89,7 @@ function Column({ stage, activeId, filtersQs }: { stage: BoardStage; activeId: s
           <h2 className="text-[13px] font-semibold">{stage.name}</h2>
           <span className="text-[12px] text-muted tabular">{stage.cards.length}</span>
         </div>
-        {late > 0 && <span className="text-[11px] font-semibold text-alert bg-alert-soft rounded-[6px] px-1.5 h-5 grid place-items-center">{late} atrasado{late > 1 ? "s" : ""}</span>}
+        {late > 0 && <span suppressHydrationWarning className="text-[11px] font-semibold text-alert bg-alert-soft rounded-[6px] px-1.5 h-5 grid place-items-center">{late} atrasado{late > 1 ? "s" : ""}</span>}
       </header>
       <div className="flex-1 overflow-y-auto scroll-thin px-2 pb-2 flex flex-col gap-2 min-h-24">
         <AnimatePresence initial={false}>

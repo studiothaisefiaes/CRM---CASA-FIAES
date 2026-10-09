@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 import { IconBell } from "@/components/icons";
@@ -14,9 +14,11 @@ export function AlertsBell({ alerts }: { alerts: AlertItem[] }) {
   const [, start] = useTransition();
   const seen = useRef<Set<string> | null>(null);
   const unread = alerts.filter((a) => !a.read);
-  const [notifPerm, setNotifPerm] = useState<NotificationPermission | "unsupported">("default");
-
-  useEffect(() => { setNotifPerm(typeof Notification === "undefined" ? "unsupported" : Notification.permission); }, []);
+  const [permTick, setPermTick] = useState(0);
+  const notifPerm = useSyncExternalStore(
+    (cb) => { window.addEventListener("focus", cb); return () => window.removeEventListener("focus", cb); },
+    () => (typeof Notification === "undefined" ? "unsupported" : Notification.permission) + "", () => "unsupported");
+  void permTick;
   useEffect(() => {
     if (!seen.current) { seen.current = new Set(alerts.map((a) => a.id)); return; }
     const fresh = alerts.filter((a) => !seen.current!.has(a.id) && !a.read);
@@ -53,7 +55,7 @@ export function AlertsBell({ alerts }: { alerts: AlertItem[] }) {
                 {unread.length > 0 && <button className="text-[12.5px] text-gold-ink hover:underline" onClick={() => start(async () => { await markAlertsReadAction(unread.map((a) => a.id)); })}>Marcar como lidos</button>}
               </div>
               {notifPerm === "default" && (
-                <button className="w-full text-left px-4 py-2.5 text-[12.5px] bg-gold-soft text-gold-ink" onClick={async () => setNotifPerm(await Notification.requestPermission())}>
+                <button className="w-full text-left px-4 py-2.5 text-[12.5px] bg-gold-soft text-gold-ink" onClick={async () => { await Notification.requestPermission(); setPermTick((t) => t + 1); }}>
                   Ativar notificações do navegador para não perder nenhum lead
                 </button>
               )}

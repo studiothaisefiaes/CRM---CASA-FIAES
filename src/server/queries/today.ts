@@ -31,5 +31,7 @@ export async function getToday(user: SessionUser) {
            ${user.role === "gestor" ? sql`` : sql`and a.user_id = ${user.id}`}) as atrasos
       from deals d where ${scope}`),
   ]);
-  return { waiting, scheduled, followups, birthdays, dues, counts: counts.rows[0] as { novos: number; abertos: number; atrasos: number } };
+  const now = Date.now();
+  const late = waiting.filter((w) => w.slaMinutes && w.at && now - new Date(w.at).getTime() >= w.slaMinutes * 60_000).length;
+  return { waiting, scheduled, followups, birthdays, dues, late, counts: counts.rows[0] as { novos: number; abertos: number; atrasos: number } };
 }

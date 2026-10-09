@@ -17,7 +17,7 @@ export default async function HojePage({ searchParams }: PageProps<"/">) {
   const user = await requireUser();
   const t = await getToday(user);
   const sp = await searchParams;
-  const late = t.waiting.filter((w) => w.slaMinutes && w.at && Date.now() - new Date(w.at).getTime() >= w.slaMinutes * 60_000).length;
+  const late = t.late;
   const date = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long", timeZone: "America/Bahia" });
   const stats = [
     { label: "Esperando resposta", value: t.waiting.length, tone: late ? "text-alert" : "text-ink", note: late ? `${late} atrasado${late > 1 ? "s" : ""}` : "nenhum atrasado" },

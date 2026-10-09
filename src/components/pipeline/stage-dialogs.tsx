@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/field";
@@ -16,11 +16,14 @@ export function StageDialogs({ pending, lostReasons, onCancel, onConfirm }: {
   const kind = pending?.to.kind;
   const [when, setWhen] = useState(""); const [reason, setReason] = useState(""); const [recontact, setRecontact] = useState("");
   const [value, setValue] = useState(""); const [pay, setPay] = useState(""); const [err, setErr] = useState<string | null>(null);
-  useEffect(() => {
-    if (!pending) return;
-    const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(10, 0, 0, 0);
-    setWhen(localInput(d)); setReason(""); setRecontact(""); setValue(""); setPay(""); setErr(null);
-  }, [pending]);
+  const [prevPending, setPrevPending] = useState(pending);
+  if (pending !== prevPending) {
+    setPrevPending(pending);
+    if (pending) {
+      const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(10, 0, 0, 0);
+      setWhen(localInput(d)); setReason(""); setRecontact(""); setValue(""); setPay(""); setErr(null);
+    }
+  }
 
   const confirm = () => {
     if (kind === "agendado") {

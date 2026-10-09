@@ -17,13 +17,12 @@ const KIND_LABEL: Record<string, string> = { image: "Foto", video: "Vídeo", doc
 export function Conversation({ messages }: { messages: Msg[] }) {
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => { end.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [messages.length]);
-  let lastDay = "";
   return (
     <div className="flex-1 overflow-y-auto scroll-thin px-4 py-4 flex flex-col gap-1.5 bg-[radial-gradient(circle_at_1px_1px,rgb(18_18_18/0.035)_1px,transparent_0)] [background-size:18px_18px]">
       {messages.length === 0 && <p className="m-auto text-center text-muted text-[13px] max-w-[30ch]">Nenhuma mensagem ainda. A conversa aparece aqui assim que o cliente escrever.</p>}
       <AnimatePresence initial={false}>
-        {messages.map((m) => {
-          const day = dayLabel(m.createdAt); const showDay = day !== lastDay; lastDay = day;
+        {messages.map((m, idx) => {
+          const day = dayLabel(m.createdAt); const showDay = idx === 0 || dayLabel(messages[idx - 1].createdAt) !== day;
           const out = m.direction === "out";
           return (
             <motion.div key={m.id} layout="position" initial={{ opacity: 0, y: 10, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={SPRING} className="flex flex-col">

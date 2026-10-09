@@ -29,7 +29,7 @@ export function Toolbar({ people, origins }: { people: { id: string; name: strin
         <option value="">Todas as origens</option>{origins.map((o) => <option key={o} value={o}>{o}</option>)}
       </select>
       <Button onClick={() => setOpen(true)} size="sm" className="h-9"><IconPlus size={16} />Novo lead</Button>
-      <NewLeadDialog open={open} onClose={() => setOpen(false)} />
+      <NewLeadDialog key={open ? "aberto" : "fechado"} open={open} onClose={() => setOpen(false)} />
     </div>
   );
 }
@@ -37,7 +37,6 @@ export function Toolbar({ people, origins }: { people: { id: string; name: strin
 function NewLeadDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [phone, setPhone] = useState(""); const [name, setName] = useState(""); const [err, setErr] = useState<string | null>(null);
   const [pending, start] = useTransition(); const router = useRouter(); const toast = useToast();
-  useEffect(() => { if (open) { setPhone(""); setName(""); setErr(null); } }, [open]);
   const submit = () => start(async () => {
     const r = await createLeadAction({ phone, name });
     if (!r.ok) return setErr(r.error);

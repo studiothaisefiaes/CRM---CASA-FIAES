@@ -5,7 +5,7 @@ import { elapsed } from "@/lib/format";
 /** Relógio compartilhado: um único setInterval para todos os cronômetros da tela. */
 const subs = new Set<(n: number) => void>();
 let iv: ReturnType<typeof setInterval> | null = null;
-function useNow() {
+export function useNow() {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     subs.add(setNow);

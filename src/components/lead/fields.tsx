@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useTransition, type ReactNode } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { updateDealAction } from "@/app/(app)/funil/actions";
 import { useToast } from "@/components/ui/toast";
@@ -17,7 +17,8 @@ export function AutoField({ dealId, name, label, value, kind = "text", options, 
   const [err, setErr] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const toast = useToast();
-  useEffect(() => setV(value), [value]);
+  const [prevValue, setPrevValue] = useState(value);
+  if (value !== prevValue) { setPrevValue(value); setV(value); }
 
   const save = (next = v) => {
     if (next === value) return;

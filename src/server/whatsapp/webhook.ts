@@ -12,17 +12,25 @@ export function checkSecret(received: string | null, expected: string) {
   return timingSafeEqual(a, b);
 }
 
-type EvoKey = { remoteJid?: string; fromMe?: boolean; id?: string; remoteJidAlt?: string };
-type EvoMessageData = {
-  key?: EvoKey; pushName?: string | null; message?: Record<string, any> | null; messageType?: string;
-  messageTimestamp?: number; contextInfo?: Record<string, any> | null;
+type CtxInfo = { externalAdReply?: object; conversionSource?: string; ctwaClid?: string };
+type DocMsg = { caption?: string; fileName?: string };
+/** Só os campos do Baileys que o CRM usa. */
+export type BaileysMessage = {
+  conversation?: string; extendedTextMessage?: { text?: string; contextInfo?: CtxInfo };
+  imageMessage?: { caption?: string }; videoMessage?: { caption?: string }; audioMessage?: object; stickerMessage?: object;
+  documentMessage?: DocMsg; documentWithCaptionMessage?: { message?: { documentMessage?: DocMsg } };
+  locationMessage?: object; contactMessage?: { displayName?: string };
+  reactionMessage?: object; protocolMessage?: object; senderKeyDistributionMessage?: object;
 };
-export type EvoPayload = { event?: string; instance?: string; data?: any; date_time?: string };
+type EvoKey = { remoteJid?: string; fromMe?: boolean; id?: string; remoteJidAlt?: string };
+type EvoMessageData = { key?: EvoKey; pushName?: string | null; message?: BaileysMessage | null; messageType?: string; messageTimestamp?: number; contextInfo?: CtxInfo | null };
+type EvoConnectionData = { state?: string; wuid?: string };
+export type EvoPayload = { event?: string; instance?: string; data?: EvoMessageData & EvoConnectionData; date_time?: string };
 
 /** Extrai tipo e texto de uma mensagem do WhatsApp (Baileys). */
-export function parseContent(m: Record<string, any> | null | undefined): { kind: string; body: string | null } | null {
+export function parseContent(m: BaileysMessage | null | undefined): { kind: string; body: string | null } | null {
   if (!m) return null;
-  if (m.reactionMessage || m.protocolMessage || m.senderKeyDistributionMessage && Object.keys(m).length === 1) return null;
+  if (m.reactionMessage || m.protocolMessage || (m.senderKeyDistributionMessage && Object.keys(m).length === 1)) return null;
   if (typeof m.conversation === "string") return { kind: "text", body: m.conversation };
   if (m.extendedTextMessage?.text) return { kind: "text", body: m.extendedTextMessage.text };
   if (m.imageMessage) return { kind: "image", body: m.imageMessage.caption ?? null };
