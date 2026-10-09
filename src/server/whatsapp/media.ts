@@ -14,6 +14,19 @@ const extFor = (mime: string | null) => (mime && EXT[mime.split(";")[0].trim()])
 const AUTO_KINDS = ["image", "audio", "sticker"];
 const MAX_ATTEMPTS = 3;
 
+/** fileName do documento no nó do WhatsApp (direto ou dentro de documentWithCaptionMessage/ephemeralMessage…). */
+function originalFileName(node: unknown, depth = 0): string | null {
+  if (!node || typeof node !== "object" || depth > 4) return null;
+  const doc = (node as { documentMessage?: { fileName?: unknown } }).documentMessage;
+  if (typeof doc?.fileName === "string" && doc.fileName.trim()) return doc.fileName;
+  for (const v of Object.values(node)) {
+    const inner = v && typeof v === "object" ? (v as { message?: unknown }).message : null;
+    const found = originalFileName(inner, depth + 1);
+    if (found) return found;
+  }
+  return null;
+}
+
 async function save(name: string, data: Buffer) {
   const dir = mediaDir();
   await mkdir(dir, { recursive: true });
@@ -27,8 +40,9 @@ export async function ensureMedia(messageId: string): Promise<{ file: string; mi
     .leftJoin(channels, eq(channels.id, messages.channelId)).where(eq(messages.id, messageId));
   if (!row) return null;
   const m = row.m;
-  // Nome para o download: o do documento (vem no corpo) ou o do arquivo salvo.
-  const nameFor = (saved: string) => (m.kind === "document" && m.body) || saved;
+  // Nome para o download: o nome original do documento, senão a legenda, senão o do arquivo salvo.
+  // A extensão certa (pelo tipo detectado) é garantida em mediaHeaders.
+  const nameFor = (saved: string) => (m.kind === "document" && (originalFileName(m.media?.message) || m.body)) || saved;
   if (m.mediaPath) return { file: path.join(mediaDir(), m.mediaPath), mime: m.mediaMime ?? "application/octet-stream", name: nameFor(m.mediaPath) };
   if (!m.media) return null;
   // Canal removido/desconectado: tenta por qualquer número conectado (a chave da mídia é o que importa).

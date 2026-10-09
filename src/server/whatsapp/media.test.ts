@@ -7,6 +7,7 @@ import { NextRequest } from "next/server";
 import { channels, contacts, messages, users } from "../db/schema";
 import { insertSession } from "../auth/sessions-store";
 import { GET as getMedia } from "../../app/api/media/[id]/route";
+import { GET as getAvatar } from "../../app/api/avatar/[id]/route";
 import { ingestEvolution } from "./webhook";
 import { setWhatsappProvider } from "./evolution";
 import { downloadPendingMedia, ensureMedia, refreshAvatars } from "./media";
@@ -104,5 +105,59 @@ describe("mídia do WhatsApp", () => {
     const res = await getMedia(new NextRequest(`http://localhost/api/media/${m.id}`, { headers: { cookie: `cf_session=${token}` } }), { params: Promise.resolve({ id: m.id }) });
     expect(res.headers.get("content-type")).toBe("application/octet-stream");
     expect(res.headers.get("content-disposition")).toMatch(/^attachment/);
+  });
+
+  const session = async (email: string) => {
+    const [u] = await db.insert(users).values({ name: "Ana", email, role: "atendente", passwordHash: "x" }).returning();
+    return `cf_session=${(await insertSession(u.id)).token}`;
+  };
+  const doc = (id: string, documentMessage: Record<string, unknown>, wrapped: boolean) => ({ event: "messages.upsert", instance: "rec", data: {
+    key: { remoteJid: "5571999812244@s.whatsapp.net", fromMe: false, id }, pushName: "Mariana",
+    message: wrapped ? { documentWithCaptionMessage: { message: { documentMessage } } } : { documentMessage },
+    messageType: wrapped ? "documentWithCaptionMessage" : "documentMessage", messageTimestamp: Math.floor(Date.now() / 1000) } });
+  const PDF = Buffer.from("%PDF-1.7\n%âãÏÓ\n1 0 obj");
+  const servePdf = async (payload: ReturnType<typeof doc>, email: string) => {
+    await ingestEvolution(payload);
+    setWhatsappProvider(fake({ downloadMedia: async () => ({ base64: PDF.toString("base64"), mimetype: "application/pdf", fileName: null }) }));
+    const [m] = await db.select().from(messages);
+    const res = await getMedia(new NextRequest(`http://localhost/api/media/${m.id}`, { headers: { cookie: await session(email) } }), { params: Promise.resolve({ id: m.id }) });
+    expect(res.headers.get("content-type")).toBe("application/pdf");
+    return res.headers.get("content-disposition");
+  };
+
+  it("PDF com legenda baixa com o nome original do arquivo", async () => {
+    const cd = await servePdf(doc("DOC1", { caption: "segue o orçamento", fileName: "orcamento-maio.pdf", mimetype: "application/pdf" }, true), "d1@t.local");
+    expect(cd).toBe('attachment; filename="orcamento-maio.pdf"');
+  });
+
+  it("PDF com legenda e sem nome de arquivo ganha a extensão .pdf", async () => {
+    const cd = await servePdf(doc("DOC2", { caption: "segue o orcamento", mimetype: "application/pdf" }, false), "d2@t.local");
+    expect(cd).toBe('attachment; filename="segue o orcamento.pdf"');
+  });
+
+  it("avatar com conteúdo <svg> sai como download binário", async () => {
+    await ingestEvolution(photo("IMG6"));
+    const [c] = await db.select().from(contacts);
+    const { writeFileSync } = await import("node:fs");
+    writeFileSync(path.join(DIR, `avatar-${c.id}.jpg`), '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>');
+    await db.update(contacts).set({ avatarPath: `avatar-${c.id}.jpg` });
+    const res = await getAvatar(new NextRequest(`http://localhost/api/avatar/${c.id}`, { headers: { cookie: await session("av@t.local") } }), { params: Promise.resolve({ id: c.id }) });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("application/octet-stream");
+    expect(res.headers.get("content-disposition")).toMatch(/^attachment; filename="/);
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(res.headers.get("content-security-policy")).toBe("sandbox");
+  });
+
+  it("avatar JPEG real abre inline como imagem", async () => {
+    await ingestEvolution(photo("IMG7"));
+    const [c] = await db.select().from(contacts);
+    const { writeFileSync } = await import("node:fs");
+    writeFileSync(path.join(DIR, `avatar-${c.id}.jpg`), JPEG);
+    await db.update(contacts).set({ avatarPath: `avatar-${c.id}.jpg` });
+    const res = await getAvatar(new NextRequest(`http://localhost/api/avatar/${c.id}`, { headers: { cookie: await session("av2@t.local") } }), { params: Promise.resolve({ id: c.id }) });
+    expect(res.headers.get("content-type")).toBe("image/jpeg");
+    expect(res.headers.get("content-disposition")).toMatch(/^inline/);
+    expect(res.headers.get("cache-control")).toBe("private, max-age=86400");
   });
 });

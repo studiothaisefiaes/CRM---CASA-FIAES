@@ -26,6 +26,17 @@ describe("sniffMime", () => {
     expect(sniffMime(b())).toBeNull();
     expect(sniffMime(b(0xff))).toBeNull();
   });
+  it("BOM de UTF-16/UTF-8 antes de <html> não passa por MP3", () => {
+    const u16le = (x: string) => new Uint8Array([0xff, 0xfe, ...[...x].flatMap((c) => [c.charCodeAt(0), 0])]);
+    const u16be = (x: string) => new Uint8Array([0xfe, 0xff, ...[...x].flatMap((c) => [0, c.charCodeAt(0)])]);
+    expect(sniffMime(u16le("<html><script>alert(1)</script>"))).toBeNull();
+    expect(sniffMime(u16be("<html><script>alert(1)</script>"))).toBeNull();
+    expect(sniffMime(new Uint8Array([0xef, 0xbb, 0xbf, ...t("<html>")]))).toBeNull();
+    expect(sniffMime(b(0xff, 0xff, 0x3c, 0x00))).toBeNull();
+    // MPEG-2 Layer III continua aceito; AAC (ADTS, layer 00) não é MP3.
+    expect(sniffMime(b(0xff, 0xf3, 0x40, 0x00))).toBe("audio/mpeg");
+    expect(sniffMime(b(0xff, 0xf1, 0x50, 0x80))).toBeNull();
+  });
 });
 describe("mediaHeaders", () => {
   it("tipo seguro abre inline com nosniff e sandbox", () => {
@@ -51,6 +62,15 @@ describe("mediaHeaders", () => {
     expect(h["content-type"]).toBe("application/octet-stream");
     expect(h["content-disposition"]).toBe('attachment; filename="x.html"');
     expect(h["x-content-type-options"]).toBe("nosniff");
+  });
+  it("nome sem a extensão do tipo detectado ganha a extensão", () => {
+    expect(mediaHeaders("application/pdf", "segue o orcamento")["content-disposition"]).toBe('attachment; filename="segue o orcamento.pdf"');
+    expect(mediaHeaders("application/pdf", "Orcamento.PDF")["content-disposition"]).toBe('attachment; filename="Orcamento.PDF"');
+    expect(mediaHeaders("image/jpeg", "foto.jpeg")["content-disposition"]).toBe('inline; filename="foto.jpeg"');
+    expect(mediaHeaders("application/pdf", "")["content-disposition"]).toBe('attachment; filename="arquivo.pdf"');
+    // corte em 80 preserva a extensão
+    expect(mediaHeaders("application/pdf", "b".repeat(200))["content-disposition"]).toBe(`attachment; filename="${"b".repeat(76)}.pdf"`);
+    expect(mediaHeaders("application/pdf", "c".repeat(200) + ".pdf")["content-disposition"]).toBe(`attachment; filename="${"c".repeat(76)}.pdf"`);
   });
   it("nome longo é cortado em 80 caracteres e acento não quebra o cabeçalho", () => {
     const longo = mediaHeaders(null, "a".repeat(200) + ".pdf")["content-disposition"];
