@@ -22,7 +22,7 @@ export function AutoField({ dealId, name, label, value, kind = "text", options, 
   if (value !== prevValue) { setPrevValue(value); setV(value); }
 
   const save = (next = v) => {
-    if (next === value) return;
+    if (next === value) { setErr(null); return; }
     let payload: unknown = next;
     if (kind === "datetime") payload = next ? new Date(next).toISOString() : null;
     if (kind === "date") payload = next ? new Date(next + "T10:00").toISOString() : null;
@@ -54,17 +54,17 @@ export function AutoField({ dealId, name, label, value, kind = "text", options, 
         </AnimatePresence>
       </span>
       {kind === "textarea" ? (
-        <textarea value={v} placeholder={placeholder} rows={3} onChange={(e) => setV(e.target.value)} onBlur={() => save()} className={`${cls} resize-y leading-relaxed`} />
+        <textarea aria-invalid={err ? true : undefined} value={v} placeholder={placeholder} rows={3} onChange={(e) => setV(e.target.value)} onBlur={() => save()} className={`${cls} resize-y leading-relaxed`} />
       ) : kind === "select" ? (
-        <select value={v} onChange={(e) => { setV(e.target.value); save(e.target.value); }} className={`${cls} appearance-none cursor-pointer`}>
+        <select aria-invalid={err ? true : undefined} value={v} onChange={(e) => { setV(e.target.value); save(e.target.value); }} className={`${cls} appearance-none cursor-pointer`}>
           <option value="">—</option>{options?.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
       ) : (
-        <input value={v} placeholder={placeholder} type={kind === "datetime" ? "datetime-local" : kind === "date" ? "date" : kind === "email" ? "email" : "text"}
+        <input aria-invalid={err ? true : undefined} value={v} placeholder={placeholder} type={kind === "datetime" ? "datetime-local" : kind === "date" ? "date" : kind === "email" ? "email" : "text"}
           inputMode={kind === "money" ? "decimal" : undefined} onChange={(e) => setV(e.target.value)} onBlur={() => save()}
           onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} className={cls} />
       )}
-      {err && <span className="block text-xs text-alert mt-0.5">{err}</span>}
+      {err && <span role="alert" className="block text-xs text-alert mt-0.5">{err}</span>}
     </label>
   );
 }

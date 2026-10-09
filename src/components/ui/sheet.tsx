@@ -5,6 +5,7 @@ import { SPRING } from "@/lib/motion";
 import { cn } from "@/lib/cn";
 import { IconClose } from "@/components/icons";
 import { IconButton } from "@/components/ui/icon-button";
+import { isTop, popModal, pushModal } from "@/components/ui/modal-stack";
 
 const FOCUSABLE = "a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex='-1'])";
 
@@ -20,16 +21,25 @@ export function Sheet({ open, onClose, title, labelledBy, side = "right", initia
   const onCloseRef = useRef(onClose);
   useEffect(() => { onCloseRef.current = onClose; });
 
+  // Quem abriu: capturado só na abertura (e devolvido ao fechar), não a cada render.
   useEffect(() => {
     if (!open) return;
     const prev = document.activeElement as HTMLElement | null;
+    return () => { prev?.focus?.(); };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const id = pushModal();
     const t = setTimeout(() => {
+      if (!isTop(id)) return;
       const all = [...(ref.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [])];
       const first = initialFocusRef?.current ?? all.find((el) => !el.hasAttribute("data-close")) ?? all[0];
       first?.focus();
     }, 30);
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !e.defaultPrevented) { e.preventDefault(); onCloseRef.current(); }
+      if (!isTop(id)) return; // há um diálogo por cima: ele cuida de Tab e Esc
+      if (e.key === "Escape" && !e.defaultPrevented) { e.preventDefault(); e.stopImmediatePropagation(); onCloseRef.current(); }
       if (e.key === "Tab" && ref.current) {
         const f = [...ref.current.querySelectorAll<HTMLElement>(FOCUSABLE)];
         if (!f.length) { e.preventDefault(); return; }
@@ -40,7 +50,7 @@ export function Sheet({ open, onClose, title, labelledBy, side = "right", initia
       }
     };
     document.addEventListener("keydown", onKey);
-    return () => { clearTimeout(t); document.removeEventListener("keydown", onKey); prev?.focus?.(); };
+    return () => { clearTimeout(t); document.removeEventListener("keydown", onKey); popModal(id); };
   }, [open, initialFocusRef]);
 
   const right = side === "right";

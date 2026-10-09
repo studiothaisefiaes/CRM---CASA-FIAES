@@ -13,7 +13,7 @@
   --color-muted: #6f6a62; /* 5:1 sobre o papel (WCAG AA) */
   --color-line: #e4e1db;
   --color-line-strong: #d3cfc7;
-  --color-control: #948e83; /* borda de campos: 3,25:1 sobre o papel (WCAG 1.4.11; testado em tokens.test.ts) */
+  --color-control: #948e83; /* borda de campos: 3,20:1 sobre o papel (WCAG 1.4.11; testado em tokens.test.ts) */
   --color-gold: #b8863f;
   --color-gold-ink: #7a5524;
   --color-gold-soft: #f3e9d8;

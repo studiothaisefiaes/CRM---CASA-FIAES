@@ -3,28 +3,40 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { SPRING } from "@/lib/motion";
 import { IconClose } from "@/components/icons";
+import { isTop, popModal, pushModal } from "@/components/ui/modal-stack";
 
 /** Diálogo modal: foco preso, Esc fecha, ação primária à direita. */
 export function Dialog({ open, onClose, title, description, children, footer, width = 440 }: {
   open: boolean; onClose: () => void; title: string; description?: ReactNode; children?: ReactNode; footer?: ReactNode; width?: number;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; });
+  // Quem abriu: capturado só na abertura (e devolvido ao fechar), não a cada render.
   useEffect(() => {
     if (!open) return;
     const prev = document.activeElement as HTMLElement | null;
-    const t = setTimeout(() => ref.current?.querySelector<HTMLElement>("input,select,textarea,button:not([data-close])")?.focus(), 30);
+    return () => { prev?.focus?.(); };
+  }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    const id = pushModal();
+    const t = setTimeout(() => { if (isTop(id)) ref.current?.querySelector<HTMLElement>("input,select,textarea,button:not([data-close])")?.focus(); }, 30);
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (!isTop(id)) return;
+      if (e.key === "Escape") { e.preventDefault(); e.stopImmediatePropagation(); onCloseRef.current(); }
       if (e.key === "Tab" && ref.current) {
         const f = [...ref.current.querySelectorAll<HTMLElement>("a,button,input,select,textarea,[tabindex]:not([tabindex='-1'])")].filter((x) => !x.hasAttribute("disabled"));
         if (!f.length) return;
-        if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
-        else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+        const a = document.activeElement;
+        if (!ref.current.contains(a)) { e.preventDefault(); f[0].focus(); }
+        else if (e.shiftKey && a === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
+        else if (!e.shiftKey && a === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
       }
     };
     document.addEventListener("keydown", onKey);
-    return () => { clearTimeout(t); document.removeEventListener("keydown", onKey); prev?.focus?.(); };
-  }, [open, onClose]);
+    return () => { clearTimeout(t); document.removeEventListener("keydown", onKey); popModal(id); };
+  }, [open]);
   return (
     <AnimatePresence>
       {open && (
