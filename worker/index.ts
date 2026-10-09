@@ -4,7 +4,8 @@ import { PgBoss } from "pg-boss";
 import { runRules } from "../src/server/rules/engine";
 import { processHistoryEvents, purgeOldWebhookEvents, retryFailedWebhooks } from "../src/server/whatsapp/webhook";
 import { purgeExpiredSessions } from "../src/server/auth/sessions-store";
-import { pool } from "../src/server/db";
+import { pool, db } from "../src/server/db";
+import { settings } from "../src/server/db/schema";
 import { downloadPendingMedia, refreshAvatars } from "../src/server/whatsapp/media";
 import { checkConnections } from "../src/server/whatsapp/watchdog";
 
@@ -40,11 +41,20 @@ async function main() {
   });
   await boss.work(QUEUES.cleanup, async () => { await purgeExpiredSessions(); await purgeOldWebhookEvents(); });
 
+  // Batida do worker: o /api/health lê daqui para saber se as automações estão rodando.
+  const beat = async () => {
+    const now = new Date();
+    await db.insert(settings).values({ key: "worker_heartbeat", value: now.toISOString() })
+      .onConflictDoUpdate({ target: settings.key, set: { value: now.toISOString(), updatedAt: now } });
+  };
+  await beat().catch((e) => console.error("[batida do worker]", e));
+  const beatTimer = setInterval(() => { beat().catch((e) => console.error("[batida do worker]", e)); }, 60_000);
+
   // Primeira rodada imediata (sem esperar o próximo minuto cheio).
   await boss.send(QUEUES.rules, {});
   console.log("Worker do CRM rodando. Automações a cada minuto.");
 
-  const stop = async () => { console.log("Encerrando worker…"); await boss.stop({ graceful: true, timeout: 10_000 }); await pool.end(); process.exit(0); };
+  const stop = async () => { console.log("Encerrando worker…"); clearInterval(beatTimer); await boss.stop({ graceful: true, timeout: 10_000 }); await pool.end(); process.exit(0); };
   process.on("SIGINT", stop); process.on("SIGTERM", stop);
 }
 main().catch((e) => { console.error(e); process.exit(1); });

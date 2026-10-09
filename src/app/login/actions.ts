@@ -5,6 +5,7 @@ import { z } from "zod";
 import { checkCredentials } from "@/server/auth/users";
 import { createSession, destroySession } from "@/server/auth/session";
 import { allow, resetLimit } from "@/server/auth/rate-limit";
+import { clientIp } from "@/server/auth/client-ip";
 
 /** Só aceita voltar para uma página do próprio CRM (bloqueia //, /\\ e URLs externas). */
 function safeReturn(voltar?: string) {
@@ -24,7 +25,7 @@ export async function login(_: LoginState, form: FormData): Promise<LoginState> 
   const parsed = schema.safeParse(Object.fromEntries(form));
   const email = String(form.get("email") ?? "");
   if (!parsed.success) return { error: "Preencha um e-mail válido e a senha.", email };
-  const ip = (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
+  const ip = clientIp(await headers());
   const key = `${ip}:${parsed.data.email.toLowerCase()}`;
   if (!allow(`ip:${ip}`, 30) || !allow(key)) return { error: "Muitas tentativas. Espere alguns minutos e tente de novo.", email };
   const user = await checkCredentials(parsed.data.email, parsed.data.password);

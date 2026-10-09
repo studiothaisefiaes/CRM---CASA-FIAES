@@ -1,6 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { env } from "@/server/env";
+import { allow } from "@/server/auth/rate-limit";
 import { checkSecret, ingestEvolution, type EvoPayload } from "@/server/whatsapp/webhook";
+
+export const WEBHOOK_MAX_PER_MIN = 600;
 
 export async function POST(req: NextRequest) {
   if (!checkSecret(req.headers.get("x-webhook-secret"), env().WEBHOOK_SECRET)) {
@@ -11,6 +14,10 @@ export async function POST(req: NextRequest) {
   // O histórico chega em lotes de até ~5 mil mensagens; acima disso é algo errado.
   if (len > 100_000_000) return NextResponse.json({ error: "payload grande demais" }, { status: 413 });
   try { payload = (await req.json()) as EvoPayload; } catch { return NextResponse.json({ error: "json inválido" }, { status: 400 }); }
+  // Limite por instância (em memória): acima de 600 req/min responde 429 e a Evolution reenvia depois.
+  if (!allow(`webhook:${payload.instance ?? "?"}`, WEBHOOK_MAX_PER_MIN, 60_000)) {
+    return NextResponse.json({ error: "muitas requisições" }, { status: 429, headers: { "retry-after": "30" } });
+  }
   try {
     const r = await ingestEvolution(payload);
     return NextResponse.json(r);

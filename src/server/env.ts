@@ -12,6 +12,8 @@ const schema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   /** Onde ficam fotos, áudios e figurinhas baixados do WhatsApp (entra no backup). */
   MEDIA_DIR: z.string().optional(),
+  /** Quantos proxies confiáveis (Caddy) ficam na frente do app: 1 em produção, 0 em dev. Define de onde sai o IP no rate limit. */
+  TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).default(1),
 });
 
 export type Env = z.infer<typeof schema>;
