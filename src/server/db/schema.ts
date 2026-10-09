@@ -123,7 +123,7 @@ export const messages = pgTable("messages", {
   error: text("error"),
   createdAt: createdAt(),
 }, (t) => [
-  uniqueIndex("messages_external_uq").on(t.channelId, t.externalId),
+  uniqueIndex("messages_external_uq").on(sql`coalesce(${t.channelId}::text, '')`, t.externalId).where(sql`${t.externalId} is not null`),
   index("messages_deal_idx").on(t.dealId, t.createdAt),
 ]);
 

@@ -1,0 +1,2 @@
+DROP INDEX "messages_external_uq";--> statement-breakpoint
+CREATE UNIQUE INDEX "messages_external_uq" ON "messages" USING btree (coalesce("channel_id"::text, ''),"external_id") WHERE "messages"."external_id" is not null;
