@@ -1,0 +1,31 @@
+import type { SVGProps } from "react";
+type P = SVGProps<SVGSVGElement> & { size?: number };
+const I = ({ size = 18, children, ...p }: P & { children: React.ReactNode }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden {...p}>{children}</svg>
+);
+export const IconToday = (p: P) => <I {...p}><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></I>;
+export const IconFunnel = (p: P) => <I {...p}><rect x="3.5" y="4" width="4.5" height="16" rx="1.5" /><rect x="9.75" y="4" width="4.5" height="11" rx="1.5" /><rect x="16" y="4" width="4.5" height="7" rx="1.5" /></I>;
+export const IconContacts = (p: P) => <I {...p}><circle cx="9" cy="8.5" r="3.5" /><path d="M3 19.5c.8-3.2 3.2-5 6-5s5.2 1.8 6 5" /><path d="M16 5.5a3.2 3.2 0 0 1 0 6M18 14.8c1.6.6 2.6 2 3 4.7" /></I>;
+export const IconChart = (p: P) => <I {...p}><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></I>;
+export const IconSettings = (p: P) => <I {...p}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></I>;
+export const IconBell = (p: P) => <I {...p}><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0" /></I>;
+export const IconSearch = (p: P) => <I {...p}><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></I>;
+export const IconPlus = (p: P) => <I {...p}><path d="M12 5v14M5 12h14" /></I>;
+export const IconClose = (p: P) => <I {...p}><path d="M6 6l12 12M18 6 6 18" /></I>;
+export const IconSend = (p: P) => <I {...p}><path d="M4 12 20 4l-6 16-3-7-7-1z" /></I>;
+export const IconPhone = (p: P) => <I {...p}><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2" /></I>;
+export const IconMail = (p: P) => <I {...p}><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" /></I>;
+export const IconInstagram = (p: P) => <I {...p}><rect x="3" y="3" width="18" height="18" rx="5" /><circle cx="12" cy="12" r="4" /><circle cx="17.5" cy="6.5" r=".8" fill="currentColor" /></I>;
+export const IconWhatsApp = (p: P) => <I {...p}><path d="M4 20l1.3-3.8A8 8 0 1 1 8 19z" /><path d="M9 9.5c0 3 2.5 5.5 5.5 5.5l1-1.5-2-1-1 1a4 4 0 0 1-2-2l1-1-1-2z" /></I>;
+export const IconLogout = (p: P) => <I {...p}><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 16l-4-4 4-4M6 12h10" /></I>;
+export const IconClock = (p: P) => <I {...p}><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></I>;
+export const IconMic = (p: P) => <I {...p}><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></I>;
+export const IconCheck = (p: P) => <I {...p}><path d="m5 12.5 4.5 4.5L19 7" /></I>;
+export const IconArrowRight = (p: P) => <I {...p}><path d="M5 12h14M13 6l6 6-6 6" /></I>;
+export const IconCake = (p: P) => <I {...p}><path d="M4 21h16v-7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2zM4 16c2 1.5 4 1.5 6 0s4-1.5 6 0 3 1 4 0M12 12V8M12 5.5c.8-.8.8-1.7 0-2.5-.8.8-.8 1.7 0 2.5" /></I>;
+export const IconMoney = (p: P) => <I {...p}><rect x="3" y="6" width="18" height="12" rx="2" /><circle cx="12" cy="12" r="2.5" /><path d="M7 9.5v5M17 9.5v5" /></I>;
+export const IconCalendar = (p: P) => <I {...p}><rect x="3.5" y="5" width="17" height="15" rx="2" /><path d="M8 3v4M16 3v4M3.5 10h17" /></I>;
+export const IconUpload = (p: P) => <I {...p}><path d="M12 15V4M7 9l5-5 5 5M4 20h16" /></I>;
+export const IconDownload = (p: P) => <I {...p}><path d="M12 4v11M7 10l5 5 5-5M4 20h16" /></I>;
+export const IconRefresh = (p: P) => <I {...p}><path d="M20 11a8 8 0 0 0-14.6-4.5L4 8M4 4v4h4M4 13a8 8 0 0 0 14.6 4.5L20 16M20 20v-4h-4" /></I>;
+export const IconBolt = (p: P) => <I {...p}><path d="M13 3 5 13h6l-1 8 8-10h-6z" /></I>;
