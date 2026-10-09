@@ -1,0 +1,151 @@
+import { eq, sql } from "drizzle-orm";
+import { db, type Tx } from "../db";
+import { alerts, automationRuns, automations, stages, type Automation } from "../db/schema";
+import { formatPhone } from "../domain/phone";
+import { logEvent, emit } from "../domain/events";
+import { moveDealTx } from "../domain/deals";
+import { actionSchema, conditionSchema, triggerSchema, type Action, type Trigger } from "./types";
+
+export const TZ_OFFSET_MIN = -180; // America/Bahia (UTC-3, sem horário de verão)
+
+type Candidate = {
+  dealId: string; ownerId: string | null; stageKey: string; stageName: string; contactName: string | null; phone: string;
+  windowKey: string; minutes?: number; days?: number;
+};
+
+function localDate(d: Date) { return new Date(d.getTime() + TZ_OFFSET_MIN * 60_000); }
+
+async function candidates(trigger: Trigger, now: Date): Promise<Candidate[]> {
+  const base = sql`select d.id as "dealId", d.owner_id as "ownerId", s.key as "stageKey", s.name as "stageName",
+    c.name as "contactName", c.phone_e164 as phone`;
+  const from = sql`from deals d join stages s on s.id = d.stage_id join contacts c on c.id = d.contact_id`;
+  let q;
+  switch (trigger.type) {
+    case "sem_resposta_minutos":
+      q = sql`${base}, d.awaiting_reply_since as since ${from}
+        where d.closed_at is null and d.awaiting_reply_since is not null
+          and d.awaiting_reply_since <= ${new Date(now.getTime() - trigger.minutes * 60_000).toISOString()}::timestamptz`;
+      break;
+    case "parado_dias":
+      q = sql`${base}, d.stage_entered_at as since ${from}
+        where d.closed_at is null and d.stage_entered_at <= ${new Date(now.getTime() - trigger.days * 86_400_000).toISOString()}::timestamptz`;
+      break;
+    case "sem_retorno_cliente_dias":
+      q = sql`${base}, d.stage_entered_at as since ${from}
+        where d.closed_at is null and d.awaiting_reply_since is null and d.last_outbound_at is not null
+          and (d.last_inbound_at is null or d.last_inbound_at < d.last_outbound_at)
+          and d.last_outbound_at <= ${new Date(now.getTime() - trigger.days * 86_400_000).toISOString()}::timestamptz
+          and d.stage_entered_at <= ${new Date(now.getTime() - trigger.days * 86_400_000).toISOString()}::timestamptz`;
+      break;
+    case "aniversario_em_dias": {
+      const target = localDate(new Date(now.getTime() + trigger.days * 86_400_000));
+      q = sql`${base}, null as since ${from}
+        where c.birth_month = ${target.getUTCMonth() + 1} and c.birth_day = ${target.getUTCDate()}
+          and d.id = (select d2.id from deals d2 where d2.contact_id = c.id order by d2.closed_at nulls first, d2.created_at desc limit 1)`;
+      break;
+    }
+    case "data_cobranca":
+      q = sql`${base}, d.charge_at as since ${from}
+        where d.charge_at is not null and d.charge_at <= ${now.toISOString()}::timestamptz
+          and d.charge_at > ${new Date(now.getTime() - 7 * 86_400_000).toISOString()}::timestamptz`;
+      break;
+    case "data_recontato":
+      q = sql`${base}, d.recontact_at as since ${from}
+        where d.recontact_at is not null and d.recontact_at <= ${now.toISOString()}::timestamptz
+          and d.recontact_at > ${new Date(now.getTime() - 7 * 86_400_000).toISOString()}::timestamptz`;
+      break;
+  }
+  const rows = (await db.execute(q)).rows as (Omit<Candidate, "windowKey"> & { since: string | Date | null })[];
+  return rows.map((r) => {
+    const since = r.since ? new Date(r.since) : null;
+    const elapsedMin = since ? Math.floor((now.getTime() - since.getTime()) / 60_000) : 0;
+    let windowKey = "";
+    if (trigger.type === "sem_resposta_minutos") windowKey = `espera:${since!.toISOString()}`;
+    else if (trigger.type === "parado_dias") windowKey = `etapa:${r.stageKey}:${since!.toISOString()}:${Math.floor(elapsedMin / (trigger.days * 1440))}`;
+    else if (trigger.type === "sem_retorno_cliente_dias") windowKey = `silencio:${r.stageKey}:${since!.toISOString()}`;
+    else if (trigger.type === "aniversario_em_dias") windowKey = `aniversario:${localDate(now).getUTCFullYear()}`;
+    else windowKey = `${trigger.type}:${since!.toISOString()}`;
+    return { ...r, windowKey, minutes: elapsedMin, days: Math.floor(elapsedMin / 1440) };
+  });
+}
+
+const NEXT_FOLLOWUP: Record<string, string | undefined> = {
+  atendimento: "followup_1", followup_1: "followup_2", followup_2: "followup_3", followup_3: "followup_4",
+};
+
+function render(tpl: string, c: Candidate, stageName: string) {
+  return tpl
+    .replaceAll("{nome}", c.contactName?.trim() || formatPhone(c.phone))
+    .replaceAll("{etapa}", stageName)
+    .replaceAll("{minutos}", String(c.minutes ?? 0))
+    .replaceAll("{dias}", String(Math.max(1, c.days ?? 0)));
+}
+
+async function execute(tx: Tx, a: Action, c: Candidate, auto: Automation, trigger: Trigger, now: Date, ctx: { stageName: string }) {
+  const severity = trigger.type === "sem_resposta_minutos" ? "urgente" : "info";
+  const dedupeBase = `${auto.id}:${c.dealId}:${c.windowKey}`;
+  switch (a.type) {
+    case "alertar_responsavel":
+    case "alertar_gestao": {
+      const audience = a.type === "alertar_gestao" || !c.ownerId ? "gestao" : "responsavel";
+      const message = render(a.message, c, ctx.stageName);
+      const [row] = await tx.insert(alerts).values({
+        dealId: c.dealId, userId: audience === "responsavel" ? c.ownerId : null, audience, type: trigger.type, severity, message,
+        dedupeKey: `${dedupeBase}:${a.type}`, createdAt: now,
+      }).onConflictDoNothing().returning({ id: alerts.id });
+      if (row) await logEvent(tx, c.dealId, "alerta", { alertId: row.id, tipo: trigger.type, mensagem: message, para: audience }, c.ownerId);
+      return row ? "alerta" : null;
+    }
+    case "mover_para_etapa": {
+      await moveDealTx(tx, c.dealId, a.stage, null, `automacao:${auto.key ?? auto.id}`, now);
+      const [s] = await tx.select({ name: stages.name }).from(stages).where(eq(stages.key, a.stage));
+      ctx.stageName = s?.name ?? a.stage;
+      return "movido";
+    }
+    case "mover_para_proximo_followup": {
+      const next = NEXT_FOLLOWUP[c.stageKey];
+      if (!next) return null;
+      await moveDealTx(tx, c.dealId, next, null, `automacao:${auto.key ?? auto.id}`, now);
+      const [s] = await tx.select({ name: stages.name }).from(stages).where(eq(stages.key, next));
+      ctx.stageName = s?.name ?? next;
+      return "movido";
+    }
+  }
+}
+
+/** Roda todas as automações ligadas. Idempotente: a mesma janela nunca dispara duas vezes. */
+export async function runRules(now = new Date()) {
+  const list = await db.select().from(automations).where(eq(automations.enabled, true));
+  const summary = { automations: list.length, fired: 0, alerts: 0, moved: 0, errors: [] as string[] };
+  const touched = new Set<string>();
+  for (const auto of list) {
+    const trigger = triggerSchema.safeParse(auto.trigger);
+    const conds = conditionSchema.array().safeParse(auto.conditions);
+    const acts = actionSchema.array().safeParse(auto.actions);
+    if (!trigger.success || !conds.success || !acts.success) { summary.errors.push(`${auto.name}: configuração inválida`); continue; }
+    let cands = await candidates(trigger.data, now);
+    for (const cond of conds.data) if (cond.type === "etapa_em") cands = cands.filter((c) => cond.stages.includes(c.stageKey));
+    for (const c of cands) {
+      try {
+        await db.transaction(async (tx) => {
+          const [run] = await tx.insert(automationRuns).values({ automationId: auto.id, dealId: c.dealId, windowKey: c.windowKey, createdAt: now })
+            .onConflictDoNothing().returning({ id: automationRuns.id });
+          if (!run) return;
+          summary.fired++;
+          const ctx = { stageName: c.stageName };
+          const results: string[] = [];
+          for (const a of acts.data) { const r = await execute(tx, a, c, auto, trigger.data, now, ctx); if (r) results.push(r); }
+          summary.alerts += results.filter((r) => r === "alerta").length;
+          summary.moved += results.filter((r) => r === "movido").length;
+          await tx.update(automationRuns).set({ result: { acoes: results } }).where(eq(automationRuns.id, run.id));
+          touched.add(c.dealId);
+        });
+      } catch (e) {
+        summary.errors.push(`${auto.name} / ${c.dealId}: ${e instanceof Error ? e.message : e}`);
+      }
+    }
+  }
+  if (touched.size) await emit("regras", { deals: [...touched].slice(0, 50) });
+  return summary;
+}
+
