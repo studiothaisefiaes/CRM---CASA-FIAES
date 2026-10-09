@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { findSessionUser } from "@/server/auth/sessions-store";
 import { ensureMedia, readMediaFile } from "@/server/whatsapp/media";
+import { mediaHeaders, sniffMime } from "@/server/security/sniff";
 
 // Foto/áudio/figurinha de uma mensagem. Só para quem está logado; arquivo fica no disco do servidor.
 export async function GET(req: NextRequest, ctx: RouteContext<"/api/media/[id]">) {
@@ -11,5 +12,7 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/media/[id]">
   const f = await ensureMedia(id);
   if (!f) return new Response("mídia indisponível", { status: 404 });
   const data = await readMediaFile(f.file);
-  return new Response(new Uint8Array(data), { headers: { "content-type": f.mime, "cache-control": "private, max-age=31536000, immutable", "content-length": String(data.length) } });
+  // Tipo pelos bytes também na hora de servir (arquivos antigos foram gravados com o mimetype declarado).
+  const headers = mediaHeaders(sniffMime(data.subarray(0, 32)), f.name);
+  return new Response(new Uint8Array(data), { headers: { ...headers, "content-length": String(data.length) } });
 }

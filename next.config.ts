@@ -9,6 +9,19 @@ const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR || ".next",
   serverExternalPackages: ["pg", "pg-boss", "@node-rs/argon2"],
   experimental: { serverActions: { bodySizeLimit: "16mb" } },
+  // A CSP (com nonce por requisição) fica no src/proxy.ts; aqui só o que vale igual para tudo.
+  async headers() {
+    return [{
+      source: "/:path*",
+      headers: [
+        { key: "X-Content-Type-Options", value: "nosniff" },
+        { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+        { key: "X-Frame-Options", value: "DENY" },
+        // Microfone liberado só para o próprio CRM gravar áudio.
+        { key: "Permissions-Policy", value: "camera=(), microphone=(self), geolocation=()" },
+      ],
+    }];
+  },
   turbopack: {
     rules: {
       "*.css": {

@@ -5,9 +5,10 @@ import { db } from "../db";
 import { channels, contacts, deals, messages } from "../db/schema";
 import { env } from "../env";
 import { whatsapp } from "./evolution";
+import { sniffMime } from "../security/sniff";
 
 export const mediaDir = () => env().MEDIA_DIR || path.join(process.cwd(), "data", "media");
-const EXT: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif", "audio/ogg": "ogg", "audio/mpeg": "mp3", "audio/mp4": "m4a", "video/mp4": "mp4", "application/pdf": "pdf" };
+const EXT: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif", "audio/ogg": "ogg", "audio/mpeg": "mp3", "audio/mp4": "m4a", "video/mp4": "mp4", "video/webm": "webm", "application/pdf": "pdf" };
 const extFor = (mime: string | null) => (mime && EXT[mime.split(";")[0].trim()]) || "bin";
 /** Baixado automaticamente; vídeo e documento só quando alguém abre. */
 const AUTO_KINDS = ["image", "audio", "sticker"];
@@ -21,12 +22,14 @@ async function save(name: string, data: Buffer) {
 }
 
 /** Garante o arquivo da mídia no disco (baixa pela Evolution se preciso). */
-export async function ensureMedia(messageId: string): Promise<{ file: string; mime: string } | null> {
+export async function ensureMedia(messageId: string): Promise<{ file: string; mime: string; name: string } | null> {
   const [row] = await db.select({ m: messages, instance: channels.instanceName, chStatus: channels.status }).from(messages)
     .leftJoin(channels, eq(channels.id, messages.channelId)).where(eq(messages.id, messageId));
   if (!row) return null;
   const m = row.m;
-  if (m.mediaPath) return { file: path.join(mediaDir(), m.mediaPath), mime: m.mediaMime ?? "application/octet-stream" };
+  // Nome para o download: o do documento (vem no corpo) ou o do arquivo salvo.
+  const nameFor = (saved: string) => (m.kind === "document" && m.body) || saved;
+  if (m.mediaPath) return { file: path.join(mediaDir(), m.mediaPath), mime: m.mediaMime ?? "application/octet-stream", name: nameFor(m.mediaPath) };
   if (!m.media) return null;
   // Canal removido/desconectado: tenta por qualquer número conectado (a chave da mídia é o que importa).
   const instance = row.chStatus === "conectado" ? row.instance
@@ -35,10 +38,12 @@ export async function ensureMedia(messageId: string): Promise<{ file: string; mi
   if (!instance || !p.downloadMedia) return null;
   try {
     const r = await p.downloadMedia(instance, m.media);
-    const mime = (r.mimetype ?? "application/octet-stream").split(";")[0].trim();
-    const name = await save(`${m.id}.${extFor(mime)}`, Buffer.from(r.base64, "base64"));
+    const buf = Buffer.from(r.base64, "base64");
+    // O tipo vem dos bytes; o mimetype declarado pela Evolution/remetente não é confiável.
+    const mime = sniffMime(buf.subarray(0, 32)) ?? "application/octet-stream";
+    const name = await save(`${m.id}.${extFor(mime)}`, buf);
     await db.update(messages).set({ mediaPath: name, mediaMime: mime }).where(eq(messages.id, m.id));
-    return { file: path.join(mediaDir(), name), mime };
+    return { file: path.join(mediaDir(), name), mime, name: nameFor(name) };
   } catch (e) {
     await db.update(messages).set({ mediaAttempts: sql`${messages.mediaAttempts} + 1` }).where(eq(messages.id, m.id));
     console.error("[mídia] não baixou", m.id, e instanceof Error ? e.message : e);

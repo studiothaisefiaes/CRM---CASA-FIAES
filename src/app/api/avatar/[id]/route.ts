@@ -5,6 +5,7 @@ import { findSessionUser } from "@/server/auth/sessions-store";
 import { db } from "@/server/db";
 import { contacts } from "@/server/db/schema";
 import { mediaDir, readMediaFile } from "@/server/whatsapp/media";
+import { mediaHeaders, sniffMime } from "@/server/security/sniff";
 
 // Foto de perfil do WhatsApp do contato (baixada pelo worker).
 export async function GET(req: NextRequest, ctx: RouteContext<"/api/avatar/[id]">) {
@@ -16,5 +17,9 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/avatar/[id]"
   if (!c?.p) return new Response("sem foto", { status: 404 });
   const data = await readMediaFile(path.join(mediaDir(), c.p)).catch(() => null);
   if (!data) return new Response("sem foto", { status: 404 });
-  return new Response(new Uint8Array(data), { headers: { "content-type": "image/jpeg", "cache-control": "private, max-age=86400", "content-length": String(data.length) } });
+  // Foto de perfil só pode ser imagem; o resto vira download binário.
+  const sniffed = sniffMime(data.subarray(0, 32));
+  const headers = mediaHeaders(sniffed?.startsWith("image/") ? sniffed : null, c.p);
+  // A foto troca na mesma URL (o worker revisa a cada 7 dias): cache de 1 dia, sem immutable.
+  return new Response(new Uint8Array(data), { headers: { ...headers, "cache-control": "private, max-age=86400", "content-length": String(data.length) } });
 }

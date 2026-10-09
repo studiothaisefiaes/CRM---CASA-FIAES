@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { headers } from "next/headers";
 import { Inter, Newsreader } from "next/font/google";
 import "./globals.css";
 import { AppMotion } from "@/components/shell/motion-config";
@@ -18,7 +19,9 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = { themeColor: "#fdfdfc" };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  // Ler os cabeçalhos deixa a renderização dinâmica: o Next aplica o nonce da CSP (src/proxy.ts) nos scripts.
+  await headers();
   return (
     <html lang="pt-BR" className={`${inter.variable} ${newsreader.variable} h-full antialiased`}>
       <body className="min-h-full"><AppMotion>{children}</AppMotion></body>

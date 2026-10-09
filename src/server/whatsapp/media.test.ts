@@ -3,12 +3,16 @@ import { mkdtempSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { db } from "../db";
-import { channels, contacts, messages } from "../db/schema";
+import { NextRequest } from "next/server";
+import { channels, contacts, messages, users } from "../db/schema";
+import { insertSession } from "../auth/sessions-store";
+import { GET as getMedia } from "../../app/api/media/[id]/route";
 import { ingestEvolution } from "./webhook";
 import { setWhatsappProvider } from "./evolution";
 import { downloadPendingMedia, ensureMedia, refreshAvatars } from "./media";
 import { resetDb } from "../../../test/db";
 
+const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01]);
 const DIR = mkdtempSync(path.join(tmpdir(), "cf-media-"));
 process.env.MEDIA_DIR = DIR;
 
@@ -36,12 +40,13 @@ describe("mídia do WhatsApp", () => {
     expect(m.media?.key.id).toBe("IMG1");
 
     let asked: unknown = null;
-    setWhatsappProvider(fake({ downloadMedia: async (_i: string, node: unknown) => { asked = node; return { base64: Buffer.from("JPEGDATA").toString("base64"), mimetype: "image/jpeg", fileName: null }; } }));
+    setWhatsappProvider(fake({ downloadMedia: async (_i: string, node: unknown) => { asked = node; return { base64: JPEG.toString("base64"), mimetype: "image/jpeg", fileName: null }; } }));
     expect(await downloadPendingMedia()).toEqual({ tried: 1, ok: 1 });
     expect((asked as { message: { imageMessage: unknown } }).message.imageMessage).toBeTruthy();
     const [after] = await db.select().from(messages);
     expect(after.mediaMime).toBe("image/jpeg");
-    expect(readFileSync(path.join(DIR, after.mediaPath!)).toString()).toBe("JPEGDATA");
+    expect(after.mediaPath).toMatch(/\.jpg$/);
+    expect(readFileSync(path.join(DIR, after.mediaPath!)).equals(JPEG)).toBe(true);
     // já baixado: não pede de novo
     expect(await downloadPendingMedia()).toEqual({ tried: 0, ok: 0 });
   });
@@ -66,5 +71,38 @@ describe("mídia do WhatsApp", () => {
     server.close();
     const [c] = await db.select().from(contacts);
     expect(existsSync(path.join(DIR, c.avatarPath!))).toBe(true);
+  });
+
+  it("mimetype declarado image/jpeg com conteúdo <svg> é gravado como binário e servido só como download", async () => {
+    await ingestEvolution(photo("IMG4"));
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>';
+    setWhatsappProvider(fake({ downloadMedia: async () => ({ base64: Buffer.from(svg).toString("base64"), mimetype: "image/jpeg", fileName: null }) }));
+    expect(await downloadPendingMedia()).toEqual({ tried: 1, ok: 1 });
+    const [m] = await db.select().from(messages);
+    expect(m.mediaMime).toBe("application/octet-stream");
+    expect(m.mediaPath).toMatch(/\.bin$/);
+
+    const [u] = await db.insert(users).values({ name: "Ana", email: "ana@t.local", role: "atendente", passwordHash: "x" }).returning();
+    const { token } = await insertSession(u.id);
+    const req = new NextRequest(`http://localhost/api/media/${m.id}`, { headers: { cookie: `cf_session=${token}` } });
+    const res = await getMedia(req, { params: Promise.resolve({ id: m.id }) });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("application/octet-stream");
+    expect(res.headers.get("content-disposition")).toMatch(/^attachment; filename="/);
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(res.headers.get("content-security-policy")).toBe("sandbox");
+  });
+
+  it("arquivo legado gravado com o mimetype declarado é reavaliado pelos bytes ao servir", async () => {
+    await ingestEvolution(photo("IMG5"));
+    const [m] = await db.select().from(messages);
+    const { writeFileSync } = await import("node:fs");
+    writeFileSync(path.join(DIR, "legado.jpg"), "<html><script>alert(1)</script>");
+    await db.update(messages).set({ mediaPath: "legado.jpg", mediaMime: "image/jpeg" });
+    const [u] = await db.insert(users).values({ name: "Ana", email: "ana2@t.local", role: "atendente", passwordHash: "x" }).returning();
+    const { token } = await insertSession(u.id);
+    const res = await getMedia(new NextRequest(`http://localhost/api/media/${m.id}`, { headers: { cookie: `cf_session=${token}` } }), { params: Promise.resolve({ id: m.id }) });
+    expect(res.headers.get("content-type")).toBe("application/octet-stream");
+    expect(res.headers.get("content-disposition")).toMatch(/^attachment/);
   });
 });
