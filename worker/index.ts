@@ -24,9 +24,19 @@ async function main() {
   await boss.schedule(QUEUES.media, "* * * * *", null, { tz: "America/Bahia", singletonKey: "midia" });
   await boss.schedule(QUEUES.cleanup, "15 4 * * *", null, { tz: "America/Bahia" });
 
+  // Batida do worker: gravada ao fim de cada rodada das regras (todo minuto), o que prova que o motor roda.
+  // O /api/health lê daqui para saber se as automações estão funcionando.
+  const beat = async () => {
+    const now = new Date();
+    await db.insert(settings).values({ key: "worker_heartbeat", value: now.toISOString() })
+      .onConflictDoUpdate({ target: settings.key, set: { value: now.toISOString(), updatedAt: now } });
+  };
+  await beat().catch((e) => console.error("[batida do worker]", e));
+
   await boss.work(QUEUES.rules, { batchSize: 1 }, async () => {
     const t = Date.now(); const s = await runRules();
     if (s.fired || s.errors.length) console.log(`[regras] ${s.fired} disparos, ${s.alerts} alertas, ${s.moved} movidos (${Date.now() - t} ms)`, s.errors);
+    await beat().catch((e) => console.error("[batida do worker]", e));
   });
   await boss.work(QUEUES.webhooks, async () => { const r = await retryFailedWebhooks(); if (r.tried) console.log("[webhooks]", r); });
   // Histórico do WhatsApp ao conectar um número: um lote por vez até esvaziar.
@@ -41,20 +51,11 @@ async function main() {
   });
   await boss.work(QUEUES.cleanup, async () => { await purgeExpiredSessions(); await purgeOldWebhookEvents(); });
 
-  // Batida do worker: o /api/health lê daqui para saber se as automações estão rodando.
-  const beat = async () => {
-    const now = new Date();
-    await db.insert(settings).values({ key: "worker_heartbeat", value: now.toISOString() })
-      .onConflictDoUpdate({ target: settings.key, set: { value: now.toISOString(), updatedAt: now } });
-  };
-  await beat().catch((e) => console.error("[batida do worker]", e));
-  const beatTimer = setInterval(() => { beat().catch((e) => console.error("[batida do worker]", e)); }, 60_000);
-
   // Primeira rodada imediata (sem esperar o próximo minuto cheio).
   await boss.send(QUEUES.rules, {});
   console.log("Worker do CRM rodando. Automações a cada minuto.");
 
-  const stop = async () => { console.log("Encerrando worker…"); clearInterval(beatTimer); await boss.stop({ graceful: true, timeout: 10_000 }); await pool.end(); process.exit(0); };
+  const stop = async () => { console.log("Encerrando worker…"); await boss.stop({ graceful: true, timeout: 10_000 }); await pool.end(); process.exit(0); };
   process.on("SIGINT", stop); process.on("SIGTERM", stop);
 }
 main().catch((e) => { console.error(e); process.exit(1); });

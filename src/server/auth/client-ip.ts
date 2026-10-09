@@ -10,6 +10,7 @@ export function clientIp(h: Headers, socketIp?: string, hops: number = env().TRU
   const fallback = socketIp || "local";
   if (hops <= 0) return fallback;
   const list = (h.get("x-forwarded-for") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-  if (list.length === 0) return fallback;
-  return list[Math.max(0, list.length - hops)];
+  // Cadeia menor que os saltos confiáveis: o cabeçalho não passou pelos proxies, então é forjável.
+  if (list.length < hops) return fallback;
+  return list[list.length - hops];
 }

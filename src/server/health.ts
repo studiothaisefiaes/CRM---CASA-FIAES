@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db, pool } from "@/server/db";
 import { channels, settings } from "@/server/db/schema";
+import { notRemovedChannel } from "@/server/whatsapp/channel-removed";
 
 export type Health = {
   status: "ok" | "degraded" | "down";
@@ -22,8 +23,8 @@ export async function getHealth(now = Date.now()): Promise<Health> {
   const lastBeatAt = Number.isNaN(t) ? null : new Date(t).toISOString();
   const workerOk = !Number.isNaN(t) && now - t < WORKER_MAX_AGE_MS;
 
-  const rows = await db.select({ name: channels.name, status: channels.status }).from(channels).orderBy(channels.createdAt);
-  const whatsappBad = rows.some((c) => c.status === "erro" || c.status === "desconectado");
+  const rows = await db.select({ name: channels.name, status: channels.status }).from(channels).where(notRemovedChannel).orderBy(channels.createdAt);
+  const whatsappBad = rows.some((c) => c.status !== "conectado");
 
   return {
     status: workerOk && !whatsappBad ? "ok" : "degraded",

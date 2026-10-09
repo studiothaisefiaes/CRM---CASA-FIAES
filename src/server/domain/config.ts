@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { REMOVED_SUFFIX } from "@/server/whatsapp/channel-removed";
 import { z } from "zod";
 import { db } from "../db";
 import { automations, automationVersions, auditLog, channels, lists, settings, stages, users } from "../db/schema";
@@ -141,7 +142,7 @@ export async function disconnectChannel(id: string, remove: boolean, userId: str
       try { await whatsapp().logout(c.instanceName); } catch { /* já desconectado */ }
       try { await whatsapp().remove(c.instanceName); } catch (e) { console.error("[canal] não foi possível apagar a instância", c.instanceName, e); }
     }
-    await db.update(channels).set({ status: "desconectado", name: `${c.name} (removido)` }).where(eq(channels.id, id));
+    await db.update(channels).set({ status: "desconectado", name: `${c.name}${REMOVED_SUFFIX}` }).where(eq(channels.id, id));
   } else {
     try { await whatsapp().logout(c.instanceName); } catch { /* já desconectado */ }
     await db.update(channels).set({ status: "desconectado" }).where(eq(channels.id, id));

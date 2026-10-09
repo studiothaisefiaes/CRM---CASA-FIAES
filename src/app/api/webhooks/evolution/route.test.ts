@@ -26,5 +26,6 @@ it("acima de 600 req/min por instância responde 429, outra instância segue liv
 });
 
 it("segredo errado continua 401 e não gasta o limite", async () => {
-  expect((await call("rec", "x".repeat(30))).status).toBe(401);
+  for (let i = 0; i < WEBHOOK_MAX_PER_MIN + 1; i++) expect((await call("rec", "x".repeat(30))).status).toBe(401);
+  expect((await call("rec")).status).toBe(200);
 });

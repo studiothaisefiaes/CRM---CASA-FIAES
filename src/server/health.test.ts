@@ -30,3 +30,20 @@ it("sem batida nenhuma = degraded com lastBeatAt nulo", async () => {
   const h = await getHealth();
   expect(h).toMatchObject({ status: "degraded", worker: { ok: false, lastBeatAt: null } });
 });
+
+it("canal removido não conta: some da lista e não degrada", async () => {
+  await db.insert(settings).values({ key: "worker_heartbeat", value: new Date().toISOString() });
+  await db.insert(channels).values([
+    { name: "Recepção", instanceName: "rec", status: "conectado" },
+    { name: "X (removido)", instanceName: "x", status: "desconectado" },
+  ]);
+  const h = await getHealth();
+  expect(h.status).toBe("ok");
+  expect(h.whatsapp).toEqual([{ name: "Recepção", status: "conectado" }]);
+});
+
+it("canal não removido fora de 'conectado' (ex.: aguardando QR) deixa degraded", async () => {
+  await db.insert(settings).values({ key: "worker_heartbeat", value: new Date().toISOString() });
+  await db.insert(channels).values({ name: "Recepção", instanceName: "rec", status: "aguardando_qr" });
+  expect((await getHealth()).status).toBe("degraded");
+});
