@@ -135,11 +135,17 @@ export async function channelState(id: string) {
 export async function disconnectChannel(id: string, remove: boolean, userId: string) {
   const [c] = await db.select().from(channels).where(eq(channels.id, id));
   if (!c) return;
-  try { await whatsapp().logout(c.instanceName); } catch { /* já desconectado */ }
   if (remove) {
-    try { await whatsapp().remove(c.instanceName); } catch { /* já removido */ }
+    // Apagar a instância também desconecta; se falhar, desconecta e tenta apagar de novo (antes ficava viva com o número).
+    try { await whatsapp().remove(c.instanceName); } catch {
+      try { await whatsapp().logout(c.instanceName); } catch { /* já desconectado */ }
+      try { await whatsapp().remove(c.instanceName); } catch (e) { console.error("[canal] não foi possível apagar a instância", c.instanceName, e); }
+    }
     await db.update(channels).set({ status: "desconectado", name: `${c.name} (removido)` }).where(eq(channels.id, id));
-  } else await db.update(channels).set({ status: "desconectado" }).where(eq(channels.id, id));
+  } else {
+    try { await whatsapp().logout(c.instanceName); } catch { /* já desconectado */ }
+    await db.update(channels).set({ status: "desconectado" }).where(eq(channels.id, id));
+  }
   await audit(userId, remove ? "removeu" : "desconectou", "channel", id);
 }
 

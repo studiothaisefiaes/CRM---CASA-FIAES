@@ -77,8 +77,13 @@ describe("fluxo do lead", () => {
     expect(await recordInbound({ channelId: null, externalId: "G", phoneRaw: "1203630@g.us", body: "x" })).toEqual({ skipped: "telefone_invalido" });
   });
 
-  it("mensagem da Casa para quem não está no CRM é ignorada", async () => {
-    expect(await recordOutbound({ phoneRaw: "71988887777", channelId: null, externalId: "X", body: "oi", fromPhone: true })).toEqual({ skipped: "sem_contato" });
+  it("mensagem da Casa pelo celular para quem não está no CRM vira lead", async () => {
+    const r = await recordOutbound({ phoneRaw: "71988887777", channelId: null, externalId: "X", body: "oi", fromPhone: true });
+    expect(r).toMatchObject({ dealId: expect.any(String), messageId: expect.any(String) });
+  });
+
+  it("sem ser pelo celular (sem contato) continua ignorada", async () => {
+    expect(await recordOutbound({ phoneRaw: "71988887777", channelId: null, externalId: "X", body: "oi" })).toEqual({ skipped: "sem_contato" });
   });
 
   it("distribui para a atendente com menos leads", async () => {

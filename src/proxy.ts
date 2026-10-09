@@ -14,4 +14,5 @@ export default function proxy(req: NextRequest) {
   return NextResponse.next();
 }
 
-export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|svg|ico|webp|mp3)$).*)"] };
+// O webhook não passa pelo proxy: não precisa de sessão e o proxy cortaria lotes de histórico acima de 10 MB.
+export const config = { matcher: ["/((?!_next/static|_next/image|api/webhooks|favicon.ico|.*\\.(?:png|jpg|svg|ico|webp|mp3)$).*)"] };

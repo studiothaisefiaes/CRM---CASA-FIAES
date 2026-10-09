@@ -2,7 +2,7 @@ import { env } from "../env";
 import { toWhatsappNumber } from "../domain/phone";
 import { ProviderError, type ConnState, type QrResult, type WhatsAppProvider } from "./provider";
 
-export const WEBHOOK_EVENTS = ["QRCODE_UPDATED", "MESSAGES_UPSERT", "MESSAGES_UPDATE", "SEND_MESSAGE", "CONNECTION_UPDATE"] as const;
+export const WEBHOOK_EVENTS = ["QRCODE_UPDATED", "MESSAGES_UPSERT", "MESSAGES_UPDATE", "MESSAGES_SET", "SEND_MESSAGE", "CONNECTION_UPDATE"] as const;
 
 export class EvolutionProvider implements WhatsAppProvider {
   constructor(private baseUrl: string, private apiKey: string, private webhookUrl: string, private webhookSecret: string) {}

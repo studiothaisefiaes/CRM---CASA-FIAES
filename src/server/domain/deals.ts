@@ -141,11 +141,23 @@ export async function recordOutbound(input: OutboundInput) {
     if (!contactId && input.phoneRaw) {
       const phone = normalizePhone(input.phoneRaw);
       if (!phone) return { skipped: "telefone_invalido" as const };
-      const [c] = await tx.select().from(contacts).where(eq(contacts.phoneE164, phone));
-      if (!c) return { skipped: "sem_contato" as const }; // conversa que a Casa iniciou com alguém fora do CRM: ignorada
+      // Conversa que a Casa iniciou pelo celular também é lead: número conectado = todas as conversas no CRM.
+      const c = input.fromPhone ? await upsertContact(tx, phone, null)
+        : (await tx.select().from(contacts).where(eq(contacts.phoneE164, phone)))[0];
+      if (!c) return { skipped: "sem_contato" as const };
       contactId = c.id;
     }
     if (!dealId && contactId) dealId = (await findOpenDeal(contactId, tx))?.id ?? null;
+    if (!dealId && contactId && input.fromPhone) {
+      const [c] = await tx.select().from(contacts).where(eq(contacts.id, contactId));
+      const lead = await stageByKey("lead", tx);
+      const origin = detectOrigin({ isClient: c?.isClient });
+      const [created] = await tx.insert(deals).values({
+        contactId, stageId: lead.id, ownerId: await pickOwner(tx), channelId: input.channelId, origin, stageEnteredAt: at, createdAt: at,
+      }).returning();
+      await logEvent(tx, created.id, "lead_criado", { origin, iniciadoPelaCasa: true });
+      dealId = created.id;
+    }
     if (!dealId) return { skipped: "sem_lead_aberto" as const };
     const [deal] = await tx.select().from(deals).where(eq(deals.id, dealId));
     if (!deal) return { skipped: "sem_lead_aberto" as const };
@@ -218,4 +230,60 @@ export async function moveDeal(dealId: string, stageKey: string, userId: string 
 export async function activeUsers() {
   return db.select({ id: users.id, name: users.name, role: users.role }).from(users)
     .where(and(eq(users.active, true), sql`${users.passwordHash} is not null`)).orderBy(asc(users.name));
+}
+
+export type HistoryMessage = { externalId: string; fromMe: boolean; at: Date; kind: string; body: string | null; pushName?: string | null };
+
+/** Conversas paradas há mais que isso entram como contato com histórico, sem lead aberto. */
+export const HISTORY_LEAD_DAYS = 30;
+/** Só conta como "esperando resposta" se a cliente escreveu por último há menos que isso. */
+const HISTORY_WAITING_HOURS = 12;
+
+/**
+ * Histórico que o WhatsApp manda ao conectar o número: uma conversa por chamada, tudo numa transação.
+ * Conversa recente vira lead (Lead se a Casa nunca respondeu, Atendimento se já respondeu); antiga vira só contato com histórico.
+ * Idempotente: mensagens repetidas são ignoradas pelo id externo.
+ */
+export async function importHistoryChat(channelId: string | null, phoneRaw: string, items: HistoryMessage[], now = new Date()) {
+  const phone = normalizePhone(phoneRaw);
+  if (!phone || items.length === 0) return { skipped: true as const };
+  const msgs = [...items].sort((a, b) => a.at.getTime() - b.at.getTime());
+  const inbound = msgs.filter((m) => !m.fromMe), outbound = msgs.filter((m) => m.fromMe);
+  const name = [...inbound].reverse().find((m) => m.pushName && !/^\d+$/.test(m.pushName))?.pushName ?? null;
+  const lastAt = msgs[msgs.length - 1].at;
+  const lastIn = inbound.at(-1)?.at ?? null, lastOut = outbound.at(-1)?.at ?? null;
+
+  return db.transaction(async (tx) => {
+    const contact = await upsertContact(tx, phone, name);
+    let deal = await findOpenDeal(contact.id, tx);
+    let created = false;
+    if (!deal && now.getTime() - lastAt.getTime() <= HISTORY_LEAD_DAYS * 86_400_000) {
+      const stage = await stageByKey(lastOut ? "atendimento" : "lead", tx);
+      const clientWaiting = lastIn && (!lastOut || lastIn > lastOut) && now.getTime() - lastIn.getTime() <= HISTORY_WAITING_HOURS * 3_600_000;
+      const waitingSince = clientWaiting ? inbound.find((m) => !lastOut || m.at > lastOut)!.at : null;
+      const origin = detectOrigin({ body: inbound[0]?.body, isClient: contact.isClient });
+      [deal] = await tx.insert(deals).values({
+        contactId: contact.id, stageId: stage.id, ownerId: await pickOwner(tx), channelId, origin,
+        stageEnteredAt: now, createdAt: msgs[0].at, lastInboundAt: lastIn, lastOutboundAt: lastOut, awaitingReplySince: waitingSince,
+      }).returning();
+      await logEvent(tx, deal.id, "lead_criado", { origin, historico: true });
+      created = true;
+    }
+    const rows = msgs.map((m) => ({
+      dealId: deal?.id ?? null, contactId: contact.id, channelId, externalId: m.externalId, direction: m.fromMe ? "out" as const : "in" as const,
+      kind: m.kind, body: m.body, status: m.fromMe ? "sent" : "received", fromPhone: m.fromMe, createdAt: m.at,
+    }));
+    let inserted = 0;
+    for (let i = 0; i < rows.length; i += 500) {
+      inserted += (await tx.insert(messages).values(rows.slice(i, i + 500)).onConflictDoNothing().returning({ id: messages.id })).length;
+    }
+    if (deal && !created && inserted > 0) {
+      await tx.update(deals).set({
+        lastInboundAt: lastIn ? sql`greatest(${deals.lastInboundAt}, ${lastIn.toISOString()}::timestamptz)` : deals.lastInboundAt,
+        lastOutboundAt: lastOut ? sql`greatest(${deals.lastOutboundAt}, ${lastOut.toISOString()}::timestamptz)` : deals.lastOutboundAt,
+        channelId: deal.channelId ?? channelId,
+      }).where(eq(deals.id, deal.id));
+    }
+    return { dealId: deal?.id ?? null, created, inserted };
+  });
 }

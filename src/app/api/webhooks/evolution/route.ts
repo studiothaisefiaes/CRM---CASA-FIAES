@@ -8,7 +8,8 @@ export async function POST(req: NextRequest) {
   }
   let payload: EvoPayload;
   const len = Number(req.headers.get("content-length") ?? 0);
-  if (len > 5_000_000) return NextResponse.json({ error: "payload grande demais" }, { status: 413 });
+  // O histórico chega em lotes de até ~5 mil mensagens; acima disso é algo errado.
+  if (len > 100_000_000) return NextResponse.json({ error: "payload grande demais" }, { status: 413 });
   try { payload = (await req.json()) as EvoPayload; } catch { return NextResponse.json({ error: "json inválido" }, { status: 400 }); }
   try {
     const r = await ingestEvolution(payload);

@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "../db";
 import { alerts, channels, contacts, deals, messages } from "../db/schema";
 import { whatsapp } from "../whatsapp/evolution";
@@ -24,7 +24,11 @@ export async function sendFromCrm(dealId: string, text: string, userId: string) 
   // Responde sempre pelo mesmo número em que a cliente escreveu.
   let channel = row.deal.channelId ? (await db.select().from(channels).where(eq(channels.id, row.deal.channelId)))[0] : undefined;
   if (channel && channel.status !== "conectado") {
-    throw new SendError(`O WhatsApp "${channel.name}" está desconectado. Leia o QR code de novo em Configurações › WhatsApp.`);
+    // O mesmo número pode ter sido lido de novo em outro canal: responde por ele e o lead passa a usar esse canal.
+    const same = channel.phone ? (await db.select().from(channels).where(and(eq(channels.phone, channel.phone), eq(channels.status, "conectado"))).limit(1))[0] : undefined;
+    if (!same) throw new SendError(`O WhatsApp "${channel.name}" está desconectado. Leia o QR code de novo em Configurações › WhatsApp.`);
+    channel = same;
+    await db.update(deals).set({ channelId: same.id }).where(eq(deals.id, dealId));
   }
   if (!channel) channel = (await db.select().from(channels).where(eq(channels.status, "conectado")).limit(1))[0];
 
