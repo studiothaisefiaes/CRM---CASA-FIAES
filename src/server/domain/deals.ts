@@ -25,14 +25,18 @@ export async function stageByKey(key: string, tx: Tx | typeof db = db) {
   return s;
 }
 
-/** Origem do lead a partir do que dá para saber sem perguntar. */
-export function detectOrigin(input: { body?: string | null; hasAdReferral?: boolean; isClient?: boolean }): string {
+/** Origem do lead (como a cliente conheceu a Casa) só quando há evidência. Canal (WhatsApp) não é origem: devolve null. */
+export function detectSource(input: { body?: string | null; hasAdReferral?: boolean }): string | null {
   if (input.hasAdReferral) return "Anúncio";
   if (input.body && /vim\s+(pelo|do|no)\s+insta(gram)?/i.test(input.body)) return "Instagram";
   if (input.body && /vim\s+(pelo|do)\s+site/i.test(input.body)) return "Site";
   if (input.body && /(indica[cç][aã]o|me\s+indicou|indicad[ao])/i.test(input.body)) return "Indicação";
-  if (input.isClient) return "Já é cliente";
-  return "WhatsApp";
+  return null;
+}
+
+/** Campo `origin` legado (telas antigas, até a T13): a origem detectada ou, sem evidência, o canal. */
+export function detectOrigin(input: { body?: string | null; hasAdReferral?: boolean; isClient?: boolean }): string {
+  return detectSource(input) ?? (input.isClient ? "Já é cliente" : "WhatsApp");
 }
 
 /** Distribui o lead para quem atende com menos leads abertos (rodízio por carga). Sem atendente ativa, fica com a gestão. */
@@ -113,10 +117,11 @@ export async function recordInbound(input: InboundInput): Promise<InboundResult>
       const lead = await stageByKey("lead", tx);
       const origin = detectOrigin({ body: input.body, hasAdReferral: input.hasAdReferral, isClient: contact.isClient });
       [deal] = await tx.insert(deals).values({
-        contactId: contact.id, stageId: lead.id, ownerId: await pickOwner(tx), channelId: input.channelId, origin, stageEnteredAt: at, createdAt: at,
+        contactId: contact.id, stageId: lead.id, ownerId: await pickOwner(tx), channelId: input.channelId, origin,
+        sourceLabel: detectSource({ body: input.body, hasAdReferral: input.hasAdReferral }), stageEnteredAt: at, createdAt: at,
       }).returning();
       created = true;
-      await logEvent(tx, deal.id, "lead_criado", { origin });
+      await logEvent(tx, deal.id, "lead_criado", { origin, initialStage: lead.key, historico: false });
     }
     const [msg] = await tx.insert(messages).values({
       dealId: deal.id, contactId: contact.id, channelId: input.channelId, externalId: input.externalId,
@@ -193,7 +198,7 @@ export async function recordOutbound(input: OutboundInput) {
       const [created] = await tx.insert(deals).values({
         contactId, stageId: lead.id, ownerId: await pickOwner(tx), channelId: input.channelId, origin, stageEnteredAt: at, createdAt: at,
       }).returning();
-      await logEvent(tx, created.id, "lead_criado", { origin, iniciadoPelaCasa: true });
+      await logEvent(tx, created.id, "lead_criado", { origin, initialStage: lead.key, historico: false, iniciadoPelaCasa: true });
       dealId = created.id;
     }
     if (!dealId) return { skipped: "sem_lead_aberto" as const };
@@ -219,11 +224,16 @@ export async function recordOutbound(input: OutboundInput) {
       await logEvent(tx, dealId, "mensagem_enviada", { messageId: msg.id, ...(input.automated ? { automatica: true } : { atrasada: true }) }, null);
       return { dealId, messageId: msg.id };
     }
-    const responder = input.userId ?? deal.ownerId ?? null;
+    // Resposta pelo celular não tem login: vale para quem está com o lead (quem assumiu).
+    const responder = input.fromPhone ? (deal.ownerId ?? input.userId ?? null) : (input.userId ?? deal.ownerId ?? null);
+    const [stage] = await tx.select().from(stages).where(eq(stages.id, deal.stageId));
     if (deal.awaitingReplySince) {
       // Tempo de resposta conta só o expediente: mensagem das 23h respondida às 8h não é "9 horas de atraso".
       const waited = businessSecondsBetween(deal.awaitingReplySince.getTime(), at.getTime(), await getBusinessHours(tx));
-      await logEvent(tx, dealId, "resposta", { waitedSeconds: waited, first: !deal.firstResponseAt, fromPhone: !!input.fromPhone }, responder);
+      await logEvent(tx, dealId, "resposta", {
+        waitedSeconds: waited, first: !deal.firstResponseAt, fromPhone: !!input.fromPhone,
+        stage: stage?.key ?? null, slaSeconds: stage?.slaMinutes ? stage.slaMinutes * 60 : null,
+      }, responder);
     }
     await tx.update(deals).set({
       lastOutboundAt: at, awaitingReplySince: null,
@@ -240,7 +250,6 @@ export async function recordOutbound(input: OutboundInput) {
         and(eq(alerts.dealId, dealId), eq(alerts.type, "sem_resposta_minutos"), isNull(alerts.waitKey)),
       )));
 
-    const [stage] = await tx.select().from(stages).where(eq(stages.id, deal.stageId));
     if (stage?.kind === "lead") await moveDealTx(tx, dealId, "atendimento", input.userId ?? null, "respondido", at);
     return { dealId, messageId: msg.id };
   });
@@ -317,10 +326,10 @@ export async function importHistoryChat(channelId: string | null, phoneRaw: stri
       const waitingSince = clientWaiting ? inbound.find((m) => !lastOut || m.at > lastOut)!.at : null;
       const origin = detectOrigin({ body: inbound[0]?.body, isClient: contact.isClient });
       [deal] = await tx.insert(deals).values({
-        contactId: contact.id, stageId: stage.id, ownerId: await pickOwner(tx), channelId, origin,
+        contactId: contact.id, stageId: stage.id, ownerId: await pickOwner(tx), channelId, origin, sourceLabel: detectSource({ body: inbound[0]?.body }),
         stageEnteredAt: now, createdAt: msgs[0].at, lastInboundAt: lastIn, lastOutboundAt: lastOut, awaitingReplySince: waitingSince,
       }).returning();
-      await logEvent(tx, deal.id, "lead_criado", { origin, historico: true });
+      await logEvent(tx, deal.id, "lead_criado", { origin, initialStage: stage.key, historico: true });
       created = true;
     }
     const dealId = deal?.id ?? (contact.ignored ? await latestArchivedDealId(contact.id, tx) : null);

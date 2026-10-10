@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatPhoneClient } from "@/lib/phone-client";
 import { relTime, money, PAYMENT_LABEL } from "@/lib/format";
 import { SPRING, EASE } from "@/lib/motion";
+import { FIELD_LABELS } from "@/lib/field-labels";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const toLocal = (d: Date | string | null) => { if (!d) return ""; const x = new Date(d); return `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}T${pad(x.getHours())}:${pad(x.getMinutes())}`; };
@@ -28,8 +29,11 @@ const EVENT_TEXT = (e: DealDetail["events"][number]): string => {
     case "lead_criado": return `Lead criado${p.origin ? ` (${p.origin})` : ""}`;
     case "etapa_alterada": return `Movido para ${String(p.para).replace("followup_", "Follow-up ").replace(/^\w/, (c) => c.toUpperCase())}${String(p.motivo ?? "").startsWith("automacao") ? " (automático)" : p.motivo === "respondido" ? " (respondido)" : p.motivo === "cliente_respondeu" ? " (cliente respondeu)" : ""}`;
     case "resposta": { const s = Number(p.waitedSeconds ?? 0); return `Respondido em ${s < 60 ? `${s}s` : `${Math.round(s / 60)} min`}${p.fromPhone ? " pelo celular" : ""}`; }
-    case "campo_alterado": return `Alterou ${(p.campos as string[] | undefined)?.join(", ") ?? "dados"}`;
+    case "campo_alterado": return `Alterou ${(p.campos as (string | { campo: string })[] | undefined)?.map((c) => (typeof c === "string" ? c : FIELD_LABELS[c.campo] ?? c.campo)).join(", ") ?? "dados"}`;
     case "responsavel_alterado": return "Trocou o responsável";
+    case "assumiu": return "Assumiu o lead";
+    case "venda": return "Venda fechada";
+    case "comparecimento": return `Comparecimento: ${String(p.para)}`;
     case "alerta": return String(p.mensagem ?? "Alerta");
     case "mensagem_recebida": return "Mensagem recebida";
     case "mensagem_enviada": return p.fromPhone ? "Mensagem enviada pelo celular" : "Mensagem enviada";
