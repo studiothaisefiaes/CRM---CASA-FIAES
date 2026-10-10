@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import { motion } from "motion/react";
 import { IconChart, IconContacts, IconFunnel, IconLogout, IconSettings, IconToday } from "@/components/icons";
 import { AlertsBell } from "./alerts-bell";
-import { logout } from "@/app/login/actions";
+import { logoutAction } from "./push-cleanup";
 import { initials } from "@/lib/format";
 import { SPRING } from "@/lib/motion";
 import type { AlertItem } from "@/server/queries/alerts";
@@ -45,7 +45,7 @@ export function Sidebar({ user, alerts }: { user: { name: string; role: string }
             <p className="text-sm font-medium truncate">{user.name}</p>
             <p className="text-xs text-muted">{user.role === "gestor" ? "Gestão" : "Atendimento"}</p>
           </div>
-          <form action={logout}><button className="size-8 grid place-items-center rounded-[8px] text-muted hover:text-ink hover:bg-paper-3" aria-label="Sair"><IconLogout size={17} /></button></form>
+          <form action={logoutAction}><button className="size-8 grid place-items-center rounded-[8px] text-muted hover:text-ink hover:bg-paper-3" aria-label="Sair"><IconLogout size={17} /></button></form>
         </div>
       </aside>
 
@@ -54,7 +54,7 @@ export function Sidebar({ user, alerts }: { user: { name: string; role: string }
         <Link href="/" className="font-serif text-[19px]">Casa <em className="text-gold">Fiaes</em></Link>
         <div className="flex items-center gap-1">
           <AlertsBell alerts={alerts} />
-          <form action={logout}><button className="size-9 grid place-items-center rounded-[var(--radius-control)] text-muted" aria-label="Sair"><IconLogout size={17} /></button></form>
+          <form action={logoutAction}><button className="size-9 grid place-items-center rounded-[var(--radius-control)] text-muted" aria-label="Sair"><IconLogout size={17} /></button></form>
         </div>
       </header>
       <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 grid bg-paper/95 backdrop-blur border-t border-line pb-[env(safe-area-inset-bottom)]" style={{ gridTemplateColumns: `repeat(${items.length}, 1fr)` }} aria-label="Principal">

@@ -4,11 +4,12 @@ import { z } from "zod";
 import { assertUser } from "@/server/auth/session";
 import { db } from "@/server/db";
 import { pushSubscriptions } from "@/server/db/schema";
+import { isAllowedPushEndpoint } from "@/server/push-endpoint";
 
 export type PushResult = { ok: true } | { ok: false; error: string };
 
 const subscription = z.object({
-  endpoint: z.string().url().max(2000).refine((u) => u.startsWith("https://"), "Endereço de push inválido."),
+  endpoint: z.string().url().max(2000).refine(isAllowedPushEndpoint, "Endereço de push não aceito."),
   p256dh: z.string().min(1).max(500),
   auth: z.string().min(1).max(500),
 });

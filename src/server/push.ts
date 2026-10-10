@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, like, or } from "drizzle-orm";
 import webpush from "web-push";
 import { db } from "./db";
 import { alerts, pushSubscriptions, users } from "./db/schema";
@@ -18,7 +18,7 @@ export const webPushSender: PushSender = async (sub, payload) => {
   if (!v) throw new Error("Push desligado: faltam as chaves VAPID.");
   if (!configured) { webpush.setVapidDetails(v.subject, v.publicKey, v.privateKey); configured = true; }
   try {
-    const r = await webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, payload, { TTL: 3600, urgency: "high" });
+    const r = await webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, payload, { TTL: 3600, urgency: "high", timeout: 10_000 });
     return r.statusCode;
   } catch (e) {
     const code = (e as { statusCode?: number }).statusCode;
@@ -29,8 +29,10 @@ export const webPushSender: PushSender = async (sub, payload) => {
 
 /** Envia o push dos alertas ainda não avisados. Marca `pushedAt` sempre, para não reprocessar. */
 export async function sendPushForPendingAlerts(sender: PushSender = webPushSender): Promise<{ sent: number; failed: number }> {
-  // Resolvidos antes do aviso saem da fila sem push.
-  await db.update(alerts).set({ pushedAt: new Date() }).where(and(isNull(alerts.pushedAt), isNotNull(alerts.resolvedAt)));
+  // Saem da fila sem push: resolvidos antes do aviso e tudo que não é alerta de espera
+  // (sem wait_key, ou lembrete de tarefa, cuja wait_key é "task:<id>"): ficam só no sistema.
+  await db.update(alerts).set({ pushedAt: new Date() }).where(and(isNull(alerts.pushedAt),
+    or(isNotNull(alerts.resolvedAt), isNull(alerts.waitKey), like(alerts.waitKey, "task:%"))));
   const pending = await db.select().from(alerts).where(and(isNull(alerts.pushedAt), isNull(alerts.resolvedAt)));
   if (!pending.length) return { sent: 0, failed: 0 };
 
@@ -49,15 +51,16 @@ export async function sendPushForPendingAlerts(sender: PushSender = webPushSende
     if (Date.now() - (a.escalatedAt ?? a.createdAt).getTime() > FRESH_MS) continue;
     const toManagers = a.level >= 2 || (a.audience === "gestao" && !a.userId);
     const targets = toManagers ? managers : a.userId ? [a.userId] : [];
-    const payload = JSON.stringify({ title: "Lead esperando", body: a.message, url: a.dealId ? `/funil?lead=${a.dealId}` : "/funil" });
-    for (const uid of targets) for (const s of byUser.get(uid) ?? []) {
-      if (gone.has(s.endpoint)) { failed++; continue; }
-      try {
-        const status = await sender(s, payload);
-        if (status >= 200 && status < 300) { sent++; ok.add(s.endpoint); }
-        else { failed++; if (status === 404 || status === 410) gone.add(s.endpoint); }
-      } catch { failed++; }
-    }
+    const title = a.level >= 2 ? "Atraso escalado para a gestão" : "Lead esperando";
+    const payload = JSON.stringify({ title, body: a.message, url: a.dealId ? `/funil?lead=${a.dealId}` : "/funil" });
+    const subsOf = targets.flatMap((uid) => byUser.get(uid) ?? []).filter((s) => !gone.has(s.endpoint));
+    // Em paralelo: um endpoint lento ou fora do ar não segura os outros aparelhos.
+    const results = await Promise.allSettled(subsOf.map((s) => sender(s, payload)));
+    results.forEach((res, i) => {
+      const status = res.status === "fulfilled" ? res.value : 0;
+      if (status >= 200 && status < 300) { sent++; ok.add(subsOf[i].endpoint); }
+      else { failed++; if (status === 404 || status === 410) gone.add(subsOf[i].endpoint); }
+    });
   }
   if (gone.size) await db.delete(pushSubscriptions).where(inArray(pushSubscriptions.endpoint, [...gone]));
   const okLive = [...ok].filter((e) => !gone.has(e));

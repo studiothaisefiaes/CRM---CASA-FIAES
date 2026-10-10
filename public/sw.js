@@ -5,6 +5,7 @@ self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
 self.addEventListener("push", (event) => {
   let data = {};
   try { data = event.data ? event.data.json() : {}; } catch { data = { body: event.data ? event.data.text() : "" }; }
+  if (!data || typeof data !== "object") data = {};
   const title = data.title || "Lead esperando";
   event.waitUntil(self.registration.showNotification(title, {
     body: data.body || "",
