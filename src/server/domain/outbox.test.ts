@@ -9,6 +9,7 @@ import { ingestEvolution, type EvoPayload } from "../whatsapp/webhook";
 import { setWhatsappProvider } from "../whatsapp/evolution";
 import { runRules } from "../rules/engine";
 import { sendHooks } from "./send";
+import { ProviderError } from "../whatsapp/provider";
 import { pool } from "../db";
 import { OUTBOX_LOCK_KEY } from "./outbox";
 import { resetDb } from "../../../test/db";
@@ -19,15 +20,17 @@ const recordInbound = (i: Parameters<typeof recordInboundReal>[0]) => recordInbo
 // Provider falso: nenhum teste fala com a Evolution nem envia mensagem real.
 const sent: string[] = [];
 let failNext = 0;
+let failWith: (() => Error) | null = null;
+let textCalls = 0;
 const fake = {
   createInstance: async () => {}, connect: async () => ({ status: "conectado" as const }), state: async () => "conectado" as const, logout: async () => {}, remove: async () => {},
-  sendText: async (_i: string, _to: string, text: string) => { if (failNext > 0) { failNext--; throw new Error("Evolution fora do ar"); } sent.push(text); return { externalId: "OUT" + sent.length }; },
+  sendText: async (_i: string, _to: string, text: string) => { textCalls++; if (failWith) throw failWith(); if (failNext > 0) { failNext--; throw new ProviderError("Evolution respondeu 503: fora do ar", 503); } sent.push(text); return { externalId: "OUT" + sent.length }; },
   sendPoll: async (_i: string, _to: string, name: string, options: string[]) => { sent.push("poll:" + name + ":" + options.join("|")); return { externalId: "POLL1" }; },
 };
 let chId = "";
 const lead = async (phone: string, at: Date) => { const r = await recordInbound({ channelId: chId, externalId: phone + at.getTime(), phoneRaw: phone, body: "oi", at }); if (!("dealId" in r)) throw new Error(); return r.dealId; };
 beforeEach(async () => {
-  sent.length = 0; failNext = 0; await resetDb(); setWhatsappProvider(fake);
+  sent.length = 0; failNext = 0; failWith = null; textCalls = 0; await resetDb(); setWhatsappProvider(fake);
   [{ id: chId }] = await db.insert(channels).values({ name: "Rec", instanceName: "rec", status: "conectado", phone: "+557199990404" }).returning();
 });
 afterEach(() => { setWhatsappProvider(null); sendHooks.beforeConfirm = undefined; });
@@ -417,5 +420,51 @@ describe("fix round 1: título da enquete e item preso", () => {
     expect(m).toMatchObject({ status: "failed", error: "Envio automático interrompido" });
     expect((await db.select().from(alerts)).some((a) => a.type === "envio_automatico_falhou" && a.audience === "gestao")).toBe(true);
     expect(sent).toHaveLength(0);
+  });
+});
+
+describe("fix round 2: envio incerto (a Evolution não respondeu)", () => {
+  const t0 = new Date("2026-10-13T13:00:00Z");
+  const cases: [string, () => Error][] = [
+    ["AbortError (timeout do fetch)", () => new DOMException("The operation was aborted", "AbortError")],
+    ["TypeError de rede (fetch failed)", () => new TypeError("fetch failed")],
+    ["ProviderError sem resposta HTTP", () => new ProviderError("O serviço do WhatsApp (Evolution) não respondeu. Ele está ligado?")],
+  ];
+  for (const [name, make] of cases) {
+    it(`${name}: 1 envio, item 'failed', alerta e nenhum retry`, async () => {
+      const id = await lead("71999990901", t0);
+      await enqueueAutomated({ dealId: id, kind: "text", text: "incerta" });
+      failWith = make;
+      await drainOutbox(t0);
+      let [row] = await db.select().from(outbox);
+      expect(row).toMatchObject({ status: "failed", attempts: 1, error: "Envio incerto: a Evolution não respondeu. Confira no WhatsApp antes de reenviar." });
+      expect(textCalls).toBe(1);
+      expect((await db.select().from(alerts)).some((a) => a.type === "envio_automatico_falhou" && a.audience === "gestao" && a.dealId === id)).toBe(true);
+      const m = (await db.select().from(messages).where(eq(messages.dealId, id))).find((x) => x.direction === "out")!;
+      expect(m).toMatchObject({ status: "failed" });
+      expect((row.options as { messageId?: string }).messageId).toBe(m.id);
+      await drainOutbox(new Date(t0.getTime() + 3 * 3_600_000));
+      [row] = await db.select().from(outbox);
+      expect(textCalls).toBe(1); expect(row.attempts).toBe(1);
+    });
+  }
+  it("erro com resposta HTTP (4xx/5xx) continua com retry", async () => {
+    const id = await lead("71999990902", t0);
+    await enqueueAutomated({ dealId: id, kind: "text", text: "http" });
+    failWith = () => new ProviderError("Evolution respondeu 400: número inválido", 400);
+    await drainOutbox(t0);
+    expect((await db.select().from(outbox))[0]).toMatchObject({ status: "pending", attempts: 1 });
+  });
+  it("item preso usa o id da mensagem guardado, não o corpo", async () => {
+    const id = await lead("71999990903", t0);
+    const [d] = await db.select().from(deals).where(eq(deals.id, id));
+    const base = { dealId: id, contactId: d.contactId, channelId: chId, direction: "out", kind: "text", body: "igual", status: "pending" } as const;
+    const [mine, other] = await db.insert(messages).values([base, base]).returning();
+    await enqueueAutomated({ dealId: id, kind: "text", text: "igual" });
+    await db.update(outbox).set({ status: "sending", attempts: 1, notBefore: new Date(t0.getTime() - 20 * 60_000), options: { messageId: mine.id } });
+    await drainOutbox(t0);
+    const rows = await db.select().from(messages).where(eq(messages.dealId, id));
+    expect(rows.find((r) => r.id === mine.id)!.status).toBe("failed");
+    expect(rows.find((r) => r.id === other.id)!.status).toBe("pending");
   });
 });

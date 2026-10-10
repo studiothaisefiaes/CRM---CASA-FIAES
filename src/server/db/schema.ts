@@ -297,8 +297,8 @@ export const outbox = pgTable("outbox", {
   /** text | poll */
   kind: text("kind").notNull(),
   text: text("text").notNull(),
-  /** Opções da enquete (lista) ou { values, source, ... }: `source` diz de onde veio ("automacao:<id>" | "auto_resposta") e `awaiting` / `scheduledAt` / `stage` guardam o que valia ao enfileirar, para reconferir na hora de enviar. */
-  options: jsonb("options").$type<string[] | { values?: string[]; source?: string; awaiting?: string; scheduledAt?: string; stage?: string } | null>(),
+  /** Opções da enquete (lista) ou { values, source, ... }: `source` diz de onde veio ("automacao:<id>" | "auto_resposta") e `awaiting` / `scheduledAt` / `stage` guardam o que valia ao enfileirar, para reconferir na hora de enviar; `messageId` é a mensagem pendente criada na conversa. */
+  options: jsonb("options").$type<string[] | { values?: string[]; source?: string; awaiting?: string; scheduledAt?: string; stage?: string; messageId?: string } | null>(),
   /** pending | sending | sent | failed | cancelled */
   status: text("status").notNull().default("pending"),
   notBefore: timestamp("not_before", { withTimezone: true }).notNull().defaultNow(),

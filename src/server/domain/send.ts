@@ -4,7 +4,7 @@ import { and, desc, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "../db";
 import { channels, contacts, dealEvents, deals, messages } from "../db/schema";
 import { whatsapp } from "../whatsapp/evolution";
-import type { QuotedMessage } from "../whatsapp/provider";
+import { ProviderError, type QuotedMessage } from "../whatsapp/provider";
 import { save as saveMediaFile } from "../whatsapp/media";
 import { sniffMime, type SafeMime } from "../security/sniff";
 import { recordOutbound } from "./deals";
@@ -12,6 +12,11 @@ import { emit, logEvent } from "./events";
 import { env } from "../env";
 
 export class SendError extends Error {}
+export const UNCERTAIN_SEND_MESSAGE = "Envio incerto: a Evolution não respondeu. Confira no WhatsApp antes de reenviar.";
+/** O provider não respondeu (timeout, rede, resposta ilegível): a mensagem PODE ter saído. Nunca reenviar sozinho. */
+export class UncertainSendError extends SendError {
+  constructor() { super(UNCERTAIN_SEND_MESSAGE); }
+}
 
 export const MAX_MEDIA_BYTES = 16 * 1024 * 1024;
 type Channel = typeof channels.$inferSelect;
@@ -242,11 +247,13 @@ export type DeliverResult = { confirmError?: string };
  * Entrega UMA mensagem automática já conferida pela fila (`drainOutbox`). Mesmo caminho dos envios do CRM:
  * grava como pendente (sem autor: aparece como "automática"), chama o provider e confirma, fundindo o eco do WhatsApp.
  * Sem canal (só com DEV_TOOLS) a mensagem fica como "simulada".
- * Só o erro do PROVIDER é lançado (a mensagem não saiu; `keepFailed` decide se a linha pendente vira "falhou" na conversa
- * ou é apagada para tentar de novo). Depois que o provider respondeu, o envio conta como feito: falha ao confirmar
+ * Só o erro do PROVIDER é lançado. Com resposta HTTP explícita da Evolution (4xx/5xx) a mensagem não saiu: `keepFailed`
+ * decide se a linha pendente vira "falhou" na conversa ou é apagada para tentar de novo. Sem resposta HTTP (timeout, rede)
+ * ela pode ter saído: lança `UncertainSendError`, a linha vira "falhou" e a fila NÃO reenvia.
+ * `onPending` recebe o id da linha pendente assim que ela é criada (a fila guarda no item). Depois que o provider respondeu, o envio conta como feito: falha ao confirmar
  * volta em `confirmError`, para a fila não reenviar.
  */
-export async function deliverAutomated(dealId: string, channel: Channel | null, p: AutomatedPayload, keepFailed: boolean): Promise<DeliverResult> {
+export async function deliverAutomated(dealId: string, channel: Channel | null, p: AutomatedPayload, keepFailed: boolean, onPending?: (messageId: string) => Promise<void>): Promise<DeliverResult> {
   const row = await loadTarget(dealId);
   const body = p.kind === "poll" ? `Enquete: ${p.text}` : p.text; // igual ao que o eco do WhatsApp traz (parseContent)
   if (!channel) {
@@ -256,12 +263,17 @@ export async function deliverAutomated(dealId: string, channel: Channel | null, 
   const prov = whatsapp();
   if (p.kind === "poll" && !prov.sendPoll) throw new SendError("Este WhatsApp ainda não envia enquetes.");
   const [pending] = await db.insert(messages).values({ dealId, contactId: row.deal.contactId, channelId: channel.id, direction: "out", kind: p.kind, body, status: "pending" }).returning({ id: messages.id });
+  await onPending?.(pending.id).catch((e) => console.error("[fila] não guardou o id da mensagem pendente", e instanceof Error ? e.message : e));
   let externalId: string | null = null;
   try {
     ({ externalId } = p.kind === "poll"
       ? await prov.sendPoll!(channel.instanceName, row.phone, p.text, p.options)
       : await prov.sendText(channel.instanceName, row.phone, p.text));
   } catch (e) {
+    if (!(e instanceof ProviderError && e.status !== undefined)) {
+      await db.update(messages).set({ status: "failed", error: UNCERTAIN_SEND_MESSAGE }).where(eq(messages.id, pending.id));
+      throw new UncertainSendError();
+    }
     if (keepFailed) await db.update(messages).set({ status: "failed", error: errMsg(e).slice(0, 300) }).where(eq(messages.id, pending.id));
     else await db.delete(messages).where(eq(messages.id, pending.id));
     throw e;

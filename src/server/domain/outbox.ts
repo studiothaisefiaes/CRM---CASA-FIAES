@@ -2,7 +2,7 @@ import { and, asc, eq, isNull, lte, sql } from "drizzle-orm";
 import { db, pool, type Tx } from "../db";
 import { alerts, automations, contacts, deals, messages, outbox, settings, stages, type OutboxItem } from "../db/schema";
 import { isOpen } from "../../lib/business-hours";
-import { deliverAutomated, resolveChannel, SendError } from "./send";
+import { deliverAutomated, resolveChannel, SendError, UncertainSendError, UNCERTAIN_SEND_MESSAGE } from "./send";
 import { getBusinessHours } from "./hours";
 import { isQuiet } from "./quiet";
 
@@ -142,8 +142,15 @@ async function processItem(item: OutboxItem, now: Date, open: boolean): Promise<
   const last = item.attempts >= MAX_SEND_ATTEMPTS;
   let delivered;
   try {
-    delivered = await deliverAutomated(item.dealId, channel, { kind: item.kind === "poll" ? "poll" : "text", text: item.text, options: values }, last);
-  } catch (e) { // só o erro do provider chega aqui: a mensagem NÃO saiu
+    delivered = await deliverAutomated(item.dealId, channel, { kind: item.kind === "poll" ? "poll" : "text", text: item.text, options: values }, last,
+      (messageId) => saveMessageId(item, messageId));
+  } catch (e) {
+    if (e instanceof UncertainSendError) { // a Evolution não respondeu: pode ter saído, então NÃO reenvia
+      await finish(item.id, { status: "failed", error: UNCERTAIN_SEND_MESSAGE });
+      await alertInterrupted(item, row.contact.name ?? row.contact.phoneE164, "não teve resposta da Evolution e pode ter saído");
+      return "failed";
+    }
+    // resposta HTTP de erro da Evolution: a mensagem NÃO saiu
     const msg = (e instanceof Error ? e.message : String(e)).slice(0, 300);
     if (!last) {
       await finish(item.id, { status: "pending", error: msg, notBefore: new Date(now.getTime() + BACKOFF_MIN[item.attempts - 1] * 60_000) });
@@ -160,17 +167,31 @@ async function processItem(item: OutboxItem, now: Date, open: boolean): Promise<
   return "sent";
 }
 
+/** Guarda no item o id da mensagem pendente da conversa (usado se o item ficar preso). */
+async function saveMessageId(item: OutboxItem, messageId: string) {
+  const { values, ...rest } = unpackOptions(item.options);
+  await finish(item.id, { options: { ...rest, ...(values.length ? { values } : {}), messageId } });
+}
+
+async function alertInterrupted(item: OutboxItem, who: string, why: string) {
+  await db.insert(alerts).values({ dealId: item.dealId, audience: "gestao", type: "envio_automatico_falhou", severity: "info",
+    message: `O envio automático para ${who} ${why}. Confira a conversa antes de reenviar.`, dedupeKey: `auto:${item.id}` }).onConflictDoNothing();
+}
+
 /** Item que ficou "enviando" (worker caiu no meio): não reenvia, para não duplicar. Marca a conversa e avisa a gestão. */
 async function failStuck(now: Date) {
   const stuck = await db.update(outbox).set({ status: "failed", error: "Envio automático interrompido. Confira a conversa antes de reenviar." })
     .where(and(eq(outbox.status, "sending"), lte(outbox.notBefore, new Date(now.getTime() - STUCK_AFTER_MS)))).returning();
   for (const it of stuck) {
     const body = it.kind === "poll" ? `Enquete: ${it.text}` : it.text;
-    await db.update(messages).set({ status: "failed", error: "Envio automático interrompido" })
-      .where(and(eq(messages.dealId, it.dealId), eq(messages.direction, "out"), eq(messages.status, "pending"), isNull(messages.externalId), isNull(messages.sentByUserId), eq(messages.body, body)));
+    const messageId = unpackOptions(it.options).messageId;
+    const fail = { status: "failed", error: "Envio automático interrompido" };
+    // Pelo id guardado; o casamento por corpo é só o plano B (item antigo, sem id).
+    await db.update(messages).set(fail).where(messageId
+      ? and(eq(messages.id, messageId), eq(messages.status, "pending"))
+      : and(eq(messages.dealId, it.dealId), eq(messages.direction, "out"), eq(messages.status, "pending"), isNull(messages.externalId), isNull(messages.sentByUserId), eq(messages.body, body)));
     const [c] = await db.select({ name: contacts.name, phone: contacts.phoneE164 }).from(deals).innerJoin(contacts, eq(contacts.id, deals.contactId)).where(eq(deals.id, it.dealId));
-    await db.insert(alerts).values({ dealId: it.dealId, audience: "gestao", type: "envio_automatico_falhou", severity: "info",
-      message: `O envio automático para ${c?.name ?? c?.phone ?? "a cliente"} foi interrompido. Confira a conversa antes de reenviar.`, dedupeKey: `auto:${it.id}` }).onConflictDoNothing();
+    await alertInterrupted(it, c?.name ?? c?.phone ?? "a cliente", "foi interrompido");
   }
 }
 
