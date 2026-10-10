@@ -1,6 +1,7 @@
 import { it, expect, beforeEach } from "vitest";
 import { eq } from "drizzle-orm";
-import { db } from "../db"; import { dealEvents, deals, users, lists } from "../db/schema";
+import { db } from "../db"; import { dealEvents, deals, users, lists, contacts } from "../db/schema";
+import { moveDeal } from "./deals";
 import { recordInbound, recordOutbound } from "./deals"; import { updateDeal, closeSale, setAttendance } from "./updates";
 import { claimDeal } from "./assign"; import { resetDb } from "../../../test/db";
 let ana = "", bia = "";
@@ -64,4 +65,22 @@ it("comparecimento valida o valor e registra evento", async () => {
   expect((await db.select().from(dealEvents).where(eq(dealEvents.type, "comparecimento"))).length).toBe(1);
   await expect(setAttendance(id, "xis" as never, ana)).rejects.toThrow();
   await expect(updateDeal(id, { attendance: "xis" as never }, ana)).rejects.toThrow();
+});
+it("fechar venda de lead perdido limpa o motivo de perda", async () => {
+  const id = await lead();
+  const [reason] = await db.select().from(lists).where(eq(lists.kind, "lost_reason"));
+  await updateDeal(id, { lostReasonId: reason.id }, ana);
+  await moveDeal(id, "perdido", ana);
+  const [svc] = await db.select().from(lists).where(eq(lists.kind, "service"));
+  await closeSale(id, { serviceId: svc.id, valueCents: 5000, paymentMethod: "pix", paidNow: true }, ana);
+  const [d] = await db.select().from(deals).where(eq(deals.id, id));
+  expect(d.lostReasonId).toBeNull(); expect(d.closedAt).not.toBeNull();
+});
+it("aniversário com zero à esquerda não gera alteração falsa", async () => {
+  const id = await lead();
+  await updateDeal(id, { birthday: "5/3" }, ana);
+  await updateDeal(id, { birthday: "05/03" }, ana);
+  const [c] = await db.select().from(contacts);
+  expect(c).toMatchObject({ birthDay: 5, birthMonth: 3 });
+  expect((await db.select().from(dealEvents).where(eq(dealEvents.type, "campo_alterado"))).length).toBe(1);
 });

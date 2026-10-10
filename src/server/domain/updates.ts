@@ -6,6 +6,7 @@ import { normalizePhone } from "./phone";
 import { logEvent, emit } from "./events";
 import { findOpenDeal, stageByKey, moveDealTx } from "./deals";
 import { FIELD_LABELS } from "../../lib/field-labels";
+import { nextDayMorning, replaceOpenTaskTx } from "./tasks";
 
 export const ATTENDANCE = ["confirmado", "compareceu", "faltou", "remarcou"] as const;
 const dateOrNull = z.union([z.string().datetime({ offset: true }), z.literal(""), z.null()]).transform((v) => (v ? new Date(v) : null));
@@ -91,9 +92,18 @@ export async function updateDeal(dealId: string, raw: DealPatch, userId: string)
       if (patch[k] === undefined) continue;
       after[k] = patch[k];
     }
+    // Aniversário: compara normalizado ("05/03" é o mesmo que 5/3 guardado).
+    const normBirthday = (v: unknown) => (typeof v === "string" && v ? v.split("/").map(Number).join("/") : v);
     const campos = Object.keys(after)
-      .map((k) => ({ campo: k, de: plain(before[k]), para: plain(after[k]) }))
+      .map((k) => ({ campo: k, de: plain(k === "birthday" ? normBirthday(before[k]) : before[k]), para: plain(k === "birthday" ? normBirthday(after[k]) : after[k]) }))
       .filter((c) => JSON.stringify(c.de) !== JSON.stringify(c.para));
+
+    if (patch.scheduledAt !== undefined && patch.scheduledAt?.getTime() !== deal.scheduledAt?.getTime()) {
+      // Agendar (ou remarcar) troca a tarefa de comparecimento em aberto: conferir no dia seguinte.
+      const quem = contactSet.name ?? contact.name;
+      await replaceOpenTaskTx(tx, dealId, deal.contactId, "comparecimento",
+        patch.scheduledAt ? { title: `Conferir se ${quem?.trim() || "a cliente"} compareceu`, dueAt: nextDayMorning(patch.scheduledAt), assigneeId: dealSet.ownerId !== undefined ? dealSet.ownerId : deal.ownerId } : null, userId);
+    }
 
     if (Object.keys(contactSet).length) await tx.update(contacts).set(contactSet).where(eq(contacts.id, deal.contactId));
     if (Object.keys(dealSet).length) await tx.update(deals).set(dealSet).where(eq(deals.id, dealId));
@@ -145,13 +155,21 @@ export async function closeSale(dealId: string, raw: CloseSaleInput, userId: str
     const [stage] = await tx.select().from(stages).where(eq(stages.id, deal.stageId));
     if (stage?.kind === "fechado") return true;
     await assertService(tx, input.serviceId);
+    const [svc] = await tx.select({ label: lists.label, cycleDays: lists.cycleDays }).from(lists).where(eq(lists.id, input.serviceId));
     const now = new Date();
     await tx.update(deals).set({
       serviceId: input.serviceId, valueCents: input.valueCents, paymentMethod: input.paymentMethod,
       ...(input.paidNow ? { paidAt: now, paidCents: input.valueCents } : {}),
+      // Uma venda não guarda motivo de perda (lead que estava em Perdido e foi recuperado).
+      ...(stage?.kind === "perdido" ? { lostReasonId: null } : {}),
     }).where(eq(deals.id, dealId));
     await moveDealTx(tx, dealId, "fechado", userId, "venda", now);
     await logEvent(tx, dealId, "venda", { serviceId: input.serviceId, valueCents: input.valueCents, paymentMethod: input.paymentMethod, paid: input.paidNow }, userId);
+    // Serviço com ciclo (ex.: coloração a cada 35 dias): lembrete de retorno a partir do fechamento.
+    if (svc?.cycleDays) {
+      await replaceOpenTaskTx(tx, dealId, deal.contactId, "retorno",
+        { title: `Retorno de ${svc.label}`, dueAt: new Date(now.getTime() + svc.cycleDays * 86_400_000), assigneeId: deal.ownerId }, userId);
+    }
     await tx.insert(auditLog).values({ userId, action: "fechou_venda", entity: "deal", entityId: dealId, data: { valueCents: input.valueCents } });
     return false;
   });
