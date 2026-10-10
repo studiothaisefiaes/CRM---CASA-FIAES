@@ -1,18 +1,33 @@
-/** Alerta mínimo de que o "atrasado" precisa (o AlertItem do sino satisfaz). */
-export type LateAlert = { dealId: string | null; type: string; resolved: boolean };
-
 export const BASE_TITLE = "Casa Fiaes";
-
-/** Quantos leads estão com a espera vencida: um por lead, só alerta de espera ainda aberto. */
-export function countLate(alerts: LateAlert[]): number {
-  const deals = new Set<string>();
-  for (const a of alerts) if (a.type === "sem_resposta_minutos" && !a.resolved && a.dealId) deals.add(a.dealId);
-  return deals.size;
-}
+const TZ = "America/Bahia";
+const OUR_TITLE = /^\(\d+\) atrasados · /;
 
 /** "Cruzou o limite": o número de atrasados subiu. Nunca no primeiro render (prev nulo), nunca em refresh igual. A T21 troca pela primitiva final. */
 export const crossedUp = (prev: number | null, next: number) => prev !== null && next > prev;
 
 export const lateTitle = (n: number, original: string) => (n > 0 ? `(${n}) atrasados · ${BASE_TITLE}` : original);
 
+/**
+ * Título da aba para N atrasados. `docTitle` é o que o documento tem agora; `original` é o último título que NÃO era o nosso.
+ * Só captura o original quando o título atual não é o nosso (senão 2 -> 1 -> 0 ficaria preso em "(1) atrasados").
+ */
+export function applyLateTitle(docTitle: string, n: number, original: string): { title: string; original: string } {
+  const orig = OUR_TITLE.test(docTitle) ? original : docTitle;
+  return { title: n > 0 ? lateTitle(n, orig) : orig || BASE_TITLE, original: orig };
+}
+
 export const lateAnnouncement = (n: number) => (n <= 0 ? "" : n === 1 ? "1 lead atrasado" : `${n} leads atrasados`);
+
+const dayKey = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: TZ }); // AAAA-MM-DD no fuso da Casa
+
+/** "até 03:28" (hoje), "até amanhã 03:28" ou "até sex 03:28", comparando o dia no fuso America/Bahia. */
+export function quietUntilLabel(until: Date, now: Date = new Date()): string {
+  const hm = until.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: TZ });
+  const today = dayKey(now);
+  const tomorrow = dayKey(new Date(Date.parse(`${today}T12:00:00Z`) + 86_400_000));
+  const day = dayKey(until);
+  if (day === today) return `até ${hm}`;
+  if (day === tomorrow) return `até amanhã ${hm}`;
+  const wd = until.toLocaleDateString("pt-BR", { weekday: "short", timeZone: TZ }).replace(".", "");
+  return `até ${wd} ${hm}`;
+}

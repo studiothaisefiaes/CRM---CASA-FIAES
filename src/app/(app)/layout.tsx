@@ -1,6 +1,7 @@
 import { requireUser } from "@/server/auth/session";
 import { getMyAlerts } from "@/server/queries/alerts";
 import { getShellBanners } from "@/server/queries/banners";
+import { countLateLeads } from "@/server/queries/late-count";
 import { Sidebar } from "@/components/shell/sidebar";
 import { LiveProvider } from "@/components/shell/live";
 import { LateWatch } from "@/components/shell/late-watch";
@@ -11,13 +12,13 @@ import { getBusinessHours } from "@/server/rules/engine";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const user = await requireUser();
-  const [alerts, hours, banners] = await Promise.all([getMyAlerts(user), getBusinessHours(), getShellBanners()]);
+  const [alerts, hours, banners, late] = await Promise.all([getMyAlerts(user), getBusinessHours(), getShellBanners(), countLateLeads(user)]);
   return (
     <ToastProvider>
       <LiveProvider>
         <HoursProvider hours={hours}>
           <Sidebar user={user} alerts={alerts} />
-          <LateWatch alerts={alerts} />
+          <LateWatch initial={late} />
           <div className="lg:pl-[232px] min-h-dvh pb-20 lg:pb-0">
             <ShellBannersView banners={banners} role={user.role} />
             {children}

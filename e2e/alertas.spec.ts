@@ -43,6 +43,34 @@ test("título e som: lead que estoura o prazo muda a aba uma vez só", async ({ 
   await expect(page).not.toHaveTitle(/atrasados/);
 });
 
+test("aba em segundo plano: 2 -> 1 -> 0 atrasados atualiza título e som sem recarregar", async ({ page }) => {
+  // Aba "oculta": o LiveProvider não roda router.refresh, então só a consulta a /api/alertas/atrasados pode mudar o título.
+  await page.addInitScript(countBeeps);
+  await page.addInitScript(() => { Object.defineProperty(document, "visibilityState", { get: () => "hidden" }); });
+  await login(page);
+  await simulate(page, { phone: "71 99700-5011", name: "Rita Alves", text: "Oi!" });
+  await simulate(page, { phone: "71 99700-5012", name: "Sara Lopes", text: "Oi!" });
+  await page.goto("/");
+  const base = await page.title();
+  const beeps = () => page.evaluate(() => (window as unknown as { __beeps: number }).__beeps);
+  ageLead("+5571997005011", 11);
+  await expect(page).toHaveTitle("(1) atrasados · Casa Fiaes", { timeout: 15_000 });
+  ageLead("+5571997005012", 11);
+  await expect(page).toHaveTitle("(2) atrasados · Casa Fiaes", { timeout: 15_000 });
+  await expect(page.getByTestId("late-live")).toHaveText("2 leads atrasados");
+  expect(await beeps()).toBe(4); // um toque por subida (2 osciladores cada)
+
+  const resolve = async (name: string) => {
+    await e2eSql("update alerts set resolved_at = now() where message like $1 and resolved_at is null", [`%${name}%`]);
+    await e2eSql(`select pg_notify('crm_events', '{"type":"regras"}')`);
+  };
+  await resolve("Rita Alves");
+  await expect(page).toHaveTitle("(1) atrasados · Casa Fiaes", { timeout: 15_000 });
+  await resolve("Sara Lopes");
+  await expect(page).toHaveTitle(base, { timeout: 15_000 }); // não fica preso em "(1) atrasados"
+  expect(await beeps()).toBe(4); // descer não toca
+});
+
 test("banner de conexão aparece com canal em erro e some com canal removido", async ({ page }) => {
   await e2eSql("insert into channels (name, instance_name, status) values ('Salão', 'e2e-banner-1', 'erro')");
   await login(page);
@@ -59,9 +87,16 @@ test("banner do modo quieto mostra a hora e a gestão retoma os avisos", async (
   await e2eSql("insert into channels (name, instance_name, status, quiet_until) values ('Salão', 'e2e-banner-2', 'conectado', now() + interval '3 hours')");
   await login(page);
   const banner = page.getByTestId("banner-quieto");
-  await expect(banner).toContainText(/Número recém-conectado: avisos pausados até \d{2}:\d{2}/);
+  await expect(banner).toContainText(/Número recém-conectado: avisos pausados até (amanhã )?\d{2}:\d{2}/);
   await shot(page, "03-banner-quieto");
   await banner.getByRole("button", { name: "Retomar avisos agora" }).click();
+  const confirm = page.getByRole("dialog", { name: "Retomar avisos agora?" });
+  await expect(confirm).toContainText("Os avisos voltam para todas as conversas desse número, inclusive as antigas.");
+  await confirm.getByRole("button", { name: "Cancelar" }).click(); // cancelar não mexe em nada
+  const [still] = await e2eSql("select quiet_until from channels where instance_name = 'e2e-banner-2'");
+  expect(still.quiet_until).not.toBeNull();
+  await banner.getByRole("button", { name: "Retomar avisos agora" }).click();
+  await confirm.getByRole("button", { name: "Retomar agora" }).click();
   await expect(page.getByTestId("banner-quieto")).toHaveCount(0);
   const [row] = await e2eSql("select quiet_until from channels where instance_name = 'e2e-banner-2'");
   expect(row.quiet_until).toBeNull();

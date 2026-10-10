@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import { IconBell, IconClose } from "@/components/icons";
 import { markAlertsReadAction } from "@/app/(app)/funil/actions";
@@ -16,6 +17,7 @@ const FOCUSABLE = "a[href],button:not([disabled]),[tabindex]:not([tabindex='-1']
 const noopSubscribe = () => () => {};
 
 export function AlertsBell({ alerts }: { alerts: AlertItem[] }) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [desktop, setDesktop] = useState(false);
   const [anchor, setAnchor] = useState({ top: 0, left: 0 });
@@ -41,6 +43,19 @@ export function AlertsBell({ alerts }: { alerts: AlertItem[] }) {
       new Notification("CRM Casa Fiaes", { body: fresh[0].message, tag: fresh[0].id });
     }
   }, [alerts]);
+
+  // Tocar no alerta marca como lido e só então abre o lead (clique com Ctrl/Cmd ou botão do meio segue o link normal).
+  const openAlert = (e: React.MouseEvent, a: AlertItem) => {
+    setOpen(false);
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+    e.preventDefault();
+    const href = leadHref(a.dealId);
+    if (a.read) { router.push(href); return; }
+    start(async () => {
+      try { await markAlertsReadAction([a.id]); } catch { /* abrir o lead importa mais que marcar */ }
+      router.push(href);
+    });
+  };
 
   const toggle = () => {
     if (!open && btnRef.current) {
@@ -103,7 +118,7 @@ export function AlertsBell({ alerts }: { alerts: AlertItem[] }) {
                 <ul>
                   {alerts.map((a) => (
                     <li key={a.id}>
-                      <Link href={leadHref(a.dealId)} onClick={() => setOpen(false)}
+                      <Link href={leadHref(a.dealId)} onClick={(e) => openAlert(e, a)}
                         className={`flex gap-3 px-4 py-3 min-h-11 border-b border-line/70 hover:bg-paper-2 transition-colors ${a.read ? "opacity-60" : ""}`}>
                         <span className={`mt-1.5 size-2 rounded-full shrink-0 ${a.resolved ? "bg-ok" : a.severity === "urgente" ? "bg-alert" : "bg-gold"}`} />
                         <span className="min-w-0">

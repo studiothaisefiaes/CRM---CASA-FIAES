@@ -39,6 +39,8 @@ test("celular: sino abre o painel embaixo e tocar no alerta abre o lead", async 
   await shot(page, "01-sino-celular");
   await item.tap();
   await expect(page).toHaveURL(/\/funil\?lead=/);
+  const [row] = await e2eSql("select read_at from alerts where message like '%Carla Mendes%' limit 1");
+  expect(row.read_at).not.toBeNull(); // tocar no alerta marca como lido
   await expect(page.getByRole("dialog", { name: /Lead Carla Mendes/ })).toBeVisible();
   await expect(page.getByRole("dialog", { name: "Alertas" })).toHaveCount(0);
 });
