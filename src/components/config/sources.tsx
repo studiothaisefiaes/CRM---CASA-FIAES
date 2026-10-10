@@ -78,7 +78,7 @@ function SourceCard({ s }: { s: SourceRow }) {
         <p className="text-sm text-graphite">{s.prefill ? <>Frase: <span className="text-ink">“{s.prefill}”</span></> : "Sem frase: a cliente envia só o código."}</p>
         {s.link ? (
           <div className="flex flex-col gap-2">
-            <Input readOnly value={s.link} aria-label={`Link de ${s.label}`} onFocus={(e) => e.currentTarget.select()} className="font-mono text-sm" />
+            <Input readOnly value={s.link} aria-label={`Link de ${s.label}`} onFocus={(e) => e.currentTarget.select()} className="font-mono" />
             <div className="flex flex-wrap gap-2">
               <Button variant="secondary" size="sm" className="pointer-coarse:min-h-11" onClick={copy}>{copied ? <><IconCheck size={14} />Link copiado</> : "Copiar link"}</Button>
               <a href={s.png ?? "#"} download={`${file}.png`} className="inline-flex items-center gap-1.5 h-8 pointer-coarse:min-h-11 px-3 text-sm font-medium rounded-[8px] border border-line-strong hover:bg-paper-2"><IconDownload size={14} />Baixar PNG</a>

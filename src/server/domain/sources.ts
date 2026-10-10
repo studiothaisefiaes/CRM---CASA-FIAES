@@ -33,6 +33,7 @@ export async function createSource(input: z.input<typeof createSchema>, userId: 
 }
 
 export async function setSourceActive(id: string, active: boolean, userId: string) {
+  z.string().uuid().parse(id);
   await db.update(leadSources).set({ active }).where(eq(leadSources.id, id));
   await db.insert(auditLog).values({ userId, action: active ? "ativou" : "desativou", entity: "lead_source", entityId: id, data: {} });
 }
@@ -45,6 +46,7 @@ export function sourceLink(source: { code: string; prefill?: string | null }, ph
   return `https://wa.me/${phoneE164.replace(/\D/g, "")}?text=${encodeURIComponent(text)}`;
 }
 
+const MIN_PHRASE = 12;
 /** Minúsculas, sem acento, espaços colapsados: a comparação da frase do link. */
 const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
 
@@ -61,8 +63,13 @@ export async function matchSource(firstMessage: string | null | undefined, tx: T
     if (hit) return { id: hit.id, label: hit.label };
   }
   const text = norm(firstMessage);
-  const byPhrase = active
-    .filter((s) => s.prefill && norm(s.prefill).length >= 4 && text.includes(norm(s.prefill)))
-    .sort((a, b) => norm(b.prefill!).length - norm(a.prefill!).length)[0];
+  // Reserva por frase: mínimo de 12 caracteres (frases curtas casam em conversa comum); a mais longa vence
+  // e, se duas origens ativas empatam no maior comprimento, não atribui nenhuma (melhor sem origem que errada).
+  const hits = active
+    .filter((s) => s.prefill && norm(s.prefill).length >= MIN_PHRASE && text.includes(norm(s.prefill)))
+    .map((s) => ({ s, len: norm(s.prefill!).length }));
+  const best = Math.max(0, ...hits.map((h) => h.len));
+  const top = hits.filter((h) => h.len === best);
+  const byPhrase = top.length === 1 ? top[0].s : null;
   return byPhrase ? { id: byPhrase.id, label: byPhrase.label } : null;
 }
