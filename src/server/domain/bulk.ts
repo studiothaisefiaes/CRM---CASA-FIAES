@@ -29,22 +29,24 @@ export async function actionableIds(ids: string[], user: BulkWho, scope: BulkSco
   return rows.map((r) => r.id);
 }
 
-/** "Não é cliente" (um ou vários). `ids` devolve os que de fato saíram da fila: é o que o Desfazer restaura. */
-export async function bulkArchive(ids: string[], user: BulkWho): Promise<{ archived: number; ids: string[]; skipped: number }> {
+/**
+ * "Não é cliente". `scoped` (padrão): em massa, a atendente só arquiva o que é dela ou não tem dono (o filtro vai no próprio UPDATE).
+ * Individual (`scoped: false`) vale para qualquer lead: o salão é compartilhado e a atendente pode agir no lead de outra pessoa.
+ * `ids` devolve os que de fato saíram da fila: é o que o Desfazer restaura.
+ */
+export async function bulkArchive(ids: string[], user: BulkWho, opts: { scoped?: boolean } = {}): Promise<{ archived: number; ids: string[]; skipped: number }> {
   const requested = [...new Set(ids)];
   if (requested.length > BULK_MAX) throw new UserFacingError(`Escolha no máximo ${BULK_MAX} de cada vez.`);
-  // Fechado também pode sair (lead antigo), mas não o arquivado de novo: o escopo é "não arquivado".
-  const allowed = (await db.select({ id: deals.id }).from(deals).where(and(inArray(deals.id, requested), isNull(deals.archivedAt),
-    user.role === "gestor" ? undefined : or(eq(deals.ownerId, user.id), isNull(deals.ownerId))))).map((r) => r.id);
-  const r = await archiveDeals(allowed, user.id);
+  const own = (opts.scoped ?? true) && user.role !== "gestor";
+  const r = await archiveDeals(requested, user.id, own ? { onlyOwnerId: user.id } : {});
   return { archived: r.archived, ids: r.ids, skipped: requested.length - r.archived };
 }
 
-export async function bulkRestore(ids: string[], user: BulkWho): Promise<{ restored: number; conflicts: string[]; skipped: number }> {
+export async function bulkRestore(ids: string[], user: BulkWho, opts: { scoped?: boolean } = {}): Promise<{ restored: number; conflicts: string[]; skipped: number }> {
   const requested = [...new Set(ids)];
   if (requested.length > BULK_MAX) throw new UserFacingError(`Escolha no máximo ${BULK_MAX} de cada vez.`);
-  const allowed = await actionableIds(requested, user, "archived");
-  const r = await restoreDeals(allowed, user.id);
+  const own = (opts.scoped ?? true) && user.role !== "gestor";
+  const r = await restoreDeals(requested, user.id, own ? { onlyOwnerId: user.id } : {});
   return { restored: r.restored, conflicts: r.conflicts, skipped: requested.length - r.restored - r.conflicts.length };
 }
 

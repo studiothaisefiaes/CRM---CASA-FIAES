@@ -6,6 +6,7 @@ import { recordInbound } from "./deals";
 import { BULK_MAX, bulkArchive, bulkAssign, bulkMove, bulkRestore } from "./bulk";
 import { markAttendance } from "./updates";
 import { setNextAction, nextActionOf } from "./tasks";
+import { archiveDeals } from "./archive";
 import { UserFacingError } from "./errors";
 import { resetDb } from "../../../test/db";
 
@@ -120,4 +121,56 @@ it("próxima ação: uma por lead (a nova cancela a antiga), responsável padrã
   await expect(setNextAction(leads[0], { title: "x", dueAt: new Date(Date.now() - 3_600_000) }, ana.id)).rejects.toThrow("já passou");
   await expect(setNextAction(leads[0], { title: "   ", dueAt }, ana.id)).rejects.toThrow("Escreva");
   await expect(setNextAction(leads[0], { title: "x", dueAt, assigneeId: "00000000-0000-4000-8000-000000000000" }, ana.id)).rejects.toThrow("não está mais na equipe");
+});
+
+it("Faltou → Compareceu: a correção cancela o Remarcar que o Faltou criou (sem casar pelo título)", async () => {
+  await schedule(leads[0]);
+  await markAttendance(leads[0], "faltou", ana.id);
+  const remarcar = await nextActionOf(leads[0]);
+  expect(remarcar?.title).toMatch(/^Remarcar/);
+  const r = await markAttendance(leads[0], "compareceu", ana.id);
+  expect(r.changed).toBe(true);
+  expect(await nextActionOf(leads[0])).toBeNull();
+  const [ev] = await db.select().from(dealEvents).where(and(eq(dealEvents.dealId, leads[0]), eq(dealEvents.type, "tarefa")));
+  expect(ev).toBeTruthy();
+  const cancelada = await db.select().from(dealEvents).where(and(eq(dealEvents.dealId, leads[0]), eq(dealEvents.type, "tarefa")));
+  expect(cancelada.some((e) => (e.payload as { acao?: string; tarefa?: string }).acao === "cancelada" && (e.payload as { tarefa?: string }).tarefa === remarcar!.id)).toBe(true);
+});
+
+it("Faltou → Compareceu não mexe numa próxima ação que a atendente trocou depois (mesmo com título 'Remarcar')", async () => {
+  await schedule(leads[0]);
+  await markAttendance(leads[0], "faltou", ana.id);
+  await setNextAction(leads[0], { title: "Remarcar com a Bianca", dueAt: new Date(Date.now() + 86_400_000) }, ana.id); // plano da atendente
+  await markAttendance(leads[0], "compareceu", ana.id);
+  expect((await nextActionOf(leads[0]))?.title).toBe("Remarcar com a Bianca");
+});
+
+it("Faltou mantém a próxima ação que já estava planejada e não cria Remarcar", async () => {
+  await schedule(leads[0]);
+  await setNextAction(leads[0], { title: "Mandar valores", dueAt: new Date(Date.now() + 86_400_000) }, ana.id);
+  const r = await markAttendance(leads[0], "faltou", ana.id);
+  expect(r).toEqual({ changed: true, remarcar: false });
+  expect((await nextActionOf(leads[0]))?.title).toBe("Mandar valores");
+  expect((await db.select().from(tasks).where(and(eq(tasks.dealId, leads[0]), eq(tasks.kind, "proxima_acao"))))).toHaveLength(1);
+});
+
+it("Faltou sem próxima ação cria o Remarcar e avisa", async () => {
+  await schedule(leads[0]);
+  expect(await markAttendance(leads[0], "faltou", ana.id)).toEqual({ changed: true, remarcar: true });
+});
+
+it("mensagens certas: lead arquivado e lead fora de Agendado", async () => {
+  await expect(markAttendance(leads[2], "compareceu", ana.id)).rejects.toThrow("agendado");
+  await schedule(leads[0]);
+  await archiveDeals([leads[0]], gestor.id);
+  await expect(markAttendance(leads[0], "faltou", ana.id)).rejects.toThrow("saiu da fila");
+});
+
+it("individual não filtra por dono (salão compartilhado): a atendente arquiva e restaura lead de outra pessoa", async () => {
+  const r = await bulkArchive([leads[3]], ana, { scoped: false });
+  expect(r.archived).toBe(1);
+  const back = await bulkRestore([leads[3]], ana, { scoped: false });
+  expect(back.restored).toBe(1);
+  // e em massa (padrão) o filtro de dono continua valendo
+  expect((await bulkArchive([leads[3]], ana)).archived).toBe(0);
 });

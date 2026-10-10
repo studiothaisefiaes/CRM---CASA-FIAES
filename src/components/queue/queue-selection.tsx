@@ -72,3 +72,17 @@ export function HideWhileSelecting({ children, className }: { children: ReactNod
   const sel = useQueueSelection();
   return <div className={cn(className, sel?.mode && "max-lg:hidden")}>{children}</div>;
 }
+
+/**
+ * A região fixa (`role="status"`, educada) que conta os selecionados para o leitor de tela enquanto a seleção está ligada
+ * e diz "Seleção desligada" ao sair. Fica montada o tempo todo: região que aparece junto com o texto nem sempre é anunciada.
+ */
+export function SelectionAnnouncer({ count }: { count: number }) {
+  const sel = useQueueSelection();
+  const mode = !!sel?.mode;
+  const [prev, setPrev] = useState(false);
+  const [off, setOff] = useState(false);
+  if (prev !== mode) { setPrev(mode); setOff(!mode); }
+  const text = mode ? `${count} ${count === 1 ? "selecionado" : "selecionados"}` : off ? "Seleção desligada" : "";
+  return <span role="status" aria-live="polite" data-testid="anuncio-selecao" className="sr-only">{text}</span>;
+}

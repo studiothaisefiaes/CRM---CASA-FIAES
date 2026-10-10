@@ -5,6 +5,7 @@ const lookup: HistoryLookup = {
   users: { u1: "Ana Souza", u2: "Bia Lima" },
   lists: { s1: "Coloração", l1: "Preço" },
   sources: { src1: "Instagram bio" },
+  stages: { followup_1: "Follow-up 1", agendado: "Agendado" },
 };
 // 2026-10-13 17:05 UTC = 14:05 em Salvador
 const NOW = Date.parse("2026-10-13T17:05:00Z");
@@ -64,4 +65,9 @@ it("agrupa por dia de Salvador, do mais novo para o mais antigo (Hoje, Ontem, de
   const days = groupByDay(es, NOW);
   expect(days.map((d) => [d.label, d.entries.length])).toEqual([["Hoje", 2], ["Ontem", 1], ["sábado, 10 de outubro", 1]]);
   expect(days[0].entries.map((e) => e.id)).toEqual(["4:0", "3:0"]);
+});
+
+it("etapa mostra o nome da etapa da lista, não a chave", () => {
+  const es = historyEntries([ev("1", "etapa_alterada", { de: "lead", para: "followup_1", motivo: "manual" }, "2026-10-13T17:00:00Z"), ev("2", "etapa_alterada", { para: "inexistente", motivo: "manual" }, "2026-10-13T17:01:00Z")], lookup);
+  expect(es.map((e) => e.text)).toEqual(["Movido para Inexistente", "Movido para Follow-up 1"]);
 });

@@ -7,7 +7,9 @@ import { isChannelOrigin, NOT_IDENTIFIED } from "./source-kinds";
 /** O histórico do lead (aba/seção "Histórico"): eventos legíveis, com o de/para dos campos. Puro, no relógio de Salvador. */
 export type HistoryEvent = { id: string; type: string; payload: unknown; createdAt: string | Date; user: string | null };
 /** Nomes para trocar os ids dos campos (responsável, serviço, motivo, origem de link) por texto. */
-export type HistoryLookup = { users: Record<string, string>; lists: Record<string, string>; sources: Record<string, string> };
+export type HistoryLookup = { users: Record<string, string>; lists: Record<string, string>; sources: Record<string, string>; /** Nome da etapa pela chave (`followup_1` → "Follow-up 1"). */ stages?: Record<string, string> };
+/** Quantos eventos o servidor entrega por lead. Chegou nisto, o histórico está cortado e a tela avisa. */
+export const HISTORY_EVENT_LIMIT = 300;
 export type HistoryEntry = {
   id: string; at: string; /** Ex.: "Valor: R$ 100,00 → R$ 150,00". */ text: string; /** Ex.: "Ana, 14:02". */ meta: string;
   tone: "default" | "etapa" | "alerta" | "ok";
@@ -61,7 +63,8 @@ function lines(e: HistoryEvent, lk: HistoryLookup): { text: string; tone: Histor
   switch (e.type) {
     case "lead_criado": return one(`Lead criado${p.origin && !isChannelOrigin(String(p.origin)) ? ` (${p.origin})` : ""}`);
     case "etapa_alterada": {
-      const nome = String(p.para ?? "").replace("followup_", "Follow-up ").replace(/^\w/, (c) => c.toUpperCase());
+      const chave = String(p.para ?? "");
+      const nome = lk.stages?.[chave] ?? chave.replace("followup_", "Follow-up ").replace(/^\w/, (c) => c.toUpperCase());
       const motivo = String(p.motivo ?? "");
       return one(`Movido para ${nome}${motivo.startsWith("automacao") ? " (automático)" : motivo === "respondido" ? " (respondido)" : motivo === "cliente_respondeu" ? " (cliente respondeu)" : ""}`, "etapa");
     }

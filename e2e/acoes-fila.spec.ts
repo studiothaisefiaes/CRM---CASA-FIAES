@@ -15,13 +15,14 @@ const fila = (page: Page) => page.getByRole("listbox", { name: "Fila" });
 const NOMES = ["Bianca Teles", "Carla Mendes", "Dora Lins", "Elaine Prado"];
 
 /** Leads esperando resposta, com o prefixo do teste k (telefone +55 71 99741-k00i). */
-async function leads(page: Page, k: number, n = 1) {
-  await isola(`+557199741${k}`);
+async function leads(page: Page, k: number, n = 1, serie = 1) {
+  const pre = `+55719974${serie}${k}`;
+  await isola(pre);
   const ids: string[] = [];
   for (let i = 0; i < n; i++) {
-    await simulate(page, { phone: `71 99741-${k}00${i + 1}`, name: NOMES[i], text: "Oi, vocês fazem progressiva?" });
-    await e2eSql("update deals set awaiting_reply_since = now() - interval '6 minutes' where contact_id = (select id from contacts where phone_e164 = $1)", [`+557199741${k}00${i + 1}`]);
-    ids.push(await leadId(`+557199741${k}00${i + 1}`));
+    await simulate(page, { phone: `71 9974${serie}-${k}00${i + 1}`, name: NOMES[i], text: "Oi, vocês fazem progressiva?" });
+    await e2eSql("update deals set awaiting_reply_since = now() - interval '6 minutes' where contact_id = (select id from contacts where phone_e164 = $1)", [`${pre}00${i + 1}`]);
+    ids.push(await leadId(`${pre}00${i + 1}`));
   }
   return ids;
 }
@@ -33,7 +34,7 @@ function errosDoNavegador(page: Page) {
 }
 // Não deixa lead esperando para trás: o motor o marcaria como atrasado e contaria no título de outros specs (alertas).
 test.afterAll(async () => {
-  await e2eSql("update deals set archived_at = coalesce(archived_at, now()) where contact_id in (select id from contacts where phone_e164 like '+557199741%')");
+  await e2eSql("update deals set archived_at = coalesce(archived_at, now()) where contact_id in (select id from contacts where phone_e164 like '+557199741%' or phone_e164 like '+557199742%')");
   await e2eSql("update alerts set resolved_at = now() where resolved_at is null");
 });
 const semPortal = (page: Page) => page.addStyleTag({ content: "nextjs-portal { display: none !important }" });
@@ -92,9 +93,15 @@ test("seleção por teclado: Espaço marca (sem abrir), Esc sai; Atribuir e Move
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("Space");
   await expect(page.getByTestId("selecionados")).toHaveText("2 selecionados");
+  const anuncio = page.getByTestId("anuncio-selecao"); // região fixa para o leitor de tela
+  await expect(anuncio).toHaveAttribute("role", "status");
+  await expect(anuncio).toHaveAttribute("aria-live", "polite");
+  await expect(anuncio).toHaveText("2 selecionados");
   await page.keyboard.press("Space"); // desmarca
   await expect(page.getByTestId("selecionados")).toHaveText("1 selecionado");
+  await expect(anuncio).toHaveText("1 selecionado");
   await page.keyboard.press("Escape");
+  await expect(anuncio).toHaveText("Seleção desligada");
   await expect(page.getByRole("region", { name: "Ações em massa" })).toHaveCount(0);
   await expect(primeiro).toHaveAttribute("aria-selected", "false");
 
@@ -269,6 +276,14 @@ test("Compareceu/Faltou: na Fila (conferir) e no painel; Faltou cria a próxima 
   await expect(p.getByTestId("proxima-acao-titulo")).toHaveText("Remarcar com Bianca Teles");
   await expect(p.getByText(/Comparecimento: Faltou \(/)).toBeVisible(); // no histórico
 
+  // Corrigiu: Faltou → Compareceu cancela o Remarcar que o Faltou criou
+  await p.getByRole("button", { name: "Compareceu" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Bianca Teles compareceu" })).toBeVisible();
+  await expect(p.getByTestId("proxima-acao-titulo")).toHaveCount(0);
+  expect((await deal(a)).attendance).toBe("compareceu");
+  expect(await e2eSql("select 1 from tasks where deal_id = $1 and kind = 'proxima_acao' and done_at is null", [a])).toHaveLength(0);
+  await expect(p.getByText(/Próxima ação cancelada: Remarcar com Bianca Teles/)).toBeVisible();
+
   await page.goto(`/atendimento?lead=${b}`);
   await painel(page).getByRole("button", { name: "Compareceu" }).click();
   await expect(page.getByRole("status").filter({ hasText: "Carla Mendes compareceu" })).toBeVisible();
@@ -316,6 +331,11 @@ test("histórico: de/para dos campos por dia, sem mensagens, com Ver mais", asyn
   await p.getByRole("button", { name: /Ver mais/ }).click();
   await expect(p.getByRole("region", { name: "Ontem" })).toBeVisible();
 
+  // Corte em 300: a tela avisa
+  await e2eSql("insert into deal_events (deal_id, type, payload, created_at) select $1, 'assumiu', '{}'::jsonb, now() - (g || ' seconds')::interval from generate_series(1, 320) g", [id]);
+  await page.reload();
+  await expect(p.getByText("Mostrando os 300 eventos mais recentes.")).toBeVisible();
+
   // painel completo (próxima ação + histórico) para o print
   await e2eSql("delete from deal_events where deal_id = $1 and type = 'assumiu'", [id]);
   await e2eSql("update deals set owner_id = (select id from users where email = 'ana@e2e.local') where id = $1", [id]);
@@ -329,6 +349,62 @@ test("histórico: de/para dos campos por dia, sem mensagens, com Ver mais", asyn
   await expect(page.getByRole("status").filter({ hasText: "Próxima ação salva" })).toHaveCount(0); // o aviso sai antes do print
   await shot(page, "01-painel-proxima-acao-e-historico-desktop", { clip: { x: 1140, y: 0, width: 300, height: 2500 } });
   expect(erros, "erros do navegador").toEqual([]);
+});
+
+test("atendente age no lead de outra pessoa (salão compartilhado): próxima ação, Compareceu e Não é cliente individual", async ({ page, isMobile }) => {
+  test.skip(isMobile, "desktop");
+  await login(page);
+  const [a, b] = await leads(page, 4, 2, 2);
+  for (const id of [a, b]) await e2eSql("update deals set owner_id = (select id from users where email = 'gestao@e2e.local') where id = $1", [id]);
+  await noEstagio(a, "agendado");
+  await e2eSql("update deals set scheduled_at = now() - interval '1 hour' where id = $1", [a]);
+  await page.context().clearCookies();
+  await login(page, "ana@e2e.local");
+  await page.goto(`/atendimento/${a}`);
+  const p = painel(page);
+  await expect(p.getByTestId("responsavel")).toHaveText("Thaíse Fiaes");
+  await p.getByRole("button", { name: "Próxima ação" }).click();
+  await page.getByLabel("O que fazer").fill("Confirmar com a cliente");
+  await page.getByRole("button", { name: "Salvar" }).click();
+  await expect(p.getByTestId("proxima-acao-titulo")).toHaveText("Confirmar com a cliente");
+  await p.getByRole("button", { name: "Compareceu" }).click();
+  await expect(p.getByRole("button", { name: "Compareceu" })).toHaveAttribute("aria-pressed", "true");
+  expect((await deal(a)).attendance).toBe("compareceu");
+  // Como conheceu? e Não é cliente, também no lead de outra pessoa
+  await page.goto(`/atendimento/${b}`);
+  await painel(page).getByTestId("como-conheceu").getByRole("button", { name: "Google", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Origem salva" })).toBeVisible();
+  expect((await deal(b)).source_label).toBe("Google");
+  await painel(page).getByRole("button", { name: "Não é cliente" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "saiu da fila" })).toBeVisible();
+  expect((await deal(b)).archived_at).not.toBeNull();
+  await page.getByRole("button", { name: "Desfazer" }).click();
+  await expect.poll(async () => (await deal(b)).archived_at).toBeNull();
+});
+
+test("próxima ação: avisa quando a Casa está fechada no dia/horário, mas deixa salvar", async ({ page, isMobile }) => {
+  test.skip(isMobile, "desktop");
+  await login(page);
+  const [id] = await leads(page, 5, 1, 2);
+  const original = (await e2eSql("select value from settings where key = 'business_hours'"))[0].value;
+  try {
+    const curto = Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [d, ["08:00", "09:00"]]));
+    await e2eSql("update settings set value = $1::jsonb where key = 'business_hours'", [JSON.stringify(curto)]);
+    await page.goto(`/atendimento?lead=${id}`);
+    await painel(page).getByRole("button", { name: "Próxima ação" }).click();
+    const dlg = page.getByRole("dialog", { name: "Próxima ação" });
+    await dlg.getByRole("radio", { name: "Amanhã 10h" }).click(); // 10h: fora de 8h-9h
+    await expect(dlg.getByRole("status")).toContainText(/Casa fechada nesse dia\/horário \(\w+, das 8:00 às 9:00\)/);
+    await dlg.getByLabel("Hora").fill("08:30");
+    await expect(dlg.getByRole("status")).toHaveCount(0);
+    await dlg.getByLabel("Hora").fill("15:00");
+    await expect(dlg.getByRole("status")).toBeVisible();
+    await dlg.getByLabel("O que fazer").fill("Ligar à tarde");
+    await dlg.getByRole("button", { name: "Salvar" }).click();
+    await expect(painel(page).getByTestId("proxima-acao-titulo")).toHaveText("Ligar à tarde");
+  } finally {
+    await e2eSql("update settings set value = $1::jsonb where key = 'business_hours'", [JSON.stringify(original)]);
+  }
 });
 
 test.describe("celular: triagem em massa e próxima ação em 390 px", () => {
@@ -402,11 +478,12 @@ test.describe("celular: triagem em massa e próxima ação em 390 px", () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
     await p.getByRole("button", { name: "Faltou" }).click();
     await expect(p.getByRole("button", { name: "Faltou" })).toHaveAttribute("aria-pressed", "true");
-    await expect(p.getByTestId("proxima-acao-titulo")).toHaveText("Remarcar com Bianca Teles");
+    await expect(page.getByRole("status").filter({ hasText: "a próxima ação que já existia foi mantida" })).toBeVisible();
+    await expect(p.getByTestId("proxima-acao-titulo")).toHaveText("Mandar os valores"); // o plano da atendente não é sobrescrito
     // aba Histórico: só a linha do tempo, com o de/para
     await lead.getByRole("tab", { name: "Histórico" }).click();
     await expect(p.getByRole("region", { name: "Hoje" })).toBeVisible();
-    await expect(page.getByRole("status").filter({ hasText: /salva|faltou/ })).toHaveCount(0); // os avisos saem antes do print
+    await expect(page.getByRole("status").filter({ hasText: /salva|faltou|mantida/ })).toHaveCount(0); // os avisos saem antes do print
     await shot(page, "05-celular-historico-390", { clip: { x: 0, y: 0, width: 390, height: 664 } });
   });
 });

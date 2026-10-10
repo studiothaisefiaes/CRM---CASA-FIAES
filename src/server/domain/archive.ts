@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { db } from "../db";
 import { alerts, auditLog, contacts, deals } from "../db/schema";
 import { emit, logEvent } from "./events";
@@ -8,13 +8,15 @@ import { findOpenDeal } from "./deals";
  * "Não é cliente" (individual ou em massa): o lead sai do funil, da fila, dos relatórios e do motor,
  * mas nada é apagado. Guarda a etapa em que estava para o Desfazer devolver tudo como era.
  */
-export async function archiveDeals(dealIds: string[], userId: string): Promise<{ archived: number; ids: string[] }> {
+/** `onlyOwnerId`: a atendente em massa só arquiva o que é dela ou não tem dono; o filtro vai no próprio UPDATE (mesma transação, sem janela entre conferir e gravar). */
+export type OwnerScope = { onlyOwnerId?: string };
+export async function archiveDeals(dealIds: string[], userId: string, scope: OwnerScope = {}): Promise<{ archived: number; ids: string[] }> {
   const ids = [...new Set(dealIds)];
   if (!ids.length) return { archived: 0, ids: [] };
   const done = await db.transaction(async (tx) => {
     const now = new Date();
     const rows = await tx.update(deals).set({ archivedAt: now, archivedBy: userId, archivedStageId: sql`${deals.stageId}` })
-      .where(and(inArray(deals.id, ids), isNull(deals.archivedAt)))
+      .where(and(inArray(deals.id, ids), isNull(deals.archivedAt), scope.onlyOwnerId ? or(eq(deals.ownerId, scope.onlyOwnerId), isNull(deals.ownerId)) : undefined))
       .returning({ id: deals.id, contactId: deals.contactId, stageId: deals.stageId });
     if (!rows.length) return rows;
     // Só vira "não é cliente" o contato que não ficou com outro lead em andamento (ex.: arquivou um lead antigo já fechado).
@@ -36,13 +38,13 @@ export async function archiveDeals(dealIds: string[], userId: string): Promise<{
  * Desfazer o "não é cliente": volta para a etapa em que estava, com as mensagens que chegaram nesse meio-tempo.
  * Se o contato já tiver outro lead aberto, não restaura (nunca dois abertos) e devolve o id em `conflicts`.
  */
-export async function restoreDeals(dealIds: string[], userId: string): Promise<{ restored: number; conflicts: string[] }> {
+export async function restoreDeals(dealIds: string[], userId: string, scope: OwnerScope = {}): Promise<{ restored: number; conflicts: string[] }> {
   const ids = [...new Set(dealIds)];
   const restored: string[] = [];
   const conflicts: string[] = [];
   if (!ids.length) return { restored: 0, conflicts };
   await db.transaction(async (tx) => {
-    const list = await tx.select().from(deals).where(and(inArray(deals.id, ids), sql`${deals.archivedAt} is not null`)).for("update");
+    const list = await tx.select().from(deals).where(and(inArray(deals.id, ids), sql`${deals.archivedAt} is not null`, scope.onlyOwnerId ? or(eq(deals.ownerId, scope.onlyOwnerId), isNull(deals.ownerId)) : undefined)).for("update");
     for (const d of list) {
       if (!d.closedAt && (await findOpenDeal(d.contactId, tx))) { conflicts.push(d.id); continue; }
       await tx.update(deals).set({

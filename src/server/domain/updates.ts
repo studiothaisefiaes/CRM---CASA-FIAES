@@ -6,7 +6,7 @@ import { normalizePhone } from "./phone";
 import { logEvent, emit } from "./events";
 import { findOpenDeal, stageByKey, moveDealTx } from "./deals";
 import { FIELD_LABELS } from "../../lib/field-labels";
-import { completeTaskTx, nextDayMorning, remarcarDueAt, replaceOpenTaskTx, setNextActionTx } from "./tasks";
+import { cancelRemarcarTx, completeTaskTx, nextDayMorning, REMARCAR_META, remarcarDueAt, replaceOpenTaskTx, setNextActionTx } from "./tasks";
 import { UserFacingError } from "./errors";
 
 export const ATTENDANCE = ["confirmado", "compareceu", "faltou", "remarcou"] as const;
@@ -220,6 +220,7 @@ export async function setAttendanceTx(tx: Tx, dealId: string, status: (typeof AT
   await tx.update(deals).set({ attendance: value, attendanceAt: new Date() }).where(eq(deals.id, dealId));
   await logEvent(tx, dealId, "comparecimento", { de: deal.attendance, para: value }, userId);
   // A conferência de comparecimento está feita: conclui a tarefa aberta (e o aviso dela). Confirmar o horário não é comparecer.
+  if (value === "compareceu") await cancelRemarcarTx(tx, dealId, userId); // corrigiu um Faltou: o Remarcar que ele criou não vale mais
   if (value !== "confirmado") {
     const open = await tx.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.dealId, dealId), eq(tasks.kind, "comparecimento"), isNull(tasks.doneAt)));
     for (const t of open) await completeTaskTx(tx, t.id, userId);
@@ -233,24 +234,31 @@ export async function setAttendance(dealId: string, status: (typeof ATTENDANCE)[
 }
 
 /**
- * "Compareceu" / "Faltou" na Fila e no painel: grava o comparecimento e conclui a conferência. Quem faltou ganha a próxima ação
- * "Remarcar" para amanhã às 10h (responsável: o dono do lead), tudo na mesma transação.
- * Só vale para lead aberto na etapa Agendado; repetir o mesmo valor não duplica evento nem tarefa.
+ * "Compareceu" / "Faltou" na Fila e no painel: grava o comparecimento e conclui a conferência, tudo na mesma transação.
+ * Quem faltou ganha a próxima ação "Remarcar" (amanhã 10h, dono do lead) SÓ se não houver próxima ação aberta: o que a atendente planejou não é sobrescrito.
+ * Corrigir Faltou → Compareceu cancela o Remarcar que o Faltou criou. Só vale para lead aberto na etapa Agendado; repetir o mesmo valor não faz nada.
+ * `remarcar`: true se o Remarcar foi criado (o aviso da tela diz o que aconteceu).
  */
-export async function markAttendance(dealId: string, status: "compareceu" | "faltou", userId: string, now = new Date()): Promise<{ changed: boolean }> {
+export async function markAttendance(dealId: string, status: "compareceu" | "faltou", userId: string, now = new Date()): Promise<{ changed: boolean; remarcar: boolean }> {
   const value = z.enum(["compareceu", "faltou"]).parse(status);
-  const changed = await db.transaction(async (tx) => {
-    const [row] = await tx.select({ attendance: deals.attendance, archivedAt: deals.archivedAt, closedAt: deals.closedAt, contactId: deals.contactId, ownerId: deals.ownerId, kind: stages.kind, name: contacts.name })
+  const r = await db.transaction(async (tx) => {
+    const [row] = await tx.select({ attendance: deals.attendance, archivedAt: deals.archivedAt, ownerId: deals.ownerId, kind: stages.kind, name: contacts.name })
       .from(deals).innerJoin(stages, eq(stages.id, deals.stageId)).innerJoin(contacts, eq(contacts.id, deals.contactId)).where(eq(deals.id, dealId));
     if (!row) throw new UserFacingError("Lead não encontrado");
-    if (row.archivedAt || row.kind !== "agendado") throw new UserFacingError("Só dá para conferir o comparecimento de um lead agendado.");
-    if (row.attendance === value) return false;
+    if (row.archivedAt) throw new UserFacingError("Esse lead saiu da fila.");
+    if (row.kind !== "agendado") throw new UserFacingError("Só dá para conferir o comparecimento de um lead agendado.");
+    if (row.attendance === value) return { changed: false, remarcar: false };
     await setAttendanceTx(tx, dealId, value, userId);
+    let remarcar = false;
     if (value === "faltou") {
-      await setNextActionTx(tx, dealId, { title: `Remarcar com ${row.name?.trim() || "a cliente"}`, dueAt: remarcarDueAt(now), assigneeId: row.ownerId }, userId, now);
+      const [open] = await tx.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.dealId, dealId), eq(tasks.kind, "proxima_acao"), isNull(tasks.doneAt))).limit(1);
+      if (!open) {
+        await setNextActionTx(tx, dealId, { title: `Remarcar com ${row.name?.trim() || "a cliente"}`, dueAt: remarcarDueAt(now), assigneeId: row.ownerId, meta: { ...REMARCAR_META } }, userId, now);
+        remarcar = true;
+      }
     }
-    return true;
+    return { changed: true, remarcar };
   });
-  if (changed) await emit("lead_atualizado", { dealId });
-  return { changed };
+  if (r.changed) await emit("lead_atualizado", { dealId });
+  return r;
 }

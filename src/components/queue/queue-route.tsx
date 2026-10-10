@@ -7,7 +7,7 @@ import type { BulkOptions, QueueItem, QueueSection } from "@/server/queries/queu
 import { IconArrowRight } from "@/components/icons";
 import { QueueList } from "./queue-list";
 import { BulkBar } from "./bulk-bar";
-import { useQueueSelection } from "./queue-selection";
+import { SelectionAnnouncer, useQueueSelection } from "./queue-selection";
 import { cn } from "@/lib/cn";
 import { ConversationOpeningView } from "./conversation-opening";
 import { readQueueState, rememberLead, useQueueState, useSavedQueueQuery } from "./use-queue-state";
@@ -48,6 +48,7 @@ export function QueueListRoute({ sections, query, selectedId, className, bulk }:
   return (
     <>
       <QueueList sections={sections} selectedId={current} onOpen={onOpen} listRef={ref} onScroll={onScroll} className={className} selection={selection ?? undefined} />
+      {selection && <SelectionAnnouncer count={chosen.length} />}
       {bulk && <BulkBar ids={chosen} options={bulk} openId={current} />}
       {navigating && opening && <div className="lg:hidden fixed inset-0 z-40"><ConversationOpeningView item={opening} /></div>}
     </>

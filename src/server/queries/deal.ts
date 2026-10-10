@@ -4,13 +4,13 @@ import { db } from "../db";
 import { contacts, dealEvents, deals, leadSources, lists, messages, stages, tasks, users, channels } from "../db/schema";
 import { SOURCE_EXPR } from "../reports/common";
 import { NOT_IDENTIFIED } from "../../lib/source-kinds";
+import { HISTORY_EVENT_LIMIT } from "../../lib/history";
 
 // O nó de mídia (com miniatura) fica no servidor; a tela pede o arquivo em /api/media/[id].
 const { media: _media, ...msgCols } = getTableColumns(messages);
 
 /** O histórico não repete a conversa: mensagens e "lido" ficam fora (e não gastam o limite). */
 const CONVERSATION_EVENTS = ["mensagem_recebida", "mensagem_enviada", "lido"];
-export const HISTORY_EVENT_LIMIT = 300;
 
 export async function getDealDetail(id: string) {
   const [row] = await db.select({ deal: deals, contact: contacts, stage: stages, ownerName: users.name, channelName: channels.name, channelStatus: channels.status })

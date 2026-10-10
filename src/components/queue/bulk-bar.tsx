@@ -36,9 +36,9 @@ export function BulkBar({ ids, options, openId }: { ids: string[]; options: Bulk
     const r = await archiveAction(ids);
     if (!r.ok) { toast(r.error, "error"); return; }
     const d = r.data!;
-    if (!d.archived) { toast("Esses leads são de outras pessoas", "error"); return; }
+    if (!d.archived) { toast("Nenhum lead foi arquivado: os escolhidos ficaram de fora", "error"); return; }
     if (openId && d.ids.includes(openId)) closeLead();
-    finish(`${plural(d.archived, "arquivado", "arquivados")}${d.skipped ? ` · ${plural(d.skipped, "ficou", "ficaram")} (de outra pessoa)` : ""}`, "ok", {
+    finish(`${plural(d.archived, "arquivado", "arquivados")}${d.skipped ? ` · ${d.skipped} ${d.skipped === 1 ? "ficou" : "ficaram"} de fora` : ""}`, "ok", {
       label: "Desfazer",
       onClick: () => {
         void restoreAction(d.ids).then((u) => {

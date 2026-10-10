@@ -4,6 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/field";
 import { Segmented } from "@/components/ui/segmented";
 import { createNextActionAction } from "@/app/(app)/funil/actions";
+import { useHours } from "@/components/pipeline/timer";
+import { businessDayLabel, isOpen } from "@/lib/business-hours";
+import { IconClock } from "@/components/icons";
 import { dueLabel, nextActionPresets } from "@/lib/next-action";
 import { bahiaParts, slotMs } from "@/lib/schedule";
 import { ActionSheet, FieldError, SheetLabel } from "./action-sheet";
@@ -19,6 +22,7 @@ export function NextActionSheet({ open, onClose, dealId, name, people, defaultAs
   open: boolean; onClose: () => void; dealId: string; name: string; people: { id: string; name: string }[];
   defaultAssigneeId: string | null; /** Título da próxima ação que esta vai substituir, se houver. */ replacing: string | null; onDone: () => void;
 }) {
+  const hours = useHours();
   const [openedAt] = useState(() => Date.now());
   const presets = nextActionPresets(openedAt);
   const initial = presets[0];
@@ -32,6 +36,7 @@ export function NextActionSheet({ open, onClose, dealId, name, people, defaultAs
   const sending = useRef(false);
 
   const ms = slotMs(slot.date, slot.time);
+  const closed = Number.isFinite(ms) && !isOpen(ms, hours);
   const pretty = Number.isFinite(ms) ? dueLabel(ms, openedAt) : null;
   const pick = (key: Preset) => {
     setPreset(key);
@@ -91,6 +96,11 @@ export function NextActionSheet({ open, onClose, dealId, name, people, defaultAs
           </div>
           {pretty && !error.when && <p className="mt-2 font-serif text-xl leading-snug first-letter:uppercase">{pretty}</p>}
           <FieldError>{error.when}</FieldError>
+          {closed && !error.when && (
+            <p role="status" className="mt-2 flex items-start gap-2 rounded-[var(--radius-control)] bg-gold-soft px-3 py-2.5 text-sm text-gold-ink">
+              <IconClock size={16} className="mt-0.5 shrink-0" aria-hidden /><span>Casa fechada nesse dia/horário ({businessDayLabel(ms, hours)}). Dá para salvar mesmo assim.</span>
+            </p>
+          )}
         </div>
 
         <div>

@@ -6,7 +6,7 @@ import { SALE_VALUE_REQUIRED } from "@/lib/money";
 import { assertUser } from "@/server/auth/session";
 import { moveDeal, ReopenConflict } from "@/server/domain/deals";
 import { claimDeal } from "@/server/domain/assign";
-import { actionableIds, BULK_MAX, bulkArchive, bulkAssign, bulkMove, bulkRestore } from "@/server/domain/bulk";
+import { BULK_MAX, bulkArchive, bulkAssign, bulkMove, bulkRestore } from "@/server/domain/bulk";
 import { completeTask, setNextAction } from "@/server/domain/tasks";
 import { updateDeal, createManualLead, closeSale, scheduleDeal, loseDeal, markAttendance, UserFacingError, type DealPatch } from "@/server/domain/updates";
 import { MAX_MEDIA_BYTES, markConversationRead, sendFromCrm, sendMediaFromCrm } from "@/server/domain/send";
@@ -178,11 +178,15 @@ export async function closeSaleAction(dealId: string, input: z.input<typeof clos
 }
 
 const ids = z.array(uuid).min(1, "Escolha pelo menos um lead.").max(BULK_MAX, `Escolha no máximo ${BULK_MAX} de cada vez.`);
-/** "Não é cliente" (um ou vários, até 100): sai da Fila, do Quadro e dos relatórios; nada é apagado. A atendente só age nos próprios leads e nos sem dono. `ids` é o que o Desfazer restaura. */
+/**
+ * "Não é cliente" (um ou vários, até 100): sai da Fila, do Quadro e dos relatórios; nada é apagado. `ids` é o que o Desfazer restaura.
+ * Um lead só (individual): qualquer pessoa da equipe pode, o salão é compartilhado. Vários (em massa): a atendente só age nos próprios leads e nos sem dono.
+ */
 export async function archiveAction(dealIds: string[]): Promise<ActionResult<{ archived: number; ids: string[]; skipped: number }>> {
   try {
     const user = await assertUser();
-    const r = await bulkArchive(ids.parse(dealIds), user);
+    const list = ids.parse(dealIds);
+    const r = await bulkArchive(list, user, { scoped: list.length > 1 });
     revalidateLead();
     return { ok: true, data: r };
   } catch (e) { return safe(e, "Não foi possível arquivar. Tente de novo."); }
@@ -191,7 +195,8 @@ export async function archiveAction(dealIds: string[]): Promise<ActionResult<{ a
 export async function restoreAction(dealIds: string[]): Promise<ActionResult<{ restored: number; conflicts: string[]; skipped: number }>> {
   try {
     const user = await assertUser();
-    const r = await bulkRestore(ids.parse(dealIds), user);
+    const list = ids.parse(dealIds);
+    const r = await bulkRestore(list, user, { scoped: list.length > 1 });
     revalidateLead();
     return { ok: true, data: r };
   } catch (e) { return safe(e, "Não foi possível desfazer. Tente de novo."); }
@@ -218,24 +223,18 @@ export async function bulkMoveAction(dealIds: string[], stageKey: string): Promi
 }
 
 // ---- Próxima ação, comparecimento e "Como conheceu?" ----
-/** A atendente só mexe nos próprios leads e nos sem dono; a gestão em todos. */
-async function assertCanAct(dealId: string, user: { id: string; role: "gestor" | "atendente" }) {
-  if (!(await actionableIds([dealId], user, "open")).length) throw new UserFacingError("Esse lead é de outra pessoa.");
-}
-
 const nextActionInput = z.object({
   dealId: uuid,
   title: z.string().trim().min(1, "Escreva o que precisa ser feito.").max(120, "Resuma em até 120 caracteres."),
   dueAt: z.string().datetime({ offset: true, message: "Escolha a data e a hora." }),
   assigneeId: uuid.nullable(),
 });
-/** Define a próxima ação do lead (uma por lead: a anterior é cancelada e fica no histórico). */
+/** Define a próxima ação do lead (uma por lead: a anterior é cancelada e fica no histórico). Individual: qualquer pessoa da equipe, o escopo de dono é só do em massa. */
 export async function createNextActionAction(input: z.input<typeof nextActionInput>): Promise<ActionResult> {
   try {
     const user = await assertUser();
     const v = nextActionInput.safeParse(input);
     if (!v.success) return { ok: false, error: v.error.issues[0]?.message ?? "Confira os dados." };
-    await assertCanAct(v.data.dealId, user);
     await setNextAction(v.data.dealId, { title: v.data.title, dueAt: new Date(v.data.dueAt), assigneeId: v.data.assigneeId }, user.id);
     revalidateLead();
     return { ok: true };
@@ -246,9 +245,8 @@ export async function createNextActionAction(input: z.input<typeof nextActionInp
 export async function completeTaskAction(taskId: string): Promise<ActionResult> {
   try {
     const user = await assertUser();
-    const [t] = await db.select({ dealId: tasks.dealId, assigneeId: tasks.assigneeId }).from(tasks).where(eq(tasks.id, uuid.parse(taskId)));
+    const [t] = await db.select({ id: tasks.id }).from(tasks).where(eq(tasks.id, uuid.parse(taskId)));
     if (!t) return { ok: false, error: "Essa tarefa não existe mais." };
-    if (t.dealId && t.assigneeId !== user.id) await assertCanAct(t.dealId, user);
     await completeTask(taskId, user.id);
     revalidateLead();
     return { ok: true };
@@ -256,11 +254,10 @@ export async function completeTaskAction(taskId: string): Promise<ActionResult> 
 }
 
 /** "Compareceu" / "Faltou". Quem faltou ganha a próxima ação "Remarcar". */
-export async function setAttendanceAction(dealId: string, status: "compareceu" | "faltou"): Promise<ActionResult<{ changed: boolean }>> {
+export async function setAttendanceAction(dealId: string, status: "compareceu" | "faltou"): Promise<ActionResult<{ changed: boolean; remarcar: boolean }>> {
   try {
     const user = await assertUser();
     const id = uuid.parse(dealId);
-    await assertCanAct(id, user);
     const r = await markAttendance(id, z.enum(["compareceu", "faltou"]).parse(status), user.id);
     revalidateLead();
     return { ok: true, data: r };
@@ -277,7 +274,6 @@ export async function setOriginAction(input: z.input<typeof originInput>): Promi
     const user = await assertUser();
     const v = originInput.safeParse(input);
     if (!v.success) return { ok: false, error: v.error.issues[0]?.message ?? "Escolha uma opção." };
-    await assertCanAct(v.data.dealId, user);
     if ("sourceId" in v.data) {
       const [src] = await db.select({ id: leadSources.id }).from(leadSources).where(eq(leadSources.id, v.data.sourceId));
       if (!src) return { ok: false, error: "Essa origem não existe mais." };

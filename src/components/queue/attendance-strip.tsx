@@ -10,6 +10,7 @@ import { formatPhoneClient } from "@/lib/phone-client";
 import { DUR, EASE } from "@/lib/motion";
 import { cn } from "@/lib/cn";
 import { useOpenLead } from "./open-lead";
+import { attendanceToast } from "./use-lead-actions";
 
 const hora = (iso: string) => new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Bahia" });
 const dia = (iso: string) => new Date(iso).toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit", timeZone: "America/Bahia" });
@@ -32,7 +33,7 @@ export function AttendanceStrip({ items }: { items: AttendanceDue[] }) {
     if (!r.ok) { toast(r.error, "error"); return; }
     setGone((g) => new Set(g).add(i.dealId));
     const name = i.name === i.phone ? formatPhoneClient(i.phone) : i.name;
-    toast(status === "compareceu" ? `${name} compareceu` : `${name} faltou · próxima ação: Remarcar`);
+    toast(attendanceToast(name, status, r.data));
   });
 
   return (

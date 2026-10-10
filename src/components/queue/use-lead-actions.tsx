@@ -11,6 +11,13 @@ import { NextActionSheet } from "./next-action-sheet";
 import { ScheduleSheet } from "./schedule-sheet";
 import { useCloseLead, useOpenLead } from "./open-lead";
 
+/** O aviso diz o que aconteceu: registrou, criou o Remarcar ou manteve a próxima ação que já existia. */
+export function attendanceToast(name: string, status: "compareceu" | "faltou", r?: { changed: boolean; remarcar: boolean }): string {
+  if (!r?.changed) return "Já estava registrado";
+  if (status === "compareceu") return `${name} compareceu`;
+  return r.remarcar ? `${name} faltou · próxima ação: Remarcar` : `${name} faltou · a próxima ação que já existia foi mantida`;
+}
+
 type SheetKind = "schedule" | "close" | "lose" | "next";
 
 export type LeadActions = {
@@ -94,7 +101,7 @@ export function useLeadActions({ d, name, viewer, reload }: { d: DealDetail | nu
     start(async () => {
       const r = await setAttendanceAction(d.deal.id, status);
       if (!r.ok) { toast(r.error, "error"); return; }
-      toast(!r.data?.changed ? "Já estava registrado" : status === "compareceu" ? `${name} compareceu` : `${name} faltou · próxima ação: Remarcar`, !r.data?.changed ? "info" : "ok");
+      toast(attendanceToast(name, status, r.data), !r.data?.changed ? "info" : "ok");
       await reload();
     });
   }, [d, name, reload, toast]);

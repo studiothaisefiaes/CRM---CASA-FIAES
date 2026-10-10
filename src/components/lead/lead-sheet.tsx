@@ -16,7 +16,7 @@ import { useUrgency } from "@/components/pipeline/timer";
 import { Badge } from "@/components/ui/badge";
 import { formatPhoneClient } from "@/lib/phone-client";
 import { money, PAYMENT_LABEL } from "@/lib/format";
-import { groupByDay, historyEntries } from "@/lib/history";
+import { groupByDay, HISTORY_EVENT_LIMIT, historyEntries } from "@/lib/history";
 import { Button } from "@/components/ui/button";
 import { SPRING, EASE } from "@/lib/motion";
 import { isChannelOrigin, NOT_IDENTIFIED } from "@/lib/source-kinds";
@@ -79,7 +79,8 @@ export function LeadTimeline({ d }: { d: DealDetail }) {
     users: Object.fromEntries(d.people.map((p) => [p.id, p.name])),
     lists: Object.fromEntries([...d.objections, ...d.lostReasons, ...d.services, ...d.origins].map((l) => [l.id, l.label])),
     sources: Object.fromEntries(d.sources.map((s) => [s.id, s.label])),
-  }), [d.events, d.people, d.objections, d.lostReasons, d.services, d.origins, d.sources]);
+    stages: Object.fromEntries(d.stages.map((s) => [s.key, s.name])),
+  }), [d.events, d.people, d.objections, d.lostReasons, d.services, d.origins, d.sources, d.stages]);
   const days = useMemo(() => groupByDay(entries.slice(0, shown), now), [entries, shown, now]);
   if (!entries.length) return <p className="text-sm text-muted">Nada aconteceu neste lead ainda.</p>;
   return (
@@ -97,6 +98,7 @@ export function LeadTimeline({ d }: { d: DealDetail }) {
           </ol>
         </section>
       ))}
+      {d.events.length >= HISTORY_EVENT_LIMIT && <p className="text-xs text-muted">Mostrando os {HISTORY_EVENT_LIMIT} eventos mais recentes.</p>}
       {entries.length > shown && (
         <Button variant="secondary" size="sm" className="self-start pointer-coarse:min-h-11" onClick={() => setShown((n) => n + HISTORY_PAGE)}>
           Ver mais ({entries.length - shown})
