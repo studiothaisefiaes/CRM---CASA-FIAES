@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { IconMic } from "@/components/icons";
+import { IconMic, IconReply } from "@/components/icons";
+import { IconButton } from "@/components/ui/icon-button";
 import { SPRING } from "@/lib/motion";
 
 export type Msg = { id: string; direction: "in" | "out"; kind: string; body: string | null; status: string; createdAt: string; sender: string | null; fromPhone: boolean; error?: string | null; hasMedia?: boolean; quotedBody?: string | null; edited?: boolean; deleted?: boolean };
@@ -31,7 +32,10 @@ const dayLabel = (iso: string) => {
 };
 const KIND_LABEL: Record<string, string> = { image: "Foto", video: "Vídeo", document: "Documento", sticker: "Figurinha", location: "Localização", contact: "Contato", poll: "Enquete", event: "Evento", other: "Mensagem sem prévia (veja no celular)" };
 
-export function Conversation({ messages }: { messages: Msg[] }) {
+/** Texto curto da mensagem para a faixa "Respondendo a". */
+export const quotePreview = (m: Msg) => (m.body?.trim() || KIND_LABEL[m.kind] || "Mensagem").slice(0, 300);
+
+export function Conversation({ messages, onReply }: { messages: Msg[]; onReply?: (m: Msg) => void }) {
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => { end.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [messages.length]);
   return (
@@ -44,7 +48,8 @@ export function Conversation({ messages }: { messages: Msg[] }) {
           return (
             <motion.div key={m.id} layout="position" initial={{ opacity: 0, y: 10, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={SPRING} className="flex flex-col">
               {showDay && <p className="self-center my-2 text-xs font-medium text-muted bg-paper border border-line rounded-full px-2.5 py-0.5 first-letter:uppercase">{day}</p>}
-              <div className={`max-w-[78%] rounded-[var(--radius-card)] px-3.5 py-2 text-base leading-relaxed shadow-[var(--shadow-card)] ${out ? "self-end bg-[#f3ead9] rounded-br-[5px]" : "self-start bg-paper border border-line rounded-bl-[5px]"} ${m.status === "pending" ? "opacity-60" : ""}`}>
+              <div className={`group flex items-center gap-1 ${out ? "flex-row-reverse self-end" : "self-start"} max-w-full`}>
+              <div className={`min-w-0 max-w-[78%] rounded-[var(--radius-card)] px-3.5 py-2 text-base leading-relaxed shadow-[var(--shadow-card)] ${out ? "bg-[#f3ead9] rounded-br-[5px]" : "bg-paper border border-line rounded-bl-[5px]"} ${m.status === "pending" ? "opacity-60" : ""}`}>
                 {m.quotedBody && (
                   <span className={`block mb-1.5 -mx-1 px-2.5 py-1.5 rounded-[var(--radius-control)] border-l-2 border-gold/70 text-sm text-graphite line-clamp-3 ${out ? "bg-paper/60" : "bg-paper-2"}`}>{m.quotedBody}</span>
                 )}
@@ -67,6 +72,11 @@ export function Conversation({ messages }: { messages: Msg[] }) {
                   {out && STATUS[m.status] && <span className={`ml-0.5 ${STATUS[m.status][1]}`} aria-label={`Status: ${m.status}`}>{STATUS[m.status][0]}</span>}
                 </span>
                 {out && m.status === "failed" && <span className="block text-xs text-alert mt-1">Não chegou na cliente. Copie o texto e envie de novo.</span>}
+              </div>
+              {onReply && m.id !== "optimistic" && m.status !== "pending" && m.status !== "failed" && !m.deleted && (
+                <IconButton label="Responder" onClick={() => onReply(m)}
+                  className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-70 transition-opacity"><IconReply size={16} /></IconButton>
+              )}
               </div>
             </motion.div>
           );

@@ -7,7 +7,14 @@ export interface WhatsAppProvider {
   syncWebhook?(instanceName: string): Promise<void>;
   connect(instanceName: string): Promise<QrResult>;
   state(instanceName: string): Promise<ConnState>;
-  sendText(instanceName: string, toE164: string, text: string): Promise<{ externalId: string | null }>;
+  /** `quotedExternalId`: id da mensagem do WhatsApp que esta responde (citação). */
+  sendText(instanceName: string, toE164: string, text: string, quotedExternalId?: string): Promise<{ externalId: string | null }>;
+  /** Foto, vídeo ou documento (`mediatype` da Evolution: image, video, document). */
+  sendMedia?(instanceName: string, toE164: string, file: { name: string; mime: string; data: Buffer; mediatype: "image" | "video" | "document" }, caption: string | null, quotedExternalId?: string): Promise<{ externalId: string | null }>;
+  /** Mensagem de voz (a Evolution converte para OGG/Opus). */
+  sendAudio?(instanceName: string, toE164: string, data: Buffer): Promise<{ externalId: string | null }>;
+  /** Marca como lidas (visto azul) as mensagens recebidas com estes ids. */
+  markRead?(instanceName: string, toE164: string, externalIds: string[]): Promise<void>;
   logout(instanceName: string): Promise<void>;
   /** Baixa a mídia de uma mensagem ({ key, message } do WhatsApp). */
   downloadMedia?(instanceName: string, node: { key: Record<string, unknown>; message: Record<string, unknown> }): Promise<{ base64: string; mimetype: string | null; fileName: string | null }>;

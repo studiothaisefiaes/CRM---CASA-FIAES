@@ -8,7 +8,8 @@ const nextConfig: NextConfig = {
   // Pasta de build separada para o servidor de testes e2e rodar junto do dev.
   distDir: process.env.NEXT_DIST_DIR || ".next",
   serverExternalPackages: ["pg", "pg-boss", "@node-rs/argon2"],
-  experimental: { serverActions: { bodySizeLimit: "16mb" } },
+  // 16 MB de arquivo (anexo/gravação) + folga do multipart; o proxy corta em 10 MB se não for elevado.
+  experimental: { proxyClientMaxBodySize: "20mb", serverActions: { bodySizeLimit: "20mb" } },
   // A CSP (com nonce por requisição) fica no src/proxy.ts; aqui só o que vale igual para tudo.
   async headers() {
     return [{

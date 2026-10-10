@@ -6,6 +6,21 @@ export type SafeMime = "image/jpeg" | "image/png" | "image/webp" | "image/gif" |
 const at = (buf: Uint8Array, offset: number, ...bytes: number[]) => buf.length >= offset + bytes.length && bytes.every((x, i) => buf[offset + i] === x);
 const ascii = (buf: Uint8Array, offset: number, s: string) => at(buf, offset, ...[...s].map((c) => c.charCodeAt(0)));
 
+/**
+ * MP4 sem marca de áudio (Safari/iOS gravam "isom"/"iso5"/"mp42"): é áudio se o que está declarado nos boxes `hdlr`
+ * é só som. Procura nos bytes recebidos (use um trecho maior que 32 bytes para isto funcionar); sem `hdlr` visível, vale vídeo.
+ */
+function mp4HasOnlyAudio(buf: Uint8Array) {
+  const b = Buffer.from(buf.buffer, buf.byteOffset, Math.min(buf.length, 256 * 1024));
+  let audio = false;
+  for (let i = b.indexOf("hdlr"); i !== -1; i = b.indexOf("hdlr", i + 4)) {
+    const handler = b.toString("latin1", i + 12, i + 16);
+    if (handler === "vide") return false;
+    if (handler === "soun") audio = true;
+  }
+  return audio;
+}
+
 /** Tipo real do arquivo pelos primeiros bytes. Nunca confia no mimetype declarado pelo remetente. */
 export function sniffMime(buf: Uint8Array): SafeMime | null {
   if (at(buf, 0, 0xff, 0xd8, 0xff)) return "image/jpeg";
@@ -17,7 +32,7 @@ export function sniffMime(buf: Uint8Array): SafeMime | null {
   if (ascii(buf, 0, "ID3")) return "audio/mpeg";
   // Frame MPEG Layer III: sync de 11 bits + layer 01 + versão válida. Recusa FF FE/FF FF (BOM UTF-16 antes de HTML) e AAC (layer 00).
   if (buf.length >= 2 && buf[0] === 0xff && (buf[1] & 0xe6) === 0xe2 && (buf[1] & 0x18) !== 0x08) return "audio/mpeg";
-  if (ascii(buf, 4, "ftyp")) return ascii(buf, 8, "M4A") ? "audio/mp4" : "video/mp4";
+  if (ascii(buf, 4, "ftyp")) return ascii(buf, 8, "M4A") || ascii(buf, 8, "M4B") || mp4HasOnlyAudio(buf) ? "audio/mp4" : "video/mp4";
   if (at(buf, 0, 0x1a, 0x45, 0xdf, 0xa3)) return "video/webm";
   return null;
 }

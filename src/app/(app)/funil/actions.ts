@@ -5,7 +5,7 @@ import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import { assertUser } from "@/server/auth/session";
 import { moveDeal } from "@/server/domain/deals";
 import { updateDeal, createManualLead, type DealPatch } from "@/server/domain/updates";
-import { sendFromCrm } from "@/server/domain/send";
+import { MAX_MEDIA_BYTES, markConversationRead, sendFromCrm, sendMediaFromCrm } from "@/server/domain/send";
 import { db } from "@/server/db";
 import { alerts, deals } from "@/server/db/schema";
 
@@ -33,14 +33,46 @@ export async function updateDealAction(dealId: string, patch: DealPatch): Promis
   } catch (e) { return fail(e); }
 }
 
-export async function sendMessageAction(dealId: string, text: string): Promise<ActionResult<{ waitedSeconds: number | null }>> {
+const waited = async (id: string) => {
+  const [before] = await db.select({ since: deals.awaitingReplySince }).from(deals).where(eq(deals.id, id));
+  return before?.since ? Math.round((Date.now() - before.since.getTime()) / 1000) : null;
+};
+
+export async function sendMessageAction(dealId: string, text: string, quoteMessageId?: string | null): Promise<ActionResult<{ waitedSeconds: number | null }>> {
   try {
     const user = await assertUser();
     const id = z.string().uuid().parse(dealId);
-    const [before] = await db.select({ since: deals.awaitingReplySince }).from(deals).where(eq(deals.id, id));
-    await sendFromCrm(id, text, user.id);
+    const quote = z.string().uuid().nullish().parse(quoteMessageId);
+    const waitedSeconds = await waited(id);
+    await sendFromCrm(id, text, user.id, { quoteMessageId: quote });
     revalidatePath("/funil"); revalidatePath("/");
-    return { ok: true, data: { waitedSeconds: before?.since ? Math.round((Date.now() - before.since.getTime()) / 1000) : null } };
+    return { ok: true, data: { waitedSeconds } };
+  } catch (e) { return fail(e); }
+}
+
+/** Foto, PDF ou áudio (FormData: dealId, file, caption?, quoteMessageId?). Até 16 MB; o tipo é conferido pelos bytes no servidor. */
+export async function sendMediaAction(form: FormData): Promise<ActionResult<{ waitedSeconds: number | null }>> {
+  try {
+    const user = await assertUser();
+    const id = z.string().uuid().parse(form.get("dealId"));
+    const file = form.get("file");
+    if (!(file instanceof File) || !file.size) throw new Error("Escolha um arquivo para enviar.");
+    if (file.size > MAX_MEDIA_BYTES) throw new Error("O arquivo passa de 16 MB. Escolha um menor.");
+    const caption = z.string().max(1000, "Legenda muito longa (máximo 1.000 caracteres).").nullish().parse(form.get("caption"));
+    const quote = z.string().uuid().nullish().parse(form.get("quoteMessageId") || null);
+    const waitedSeconds = await waited(id);
+    await sendMediaFromCrm(id, { name: file.name, mime: file.type, data: Buffer.from(await file.arrayBuffer()) }, caption ?? null, user.id, { quoteMessageId: quote });
+    revalidatePath("/funil"); revalidatePath("/");
+    return { ok: true, data: { waitedSeconds } };
+  } catch (e) { return fail(e); }
+}
+
+/** Chamada ao abrir a conversa. Não espera a Evolution: o visto azul nunca atrasa nem derruba a tela. */
+export async function markConversationReadAction(dealId: string): Promise<ActionResult> {
+  try {
+    const user = await assertUser();
+    void markConversationRead(z.string().uuid().parse(dealId), user.id);
+    return { ok: true };
   } catch (e) { return fail(e); }
 }
 

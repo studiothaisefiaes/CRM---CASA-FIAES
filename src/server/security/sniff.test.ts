@@ -81,3 +81,14 @@ describe("mediaHeaders", () => {
     expect(mediaHeaders(null, "")["content-disposition"]).toBe('attachment; filename="arquivo"');
   });
 });
+
+describe("sniffMime: mp4 de áudio gravado no navegador", () => {
+  const box = (type: string, handler: string) => `\0\0\0\x21${type}\0\0\0\0\0\0\0\0${handler}\0\0\0\0`;
+  it("ftyp genérico com handler soun é áudio; com vide é vídeo", () => {
+    expect(sniffMime(t("\0\0\0\x18ftypisom\0\0\0\0isom" + box("hdlr", "soun")))).toBe("audio/mp4");
+    expect(sniffMime(t("\0\0\0\x18ftypiso5\0\0\0\0iso5" + box("hdlr", "soun")))).toBe("audio/mp4");
+    expect(sniffMime(t("\0\0\0\x18ftypmp42\0\0\0\0mp42" + box("hdlr", "vide") + box("hdlr", "soun")))).toBe("video/mp4");
+    expect(sniffMime(t("\0\0\0\x18ftypisom\0\0\0\0isom" + box("hdlr", "vide")))).toBe("video/mp4");
+  });
+  it("M4B também é áudio", () => { expect(sniffMime(t("\0\0\0\x20ftypM4B \0\0\0\0"))).toBe("audio/mp4"); });
+});

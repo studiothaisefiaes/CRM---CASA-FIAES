@@ -1,14 +1,14 @@
 "use client";
 import { ContactAvatar } from "@/components/ui/contact-avatar";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import type { DealDetail } from "@/server/queries/deal";
-import { Conversation, type Msg } from "./conversation";
-import { Composer } from "./composer";
+import { Conversation, quotePreview, type Msg } from "./conversation";
+import { Composer, type QuoteTarget } from "./composer";
 import { AutoField } from "./fields";
 import { StageDialogs, type PendingMove } from "@/components/pipeline/stage-dialogs";
-import { moveDealAction } from "@/app/(app)/funil/actions";
+import { markConversationReadAction, moveDealAction } from "@/app/(app)/funil/actions";
 import { useToast } from "@/components/ui/toast";
 import { IconClose, IconPhone, IconMail, IconInstagram, IconWhatsApp, IconCake, IconClock, IconArrowRight } from "@/components/icons";
 import { useUrgency } from "@/components/pipeline/timer";
@@ -36,6 +36,7 @@ const EVENT_TEXT = (e: DealDetail["events"][number]): string => {
     case "comparecimento": return `Comparecimento: ${String(p.para)}`;
     case "alerta": return String(p.mensagem ?? "Alerta");
     case "mensagem_recebida": return "Mensagem recebida";
+    case "lido": return "Mensagens marcadas como lidas";
     case "mensagem_enviada": return p.fromPhone ? "Mensagem enviada pelo celular" : "Mensagem enviada";
     default: return e.type;
   }
@@ -52,6 +53,14 @@ export function LeadSheet({ d, nextId }: { d: DealDetail; nextId?: string | null
   const { urgency, label: waitLabel } = useUrgency(d.deal.awaitingReplySince ? new Date(d.deal.awaitingReplySince).toISOString() : null, d.stage.slaMinutes);
   const [optimistic, setOptimistic] = useState<string | null>(null);
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
+  const [replyTo, setReplyTo] = useState<QuoteTarget | null>(null);
+  // Visto azul: uma vez por abertura do lead (o servidor só marca o que chegou depois da última vez).
+  const readFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (readFor.current === d.deal.id) return;
+    readFor.current = d.deal.id;
+    void markConversationReadAction(d.deal.id);
+  }, [d.deal.id]);
 
   const close = () => { const p = new URLSearchParams(sp.toString()); p.delete("lead"); router.push(`/funil${p.size ? `?${p}` : ""}`, { scroll: false }); };
   useEffect(() => {
@@ -185,7 +194,7 @@ export function LeadSheet({ d, nextId }: { d: DealDetail; nextId?: string | null
         </header>
         <div className="flex-1 min-h-0 grid lg:grid-cols-[1fr_360px]">
           <section className={`min-h-0 flex-col ${tab === "conversa" ? "flex" : "hidden"} lg:flex`}>
-            <Conversation messages={msgs} />
+            <Conversation messages={msgs} onReply={(m) => setReplyTo({ id: m.id, text: quotePreview(m) })} />
             <AnimatePresence>
               {answered && nextId && (
                 <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="px-3 pt-2">
@@ -196,7 +205,7 @@ export function LeadSheet({ d, nextId }: { d: DealDetail; nextId?: string | null
                 </motion.div>
               )}
             </AnimatePresence>
-            <Composer dealId={d.deal.id} firstName={firstName} quickReplies={d.quickReplies} onOptimistic={setOptimistic} onSent={() => setAnswered(true)} slaSeconds={d.stage.slaMinutes ? d.stage.slaMinutes * 60 : null} />
+            <Composer dealId={d.deal.id} firstName={firstName} quickReplies={d.quickReplies} onOptimistic={setOptimistic} onSent={() => setAnswered(true)} replyTo={replyTo} onClearReply={() => setReplyTo(null)} slaSeconds={d.stage.slaMinutes ? d.stage.slaMinutes * 60 : null} />
           </section>
           <section className={`min-h-0 overflow-y-auto scroll-thin border-l border-line px-5 py-4 ${tab === "conversa" ? "hidden" : "block"} lg:block bg-paper-2/40`}>
             <div className="hidden lg:flex gap-1 bg-paper-2 rounded-[var(--radius-control)] p-1 mb-4" role="tablist" aria-label="Painel do lead">

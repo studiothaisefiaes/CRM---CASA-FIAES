@@ -27,7 +27,7 @@ function originalFileName(node: unknown, depth = 0): string | null {
   return null;
 }
 
-async function save(name: string, data: Buffer) {
+export async function save(name: string, data: Buffer) {
   const dir = mediaDir();
   await mkdir(dir, { recursive: true });
   await writeFile(path.join(dir, name), data);
@@ -54,7 +54,7 @@ export async function ensureMedia(messageId: string): Promise<{ file: string; mi
     const r = await p.downloadMedia(instance, m.media);
     const buf = Buffer.from(r.base64, "base64");
     // O tipo vem dos bytes; o mimetype declarado pela Evolution/remetente não é confiável.
-    const mime = sniffMime(buf.subarray(0, 32)) ?? "application/octet-stream";
+    const mime = sniffMime(buf.subarray(0, 256 * 1024)) ?? "application/octet-stream";
     const name = await save(`${m.id}.${extFor(mime)}`, buf);
     await db.update(messages).set({ mediaPath: name, mediaMime: mime }).where(eq(messages.id, m.id));
     return { file: path.join(mediaDir(), name), mime, name: nameFor(name) };

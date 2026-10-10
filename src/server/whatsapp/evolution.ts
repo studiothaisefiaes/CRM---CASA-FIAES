@@ -12,7 +12,7 @@ export class EvolutionProvider implements WhatsAppProvider {
     try {
       res = await fetch(`${this.baseUrl}${path}`, {
         method, headers: { apikey: this.apiKey, "content-type": "application/json" },
-        body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(15_000), cache: "no-store",
+        body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(path.includes("/message/send") ? 60_000 : 15_000), cache: "no-store",
       });
     } catch {
       throw new ProviderError("O serviço do WhatsApp (Evolution) não respondeu. Ele está ligado?");
@@ -61,11 +61,34 @@ export class EvolutionProvider implements WhatsAppProvider {
     return s === "open" ? "conectado" : s === "connecting" ? "aguardando_qr" : "desconectado";
   }
 
-  async sendText(instanceName: string, toE164: string, text: string) {
+  async sendText(instanceName: string, toE164: string, text: string, quotedExternalId?: string) {
     const r = await this.req<{ key?: { id?: string } }>("POST", `/message/sendText/${encodeURIComponent(instanceName)}`, {
       number: toWhatsappNumber(toE164), text, delay: 0, linkPreview: true,
+      ...(quotedExternalId ? { quoted: { key: { id: quotedExternalId } } } : {}),
     });
     return { externalId: r?.key?.id ?? null };
+  }
+
+  async sendMedia(instanceName: string, toE164: string, file: { name: string; mime: string; data: Buffer; mediatype: "image" | "video" | "document" }, caption: string | null, quotedExternalId?: string) {
+    const r = await this.req<{ key?: { id?: string } }>("POST", `/message/sendMedia/${encodeURIComponent(instanceName)}`, {
+      number: toWhatsappNumber(toE164), mediatype: file.mediatype, mimetype: file.mime, caption: caption ?? "", media: file.data.toString("base64"), fileName: file.name,
+      ...(quotedExternalId ? { quoted: { key: { id: quotedExternalId } } } : {}),
+    });
+    return { externalId: r?.key?.id ?? null };
+  }
+
+  async sendAudio(instanceName: string, toE164: string, data: Buffer) {
+    const r = await this.req<{ key?: { id?: string } }>("POST", `/message/sendWhatsAppAudio/${encodeURIComponent(instanceName)}`, {
+      number: toWhatsappNumber(toE164), audio: data.toString("base64"),
+    });
+    return { externalId: r?.key?.id ?? null };
+  }
+
+  async markRead(instanceName: string, toE164: string, externalIds: string[]) {
+    const remoteJid = `${toWhatsappNumber(toE164)}@s.whatsapp.net`;
+    await this.req("POST", `/chat/markMessageAsRead/${encodeURIComponent(instanceName)}`, {
+      readMessages: externalIds.map((id) => ({ remoteJid, fromMe: false, id })),
+    });
   }
 
   async downloadMedia(instanceName: string, node: { key: Record<string, unknown>; message: Record<string, unknown> }) {

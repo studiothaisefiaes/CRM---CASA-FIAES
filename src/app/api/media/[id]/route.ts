@@ -13,6 +13,6 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/media/[id]">
   if (!f) return new Response("mídia indisponível", { status: 404 });
   const data = await readMediaFile(f.file);
   // Tipo pelos bytes também na hora de servir (arquivos antigos foram gravados com o mimetype declarado).
-  const headers = mediaHeaders(sniffMime(data.subarray(0, 32)), f.name);
+  const headers = mediaHeaders(sniffMime(data.subarray(0, 256 * 1024)), f.name);
   return new Response(new Uint8Array(data), { headers: { ...headers, "content-length": String(data.length) } });
 }
