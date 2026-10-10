@@ -1,6 +1,6 @@
 import { env } from "../env";
 import { toWhatsappNumber } from "../domain/phone";
-import { ProviderError, type ConnState, type QrResult, type WhatsAppProvider } from "./provider";
+import { ProviderError, type ConnState, type QrResult, type QuotedMessage, type WhatsAppProvider } from "./provider";
 
 export const WEBHOOK_EVENTS = ["QRCODE_UPDATED", "MESSAGES_UPSERT", "MESSAGES_UPDATE", "MESSAGES_SET", "SEND_MESSAGE", "CONNECTION_UPDATE"] as const;
 
@@ -61,25 +61,34 @@ export class EvolutionProvider implements WhatsAppProvider {
     return s === "open" ? "conectado" : s === "connecting" ? "aguardando_qr" : "desconectado";
   }
 
-  async sendText(instanceName: string, toE164: string, text: string, quotedExternalId?: string) {
+  /** Citação completa (chave + conteúdo): sem `message`, a Evolution procura no próprio banco e a citação some para mensagens do histórico. */
+  private quotedPayload(toE164: string, q?: QuotedMessage) {
+    if (!q) return {};
+    return { quoted: { key: { id: q.externalId, remoteJid: `${toWhatsappNumber(toE164)}@s.whatsapp.net`, fromMe: q.fromMe }, message: { conversation: q.text } } };
+  }
+
+  async sendText(instanceName: string, toE164: string, text: string, quoted?: QuotedMessage) {
     const r = await this.req<{ key?: { id?: string } }>("POST", `/message/sendText/${encodeURIComponent(instanceName)}`, {
       number: toWhatsappNumber(toE164), text, delay: 0, linkPreview: true,
-      ...(quotedExternalId ? { quoted: { key: { id: quotedExternalId } } } : {}),
+      ...this.quotedPayload(toE164, quoted),
     });
     return { externalId: r?.key?.id ?? null };
   }
 
-  async sendMedia(instanceName: string, toE164: string, file: { name: string; mime: string; data: Buffer; mediatype: "image" | "video" | "document" }, caption: string | null, quotedExternalId?: string) {
+  async sendMedia(instanceName: string, toE164: string, file: { name: string; mime: string; data: Buffer; mediatype: "image" | "video" | "document" }, caption: string | null, quoted?: QuotedMessage) {
     const r = await this.req<{ key?: { id?: string } }>("POST", `/message/sendMedia/${encodeURIComponent(instanceName)}`, {
-      number: toWhatsappNumber(toE164), mediatype: file.mediatype, mimetype: file.mime, caption: caption ?? "", media: file.data.toString("base64"), fileName: file.name,
-      ...(quotedExternalId ? { quoted: { key: { id: quotedExternalId } } } : {}),
+      number: toWhatsappNumber(toE164), mediatype: file.mediatype, mimetype: file.mime, media: file.data.toString("base64"), fileName: file.name,
+      // Sem legenda, o campo não vai: legenda "" faria o eco do WhatsApp não casar com a mensagem pendente.
+      ...(caption ? { caption } : {}),
+      ...this.quotedPayload(toE164, quoted),
     });
     return { externalId: r?.key?.id ?? null };
   }
 
-  async sendAudio(instanceName: string, toE164: string, data: Buffer) {
+  async sendAudio(instanceName: string, toE164: string, data: Buffer, quoted?: QuotedMessage) {
     const r = await this.req<{ key?: { id?: string } }>("POST", `/message/sendWhatsAppAudio/${encodeURIComponent(instanceName)}`, {
       number: toWhatsappNumber(toE164), audio: data.toString("base64"),
+      ...this.quotedPayload(toE164, quoted),
     });
     return { externalId: r?.key?.id ?? null };
   }

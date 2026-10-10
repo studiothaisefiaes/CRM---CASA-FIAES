@@ -56,34 +56,43 @@ export function Composer({ dealId, firstName, quickReplies, onOptimistic, onSent
 
   const startRecording = async () => {
     const type = pickRecordType(); if (!type || recorder.current) return;
-    let stream: MediaStream;
-    try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
-    catch { toast("Sem acesso ao microfone. Libere o microfone nas permissões do navegador.", "error"); return; }
-    const rec = new MediaRecorder(stream, { mimeType: type });
-    const chunks: Blob[] = [];
-    let seconds = 0;
-    const timer = setInterval(() => { seconds += 1; setRecording({ seconds }); if (seconds >= 15 * 60) rec.stop(); }, 1000);
-    recorder.current = { rec, stream, chunks, cancelled: false, timer };
-    rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
-    rec.onstop = () => {
-      const r = recorder.current; recorder.current = null;
-      clearInterval(timer); stream.getTracks().forEach((t) => t.stop()); setRecording(null);
-      if (!r || r.cancelled || !chunks.length) return;
-      const base = type.split(";")[0];
-      attach(new File(chunks, `gravacao.${EXT[base] ?? "webm"}`, { type: base }), true);
-    };
-    rec.start();
-    setRecording({ seconds: 0 });
+    let stream: MediaStream | null = null;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const rec = new MediaRecorder(stream, { mimeType: type });
+      const chunks: Blob[] = [];
+      const live = stream;
+      let seconds = 0;
+      const timer = setInterval(() => { seconds += 1; setRecording({ seconds }); if (seconds >= 15 * 60) rec.stop(); }, 1000);
+      recorder.current = { rec, stream: live, chunks, cancelled: false, timer };
+      rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+      rec.onstop = () => {
+        const r = recorder.current; recorder.current = null;
+        clearInterval(timer); live.getTracks().forEach((t) => t.stop()); setRecording(null);
+        if (!r || r.cancelled || !chunks.length) return;
+        const base = type.split(";")[0];
+        attach(new File(chunks, `gravacao.${EXT[base] ?? "webm"}`, { type: base }), true);
+      };
+      rec.start();
+      setRecording({ seconds: 0 });
+    } catch (e) {
+      stream?.getTracks().forEach((t) => t.stop());
+      const name = e instanceof DOMException || e instanceof Error ? e.name : "";
+      toast(name === "NotAllowedError" ? "Libere o microfone nas permissões do navegador." : name === "NotFoundError" ? "Nenhum microfone encontrado." : "Não deu para gravar neste navegador.", "error");
+    }
   };
   const stopRecording = () => recorder.current?.rec.stop();
   const cancelRecording = () => { const r = recorder.current; if (!r) return; r.cancelled = true; r.rec.stop(); };
 
+  const isAudio = attachment?.kind === "audio";
   const canSend = !!(text.trim() || attachment) && !recording;
   const send = () => {
     if (!canSend || pending) return;
     // Evita mandar sem revisar logo após preencher uma resposta pronta.
     if (justFilled.current) return;
-    const body = text.trim(); const att = attachment; const quote = replyTo ?? null;
+    const att = attachment;
+    // Áudio vai sem legenda (o WhatsApp não aceita); o texto digitado fica no campo.
+    const body = att?.kind === "audio" ? "" : text.trim(); const quote = replyTo ?? null;
     const done = (r: { ok: true; data?: { waitedSeconds: number | null } } | { ok: false; error: string }, restore: () => void) => {
       if (!r.ok) { restore(); toast(r.error, "error"); return; }
       const w = r.data?.waitedSeconds;
@@ -91,12 +100,12 @@ export function Composer({ dealId, firstName, quickReplies, onOptimistic, onSent
       onSent?.();
     };
     if (att) {
-      setAttachment(null); setText(""); onClearReply?.();
+      setAttachment(null); if (att.kind !== "audio") setText(""); onClearReply?.();
       start(async () => {
         const form = new FormData();
         form.set("dealId", dealId); form.set("file", att.file); form.set("caption", body);
         if (quote) form.set("quoteMessageId", quote.id);
-        done(await sendMediaAction(form), () => { setAttachment({ ...att, url: URL.createObjectURL(att.file) }); setText(body); });
+        done(await sendMediaAction(form), () => { setAttachment({ ...att, url: URL.createObjectURL(att.file) }); if (att.kind !== "audio") setText(body); });
       });
       return;
     }
@@ -153,10 +162,11 @@ export function Composer({ dealId, firstName, quickReplies, onOptimistic, onSent
       </AnimatePresence>
 
       {recording ? (
-        <div className="flex items-center gap-2" role="status" aria-label="Gravando áudio">
+        <div className="flex items-center gap-2">
+          <span role="status" className="sr-only">Gravando áudio</span>
           <IconButton label="Descartar gravação" size="lg" onClick={cancelRecording}><IconTrash size={18} /></IconButton>
           <p className="flex-1 flex items-center gap-2 h-11 px-3.5 rounded-[var(--radius-control)] bg-paper-2 text-base">
-            <span className="size-2.5 rounded-full bg-alert animate-pulse" aria-hidden />Gravando <span className="tabular-nums text-graphite">{clock(recording.seconds)}</span>
+            <span className="size-2.5 rounded-full bg-alert animate-pulse" aria-hidden />Gravando <span aria-hidden className="tabular-nums text-graphite">{clock(recording.seconds)}</span>
           </p>
           <motion.button type="button" onClick={stopRecording} whileTap={{ scale: 0.92 }} aria-label="Parar e revisar áudio"
             className="size-11 shrink-0 grid place-items-center rounded-[var(--radius-control)] bg-ink text-paper"><IconStop size={18} /></motion.button>
@@ -166,7 +176,7 @@ export function Composer({ dealId, firstName, quickReplies, onOptimistic, onSent
           <input ref={fileInput} type="file" hidden accept="image/*,application/pdf,audio/*" aria-label="Escolher arquivo" data-testid="anexo"
             onChange={(e) => { attach(e.target.files?.[0]); e.target.value = ""; }} />
           <IconButton label="Anexar foto, PDF ou áudio" size="lg" onClick={() => fileInput.current?.click()} className="h-11"><IconPaperclip size={20} /></IconButton>
-          <textarea ref={ref} value={text} rows={1} placeholder={attachment ? "Legenda (opcional)…" : "Mensagem…"} aria-label={attachment ? "Legenda" : "Mensagem"}
+          <textarea ref={ref} value={text} rows={1} disabled={isAudio} placeholder={isAudio ? "Áudio vai sem legenda" : attachment ? "Legenda (opcional)…" : "Mensagem…"} aria-label={isAudio ? "Legenda (indisponível para áudio)" : attachment ? "Legenda" : "Mensagem"}
             onChange={(e) => { setText(e.target.value); setSel(0); e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 160) + "px"; }}
             onKeyDown={(e) => {
               if (matches.length) {
@@ -183,7 +193,7 @@ export function Composer({ dealId, firstName, quickReplies, onOptimistic, onSent
               if (e.key === "Escape" && text.trim()) { e.stopPropagation(); e.nativeEvent.stopImmediatePropagation(); (e.target as HTMLTextAreaElement).blur(); return; }
               if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
             }}
-            className="min-w-0 flex-1 resize-none bg-paper-2 rounded-[var(--radius-control)] px-3.5 py-2.5 text-[16px] lg:text-base leading-relaxed outline-none focus:bg-paper focus:shadow-[0_0_0_1px_var(--color-ink),0_0_0_4px_rgb(184_134_63/0.2)] transition-shadow max-h-40" />
+            className="min-w-0 flex-1 resize-none bg-paper-2 rounded-[var(--radius-control)] px-3.5 py-2.5 text-[16px] lg:text-base leading-relaxed outline-none focus:bg-paper focus:shadow-[0_0_0_1px_var(--color-ink),0_0_0_4px_rgb(184_134_63/0.2)] transition-shadow max-h-40 disabled:opacity-50 disabled:cursor-not-allowed" />
           {canSend || !canRecord ? (
             <motion.button type="button" onClick={send} disabled={!canSend || pending} whileTap={{ scale: 0.92 }} aria-label="Enviar"
               className="size-11 shrink-0 grid place-items-center rounded-[var(--radius-control)] bg-ink text-paper disabled:opacity-35 transition-opacity">

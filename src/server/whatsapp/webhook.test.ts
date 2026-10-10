@@ -68,3 +68,11 @@ describe("webhook Evolution", () => {
     expect(parseContent({ documentMessage: { fileName: "orcamento.pdf" } })).toEqual({ kind: "document", body: "orcamento.pdf" });
   });
 });
+
+describe("parseContent: legenda vazia", () => {
+  it("legenda '' vira null (foto, vídeo e documento)", () => {
+    expect(parseContent({ imageMessage: { caption: "" } } as never)?.body).toBeNull();
+    expect(parseContent({ videoMessage: { caption: "" } } as never)?.body).toBeNull();
+    expect(parseContent({ documentMessage: { caption: "", fileName: "t.pdf" } } as never)?.body).toBe("t.pdf");
+  });
+});

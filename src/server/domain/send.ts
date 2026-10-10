@@ -4,6 +4,7 @@ import { and, desc, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "../db";
 import { alerts, channels, contacts, dealEvents, deals, messages } from "../db/schema";
 import { whatsapp } from "../whatsapp/evolution";
+import type { QuotedMessage } from "../whatsapp/provider";
 import { save as saveMediaFile } from "../whatsapp/media";
 import { sniffMime, type SafeMime } from "../security/sniff";
 import { recordOutbound } from "./deals";
@@ -41,15 +42,19 @@ async function resolveChannel(dealId: string, deal: Target["deal"]): Promise<Cha
   return channel;
 }
 
-const QUOTE_LABEL: Record<string, string> = { image: "Foto", video: "Vídeo", audio: "Áudio", document: "Documento", sticker: "Figurinha" };
+const QUOTE_LABEL: Record<string, string> = { image: "📷 Foto", video: "🎥 Vídeo", audio: "🎤 Áudio", document: "📄 Documento", sticker: "Figurinha" };
 
-/** Mensagem do mesmo lead que está sendo respondida (citação). */
-async function loadQuote(dealId: string, quoteMessageId?: string | null) {
+/**
+ * Mensagem do mesmo lead que está sendo respondida (citação).
+ * Sem id externo (ex.: mensagem simulada) a citação não pode ir ao WhatsApp, então devolve null:
+ * o CRM não grava nem mostra uma citação que não foi enviada.
+ */
+async function loadQuote(dealId: string, quoteMessageId?: string | null): Promise<QuotedMessage | null> {
   if (!quoteMessageId) return null;
   const [q] = await db.select().from(messages).where(and(eq(messages.id, quoteMessageId), eq(messages.dealId, dealId)));
   if (!q) throw new SendError("A mensagem que você quer responder não está mais nesta conversa.");
-  const text = (q.body?.trim() || QUOTE_LABEL[q.kind] || "Mensagem").slice(0, 300);
-  return { externalId: q.externalId, text };
+  if (!q.externalId) return null;
+  return { externalId: q.externalId, fromMe: q.direction === "out", text: (q.body?.trim() || QUOTE_LABEL[q.kind] || "Mensagem").slice(0, 300) };
 }
 
 /**
@@ -74,14 +79,14 @@ export async function sendFromCrm(dealId: string, text: string, userId: string, 
 
   let externalId: string | null = null;
   try {
-    ({ externalId } = await whatsapp().sendText(channel.instanceName, row.phone, body, quote?.externalId ?? undefined));
+    ({ externalId } = await whatsapp().sendText(channel.instanceName, row.phone, body, quote ?? undefined));
   } catch (e) {
     const msg = e instanceof Error ? e.message : "erro desconhecido";
     await db.update(messages).set({ status: "failed", error: msg.slice(0, 300) }).where(eq(messages.id, pending.id));
     await emit("mensagem_falhou", { dealId });
     throw new SendError(`Não foi possível enviar: ${msg}`);
   }
-  return recordOutbound({ dealId, channelId: channel.id, externalId, body, userId, status: "sent", claimMessageId: pending.id });
+  return recordOutbound({ dealId, channelId: channel.id, externalId, body, userId, status: "sent", claimMessageId: await absorbEcho(pending.id, channel.id, externalId) });
 }
 
 type Upload = { name: string; mime: string; data: Buffer };
@@ -118,6 +123,7 @@ export async function sendMediaFromCrm(dealId: string, file: Upload, caption: st
   const plan = planMedia(file);
   if (!plan) throw new SendError("Esse tipo de arquivo não pode ser enviado. Use foto, PDF ou áudio.");
   const text = caption?.trim() || null;
+  if (text && plan.kind === "audio") throw new SendError("Áudio não aceita legenda. Envie o texto em outra mensagem.");
   if (text && text.length > 1000) throw new SendError("Legenda muito longa (máximo 1.000 caracteres).");
   const name = cleanName(file.name);
   const row = await loadTarget(dealId);
@@ -133,6 +139,8 @@ export async function sendMediaFromCrm(dealId: string, file: Upload, caption: st
   const [pending] = await db.insert(messages).values({
     id, dealId, contactId: row.deal.contactId, channelId: channel?.id ?? null, direction: "out", kind: plan.kind, body, status: "pending", sentByUserId: userId,
     mediaPath, mediaMime: plan.mime, quotedBody: quote?.text ?? null,
+    // Nome original do arquivo no mesmo formato do nó do WhatsApp: o download usa este nome (a legenda vai em `body`).
+    ...(plan.kind === "document" ? { media: { key: {}, message: { documentMessage: { fileName: name } } } } : {}),
   }).returning({ id: messages.id });
 
   if (!channel) return recordOutbound({ dealId, channelId: null, userId, status: "simulado", claimMessageId: pending.id });
@@ -140,15 +148,36 @@ export async function sendMediaFromCrm(dealId: string, file: Upload, caption: st
   let externalId: string | null = null;
   try {
     ({ externalId } = plan.kind === "audio"
-      ? await p.sendAudio!(channel.instanceName, row.phone, file.data)
-      : await p.sendMedia!(channel.instanceName, row.phone, { name, mime: plan.mime, data: file.data, mediatype: plan.kind }, text, quote?.externalId ?? undefined));
+      ? await p.sendAudio!(channel.instanceName, row.phone, file.data, quote ?? undefined)
+      : await p.sendMedia!(channel.instanceName, row.phone, { name, mime: plan.mime, data: file.data, mediatype: plan.kind }, text, quote ?? undefined));
   } catch (e) {
     const msg = e instanceof Error ? e.message : "erro desconhecido";
     await db.update(messages).set({ status: "failed", error: msg.slice(0, 300) }).where(eq(messages.id, pending.id));
     await emit("mensagem_falhou", { dealId });
     throw new SendError(`Não foi possível enviar: ${msg}`);
   }
-  return recordOutbound({ dealId, channelId: channel.id, externalId, userId, status: "sent", claimMessageId: pending.id });
+  return recordOutbound({ dealId, channelId: channel.id, externalId, userId, status: "sent", claimMessageId: await absorbEcho(pending.id, channel.id, externalId) });
+}
+
+/**
+ * Se o eco do WhatsApp (SEND_MESSAGE) já criou uma linha com este id externo antes de o envio voltar,
+ * a linha pendente é fundida nela (arquivo e autor passam para a do eco) e apagada: nada de duplicata nem erro para a atendente.
+ * Devolve a linha que deve ser confirmada.
+ */
+async function absorbEcho(pendingId: string, channelId: string, externalId: string | null): Promise<string> {
+  if (!externalId) return pendingId;
+  const [echo] = await db.select({ id: messages.id }).from(messages)
+    .where(and(eq(messages.channelId, channelId), eq(messages.externalId, externalId), sql`${messages.id} <> ${pendingId}`));
+  if (!echo) return pendingId;
+  const [p] = await db.select().from(messages).where(eq(messages.id, pendingId));
+  await db.transaction(async (tx) => {
+    await tx.update(messages).set({
+      mediaPath: p.mediaPath, mediaMime: p.mediaMime, sentByUserId: p.sentByUserId, quotedBody: p.quotedBody,
+      body: p.body, status: "sent", ...(p.media ? { media: p.media } : {}),
+    }).where(eq(messages.id, echo.id));
+    await tx.delete(messages).where(eq(messages.id, pendingId));
+  });
+  return echo.id;
 }
 
 /**

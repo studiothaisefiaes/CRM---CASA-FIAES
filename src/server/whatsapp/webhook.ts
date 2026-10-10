@@ -58,13 +58,13 @@ export function parseContent(raw: BaileysMessage | null | undefined): { kind: st
   if (keys.length === 0 || keys.every((k) => SILENT.includes(k))) return null;
   if (typeof m.conversation === "string") return { kind: "text", body: m.conversation };
   if (m.extendedTextMessage?.text) return { kind: "text", body: m.extendedTextMessage.text };
-  if (m.imageMessage) return { kind: "image", body: m.imageMessage.caption ?? null };
-  if (m.videoMessage) return { kind: "video", body: m.videoMessage.caption ?? null };
+  if (m.imageMessage) return { kind: "image", body: m.imageMessage.caption || null };
+  if (m.videoMessage) return { kind: "video", body: m.videoMessage.caption || null };
   if (m.ptvMessage) return { kind: "video", body: null }; // vídeo-recado (bolinha)
   if (m.audioMessage) return { kind: "audio", body: null };
   if (m.documentMessage || m.documentWithCaptionMessage) {
     const d = m.documentMessage ?? m.documentWithCaptionMessage?.message?.documentMessage;
-    return { kind: "document", body: d?.caption ?? d?.fileName ?? null };
+    return { kind: "document", body: d?.caption || d?.fileName || null };
   }
   if (m.stickerMessage) return { kind: "sticker", body: null };
   if (m.locationMessage || m.liveLocationMessage) {
@@ -235,7 +235,7 @@ export async function handleEvolutionEvent(p: EvoPayload) {
     const at = d.messageTimestamp ? new Date(d.messageTimestamp * 1000) : new Date();
     if (d.key.fromMe) {
       // Enviada pelo CRM: o envio já gravou a mensagem como "enviando"; só vincula o id externo.
-      if (event === "send.message" && await claimPendingSend(jid, d.key.id, content.body)) return { ok: true, kind: "out", claimed: true };
+      if (event === "send.message" && await claimPendingSend(jid, d.key.id, content, channelId)) return { ok: true, kind: "out", claimed: true };
       const r = await recordOutbound({ phoneRaw: jid, channelId, externalId: d.key.id, body: content.body, kind: content.kind,
         fromPhone: event === "messages.upsert", at, media: mediaNode(content.kind, d), quotedBody: quotedBody(d) });
       return { ok: true, kind: "out", result: r };
@@ -247,15 +247,28 @@ export async function handleEvolutionEvent(p: EvoPayload) {
   return { ok: true, ignored: event || "sem_evento" };
 }
 
-/** Vincula o id externo à mensagem que o CRM gravou antes de chamar a Evolution (evita duplicar e perder o autor). */
-async function claimPendingSend(jid: string, externalId: string, body: string | null) {
+const MEDIA_ECHO_KINDS = ["image", "video", "audio", "document", "sticker"];
+
+/**
+ * Vincula o id externo à mensagem que o CRM gravou antes de chamar a Evolution (evita duplicar e perder o autor).
+ * Texto casa pelo corpo; mídia casa por canal + contato + tipo + "enviando" numa janela curta (a legenda pode faltar ou mudar no eco).
+ */
+async function claimPendingSend(jid: string, externalId: string, content: { kind: string; body: string | null }, channelId: string | null) {
   const { normalizePhone } = await import("../domain/phone");
   const phone = normalizePhone(jid); if (!phone) return false;
-  const r = await db.execute(sql`
+  const media = MEDIA_ECHO_KINDS.includes(content.kind);
+  const r = await db.execute(media ? sql`
+    update messages m set external_id = ${externalId}, status = 'sent'
+    where m.id = (select m2.id from messages m2 join contacts c on c.id = m2.contact_id
+      where c.phone_e164 = ${phone} and m2.direction = 'out' and m2.external_id is null and m2.status = 'pending'
+        and m2.kind = ${content.kind} and (${channelId}::uuid is null or m2.channel_id = ${channelId}::uuid)
+        and m2.created_at > now() - interval '2 minutes'
+      order by m2.created_at desc limit 1)
+    returning m.id` : sql`
     update messages m set external_id = ${externalId}, status = case when m.status = 'pending' then 'sent' else m.status end
     where m.id = (select m2.id from messages m2 join contacts c on c.id = m2.contact_id
       where c.phone_e164 = ${phone} and m2.direction = 'out' and m2.external_id is null and m2.status in ('pending','sent')
-        and m2.body is not distinct from ${body} and m2.created_at > now() - interval '5 minutes'
+        and m2.body is not distinct from ${content.body} and m2.created_at > now() - interval '5 minutes'
       order by m2.created_at desc limit 1)
     returning m.id`);
   return r.rows.length > 0;

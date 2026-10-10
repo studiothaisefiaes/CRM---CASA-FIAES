@@ -1,25 +1,30 @@
 import { it, expect, beforeEach, afterEach } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, isNotNull } from "drizzle-orm";
 import { db } from "../db";
 import { channels, dealEvents, messages, users } from "../db/schema";
 import { recordInbound } from "./deals";
 import { sendFromCrm, sendMediaFromCrm, markConversationRead } from "./send";
 import { setWhatsappProvider } from "../whatsapp/evolution";
+import { ingestEvolution } from "../whatsapp/webhook";
+import { ensureMedia } from "../whatsapp/media";
 import { resetDb } from "../../../test/db";
 
-let uid = ""; let dealId = ""; const calls: string[] = []; let failRead = false;
+type Quoted = { externalId: string; fromMe: boolean; text: string };
+let uid = ""; let dealId = ""; let chId = ""; const calls: string[] = []; let failRead = false;
+const quotes: (Quoted | undefined)[] = []; let beforeReturn: ((k: string, mime: string) => Promise<void>) | null = null;
 const fake = {
   createInstance: async () => {}, connect: async () => ({ status: "conectado" as const }), state: async () => "conectado" as const, logout: async () => {}, remove: async () => {},
-  sendText: async (_i: string, _t: string, text: string, q?: string) => { calls.push(`text:${text}:${q ?? ""}`); return { externalId: "OUT1" }; },
-  sendMedia: async (_i: string, _t: string, f: { mime: string }) => { calls.push(`media:${f.mime}`); return { externalId: "OUT2" }; },
-  sendAudio: async () => { calls.push("audio"); return { externalId: "OUT3" }; },
+  sendText: async (_i: string, _t: string, text: string, q?: Quoted) => { calls.push(`text:${text}:${q?.externalId ?? ""}`); quotes.push(q); return { externalId: "OUT1" }; },
+  sendMedia: async (_i: string, _t: string, f: { mime: string }, _c: string | null, q?: Quoted) => { calls.push(`media:${f.mime}`); quotes.push(q); await beforeReturn?.("media", f.mime); return { externalId: "OUT2" }; },
+  sendAudio: async (_i: string, _t: string, _d: Buffer, q?: Quoted) => { calls.push("audio"); quotes.push(q); return { externalId: "OUT3" }; },
   markRead: async (_i: string, _t: string, ids: string[]) => { if (failRead) throw new Error("evolution fora do ar"); calls.push(`read:${ids.join(",")}`); },
 };
 beforeEach(async () => {
-  calls.length = 0; failRead = false; await resetDb();
+  calls.length = 0; quotes.length = 0; beforeReturn = null; failRead = false; await resetDb();
   [{ id: uid }] = await db.insert(users).values({ name: "Ana", email: "a@c.com", role: "atendente", passwordHash: "x" }).returning();
   await db.insert(channels).values({ name: "Rec", instanceName: "rec", status: "conectado", phone: "+557199990404" });
-  const r = await recordInbound({ channelId: (await db.select().from(channels))[0].id, externalId: "IN1", phoneRaw: "71999995555", body: "oi" });
+  chId = (await db.select().from(channels))[0].id;
+  const r = await recordInbound({ channelId: chId, externalId: "IN1", phoneRaw: "71999995555", body: "oi" });
   if (!("dealId" in r)) throw new Error(); dealId = r.dealId; setWhatsappProvider(fake);
 });
 afterEach(() => setWhatsappProvider(null));
@@ -76,4 +81,65 @@ it("Evolution fora do ar não quebra a abertura e tenta de novo depois", async (
   failRead = false;
   await markConversationRead(dealId, uid);
   expect(calls).toContain("read:IN1");
+});
+
+const echo = (id: string, message: Record<string, unknown>) => ingestEvolution({ event: "send.message", instance: "rec", data: {
+  key: { remoteJid: "5571999995555@s.whatsapp.net", fromMe: true, id }, message, messageType: "x", messageTimestamp: Math.floor(Date.now() / 1000) } } as never);
+const outs = async () => (await db.select().from(messages)).filter((m) => m.direction === "out");
+
+it("citação leva o objeto completo (id, fromMe, texto) ao provider e grava quotedBody", async () => {
+  const [inMsg] = await db.select().from(messages);
+  await sendFromCrm(dealId, "Sim!", uid, { quoteMessageId: inMsg.id });
+  expect(quotes[0]).toEqual({ externalId: "IN1", fromMe: false, text: "oi" });
+  await db.update(messages).set({ kind: "image", body: null }).where(eq(messages.id, inMsg.id));
+  await sendFromCrm(dealId, "Linda!", uid, { quoteMessageId: inMsg.id });
+  expect(quotes[1]).toEqual({ externalId: "IN1", fromMe: false, text: "📷 Foto" });
+});
+it("citada sem externalId: segue sem citação e não grava quotedBody", async () => {
+  const [inMsg] = await db.select().from(messages);
+  await db.update(messages).set({ externalId: null }).where(eq(messages.id, inMsg.id));
+  await sendFromCrm(dealId, "Sim!", uid, { quoteMessageId: inMsg.id });
+  expect(quotes[0]).toBeUndefined();
+  expect((await outs())[0].quotedBody).toBeNull();
+});
+it("áudio recusa legenda", async () => {
+  await expect(sendMediaFromCrm(dealId, { name: "v.ogg", mime: "audio/ogg", data: Buffer.from("OggS\0\0\0\0") }, "legenda", uid)).rejects.toThrow(/legenda/);
+  expect(calls).toEqual([]);
+});
+it("áudio vai com a citação", async () => {
+  const [inMsg] = await db.select().from(messages);
+  await sendMediaFromCrm(dealId, { name: "v.ogg", mime: "audio/ogg", data: Buffer.from("OggS\0\0\0\0") }, null, uid, { quoteMessageId: inMsg.id });
+  expect(quotes[0]).toEqual({ externalId: "IN1", fromMe: false, text: "oi" });
+  expect((await outs())[0].quotedBody).toBe("oi");
+});
+it("eco do WhatsApp chegando ANTES do retorno do envio: foto sem legenda não duplica", async () => {
+  beforeReturn = async () => { await echo("OUT2", { imageMessage: { mimetype: "image/png", caption: "" } }); };
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0]);
+  await sendMediaFromCrm(dealId, { name: "f.png", mime: "image/png", data: png }, null, uid);
+  const o = await outs();
+  expect(o).toHaveLength(1);
+  expect(o[0]).toMatchObject({ externalId: "OUT2", kind: "image", status: "sent", sentByUserId: uid });
+  expect(o[0].mediaPath).toBeTruthy();
+});
+it("eco antes do retorno: documento não duplica", async () => {
+  beforeReturn = async () => { await echo("OUT2", { documentMessage: { mimetype: "application/pdf", fileName: "tabela.pdf" } }); };
+  await sendMediaFromCrm(dealId, { name: "tabela.pdf", mime: "application/pdf", data: Buffer.from("%PDF-1.7 x") }, null, uid);
+  const o = await outs();
+  expect(o).toHaveLength(1);
+  expect(o[0]).toMatchObject({ externalId: "OUT2", kind: "document", sentByUserId: uid });
+});
+it("se a linha do eco já existe (não casou), absorve: uma linha só, sem erro", async () => {
+  beforeReturn = async () => { await db.insert(messages).values({ dealId, contactId: (await db.select().from(messages))[0].contactId, channelId: chId, externalId: "OUT2", direction: "out", kind: "image", status: "sent" }); };
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0]);
+  await expect(sendMediaFromCrm(dealId, { name: "f.png", mime: "image/png", data: png }, null, uid)).resolves.toBeDefined();
+  const o = await outs();
+  expect(o).toHaveLength(1);
+  expect(o[0]).toMatchObject({ externalId: "OUT2", sentByUserId: uid });
+  expect(o[0].mediaPath).toBeTruthy();
+  expect((await db.select().from(messages).where(isNotNull(messages.externalId))).length).toBe(2);
+});
+it("documento com legenda baixa com o nome do arquivo, não com a legenda", async () => {
+  await sendMediaFromCrm(dealId, { name: "tabela.pdf", mime: "application/pdf", data: Buffer.from("%PDF-1.7 x") }, "Nossa tabela", uid);
+  const f = await ensureMedia((await outs())[0].id);
+  expect(f?.name).toBe("tabela.pdf");
 });
