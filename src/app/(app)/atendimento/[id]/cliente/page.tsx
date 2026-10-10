@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/server/auth/session";
-import { getDealDetail } from "@/server/queries/deal";
-import { LeadPanel } from "@/components/lead/lead-sheet";
+import { getQueueItem } from "@/server/queries/queue";
+import { ConversationPane } from "@/components/queue/conversation-pane";
 import { ViewportRedirect } from "@/components/queue/queue-route";
 import { IconArrowRight } from "@/components/icons";
 
@@ -13,8 +13,8 @@ export default async function ClientePage({ params }: PageProps<"/atendimento/[i
   await requireUser();
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
-  const detail = await getDealDetail(id);
-  if (!detail) notFound();
+  const item = await getQueueItem(id);
+  if (!item) notFound();
   return (
     <main className="h-[calc(100dvh-3.5rem-5rem)] lg:h-dvh flex flex-col overflow-hidden">
       {/* Desktop: a conversa com os painéis mora em /atendimento/ID (que não redireciona de volta). */}
@@ -25,7 +25,7 @@ export default async function ClientePage({ params }: PageProps<"/atendimento/[i
         </Link>
       </div>
       <div className="flex-1 min-h-0 grid grid-cols-1 grid-rows-[minmax(0,1fr)]">
-        <LeadPanel key={id} d={detail} initialTab="dados" />
+        <ConversationPane key={id} dealId={id} initial={item} initialTab="dados" back={false} />
       </div>
     </main>
   );

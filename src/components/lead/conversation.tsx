@@ -1,9 +1,9 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { memo, useCallback, useLayoutEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { IconMic, IconReply } from "@/components/icons";
 import { IconButton } from "@/components/ui/icon-button";
-import { SPRING } from "@/lib/motion";
+import { DUR, EASE, SPRING } from "@/lib/motion";
 
 export type Msg = { id: string; externalId?: string | null; direction: "in" | "out"; kind: string; body: string | null; status: string; createdAt: string; sender: string | null; fromPhone: boolean; error?: string | null; hasMedia?: boolean; quotedBody?: string | null; edited?: boolean; deleted?: boolean };
 
@@ -35,54 +35,135 @@ const KIND_LABEL: Record<string, string> = { image: "Foto", video: "Vídeo", doc
 /** Texto curto da mensagem para a faixa "Respondendo a". */
 export const quotePreview = (m: Msg) => (m.body?.trim() || KIND_LABEL[m.kind] || "Mensagem").slice(0, 300);
 
-export function Conversation({ messages, onReply }: { messages: Msg[]; onReply?: (m: Msg) => void }) {
-  const end = useRef<HTMLDivElement>(null);
-  useEffect(() => { end.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [messages.length]);
+/** Os campos que mudam o que o balão mostra. A lista recria os objetos a cada carga; só re-renderiza quem mudou de verdade. */
+const sameMsg = (a: Msg, b: Msg) =>
+  a === b || (a.id === b.id && a.status === b.status && a.body === b.body && a.kind === b.kind && a.error === b.error && a.quotedBody === b.quotedBody && a.edited === b.edited
+    && a.deleted === b.deleted && a.hasMedia === b.hasMedia && a.externalId === b.externalId && a.sender === b.sender && a.fromPhone === b.fromPhone && a.direction === b.direction && a.createdAt === b.createdAt);
+
+type BubbleProps = { m: Msg; /** Rótulo do dia, quando este balão abre um dia novo. */ day: string | null; onReply?: (m: Msg) => void; /** Entra com animação (mensagem que chegou depois da abertura). */ animateIn: boolean };
+
+/** Dois conjuntos de props rendem o mesmo balão? (a lista recria os objetos a cada carga; o `memo` compara pelo conteúdo, não pela identidade) */
+export const bubblePropsEqual = (a: BubbleProps, b: BubbleProps) => a.day === b.day && a.onReply === b.onReply && a.animateIn === b.animateIn && sameMsg(a.m, b.m);
+
+/** Um balão. `memo` por conteúdo: um evento novo não re-renderiza a conversa inteira. */
+export const Bubble = memo(function Bubble({ m, day, onReply, animateIn }: BubbleProps) {
+  const out = m.direction === "out";
   return (
-    <div className="flex-1 overflow-y-auto scroll-thin px-4 py-4 flex flex-col gap-1.5 bg-[radial-gradient(circle_at_1px_1px,rgb(18_18_18/0.035)_1px,transparent_0)] [background-size:18px_18px]">
-      {messages.length === 0 && <p className="m-auto text-center text-muted text-sm max-w-[30ch]">Nenhuma mensagem ainda. A conversa aparece aqui assim que o cliente escrever.</p>}
-      <AnimatePresence initial={false}>
-        {messages.map((m, idx) => {
-          const day = dayLabel(m.createdAt); const showDay = idx === 0 || dayLabel(messages[idx - 1].createdAt) !== day;
-          const out = m.direction === "out";
-          return (
-            <motion.div key={m.id} layout="position" initial={{ opacity: 0, y: 10, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={SPRING} className="flex flex-col">
-              {showDay && <p className="self-center my-2 text-xs font-medium text-muted bg-paper border border-line rounded-full px-2.5 py-0.5 first-letter:uppercase">{day}</p>}
-              <div className={`group flex items-center gap-1 ${out ? "flex-row-reverse self-end" : "self-start"} max-w-full`}>
-              <div className={`min-w-0 max-w-[78%] rounded-[var(--radius-card)] px-3.5 py-2 text-base leading-relaxed shadow-[var(--shadow-card)] ${out ? "bg-[#f3ead9] rounded-br-[5px]" : "bg-paper border border-line rounded-bl-[5px]"} ${m.status === "pending" ? "opacity-60" : ""}`}>
-                {m.quotedBody && (
-                  <span className={`block mb-1.5 -mx-1 px-2.5 py-1.5 rounded-[var(--radius-control)] border-l-2 border-gold/70 text-sm text-graphite line-clamp-3 ${out ? "bg-paper/60" : "bg-paper-2"}`}>{m.quotedBody}</span>
-                )}
-                {m.deleted && <span className="block text-xs font-medium text-alert/80 mb-0.5">Apagada pela cliente no WhatsApp</span>}
-                <span className={m.deleted ? "block line-through decoration-alert/50 opacity-60" : "contents"}>
-                {m.hasMedia && m.kind !== "text" ? (
-                  <><Media m={m} />{m.body && m.kind !== "document" && <span className="block whitespace-pre-wrap break-words">{m.body}</span>}</>
-                ) : m.kind === "audio" ? (
-                  <span className="inline-flex items-center gap-2 text-graphite"><IconMic size={15} /> Áudio</span>
-                ) : m.kind !== "text" && !m.body ? (
-                  <span className="text-graphite italic">{KIND_LABEL[m.kind] ?? "Mensagem"}</span>
-                ) : (
-                  <>{m.kind !== "text" && <span className="text-graphite italic">{KIND_LABEL[m.kind]}: </span>}<span className="whitespace-pre-wrap break-words">{m.body}</span></>
-                )}
-                </span>
-                <span className="flex items-center justify-end gap-1 text-[10.5px] text-muted mt-1" title={m.status === "failed" && m.error ? m.error : undefined}>
-                  {m.edited && "editada · "}
-                  {out && (m.fromPhone ? "pelo celular · " : m.sender ? `${m.sender.split(" ")[0]} · ` : "automática · ")}
-                  {new Date(m.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-                  {out && STATUS[m.status] && <span className={`ml-0.5 ${STATUS[m.status][1]}`} aria-label={`Status: ${m.status}`}>{STATUS[m.status][0]}</span>}
-                </span>
-                {out && m.status === "failed" && <span className="block text-xs text-alert mt-1">Não chegou na cliente. Copie o texto e envie de novo.</span>}
-              </div>
-              {onReply && m.id !== "optimistic" && m.externalId && m.status !== "pending" && m.status !== "failed" && !m.deleted && (
-                <IconButton label="Responder" onClick={() => onReply(m)}
-                  className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-70 transition-opacity"><IconReply size={16} /></IconButton>
-              )}
-              </div>
-            </motion.div>
-          );
-        })}
+    <motion.div initial={animateIn ? { opacity: 0, y: 10 } : false} animate={{ opacity: 1, y: 0 }} transition={SPRING} className="flex flex-col">
+      {day && <p className="self-center my-2 text-xs font-medium text-muted bg-paper border border-line rounded-full px-2.5 py-0.5 first-letter:uppercase">{day}</p>}
+      <div className={`group flex items-center gap-1 ${out ? "flex-row-reverse self-end" : "self-start"} max-w-full`}>
+        <div className={`min-w-0 max-w-[78%] rounded-[var(--radius-card)] px-3.5 py-2 text-base leading-relaxed shadow-[var(--shadow-card)] ${out ? "bg-[#f3ead9] rounded-br-[5px]" : "bg-paper border border-line rounded-bl-[5px]"} ${m.status === "pending" ? "opacity-60" : ""}`}>
+          {m.quotedBody && (
+            <span className={`block mb-1.5 -mx-1 px-2.5 py-1.5 rounded-[var(--radius-control)] border-l-2 border-gold/70 text-sm text-graphite line-clamp-3 ${out ? "bg-paper/60" : "bg-paper-2"}`}>{m.quotedBody}</span>
+          )}
+          {m.deleted && <span className="block text-xs font-medium text-alert/80 mb-0.5">Apagada pela cliente no WhatsApp</span>}
+          <span className={m.deleted ? "block line-through decoration-alert/50 opacity-60" : "contents"}>
+            {m.hasMedia && m.kind !== "text" ? (
+              <><Media m={m} />{m.body && m.kind !== "document" && <span className="block whitespace-pre-wrap break-words">{m.body}</span>}</>
+            ) : m.kind === "audio" ? (
+              <span className="inline-flex items-center gap-2 text-graphite"><IconMic size={15} /> Áudio</span>
+            ) : m.kind !== "text" && !m.body ? (
+              <span className="text-graphite italic">{KIND_LABEL[m.kind] ?? "Mensagem"}</span>
+            ) : (
+              <>{m.kind !== "text" && <span className="text-graphite italic">{KIND_LABEL[m.kind]}: </span>}<span className="whitespace-pre-wrap break-words">{m.body}</span></>
+            )}
+          </span>
+          <span className="flex items-center justify-end gap-1 text-[10.5px] text-muted mt-1" title={m.status === "failed" && m.error ? m.error : undefined}>
+            {m.edited && "editada · "}
+            {out && (m.fromPhone ? "pelo celular · " : m.sender ? `${m.sender.split(" ")[0]} · ` : "automática · ")}
+            {new Date(m.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+            {out && STATUS[m.status] && <span className={`ml-0.5 ${STATUS[m.status][1]}`} aria-label={`Status: ${m.status}`}>{STATUS[m.status][0]}</span>}
+          </span>
+          {out && m.status === "failed" && <span className="block text-xs text-alert mt-1">Não chegou na cliente. Copie o texto e envie de novo.</span>}
+        </div>
+        {onReply && m.id !== "optimistic" && m.externalId && m.status !== "pending" && m.status !== "failed" && !m.deleted && (
+          <IconButton label="Responder" onClick={() => onReply(m)}
+            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-70 transition-opacity"><IconReply size={16} /></IconButton>
+        )}
+      </div>
+    </motion.div>
+  );
+}, bubblePropsEqual);
+
+/** Os balões com o rótulo do dia onde o dia muda. */
+const withDays = (messages: Msg[]) => messages.map((m, i) => {
+  const day = dayLabel(m.createdAt);
+  return { m, day: i === 0 || dayLabel(messages[i - 1].createdAt) !== day ? day : null };
+});
+
+const BOTTOM_SLACK = 48; // quanto de folga ainda conta como "no fim"
+export const WRAP = "bg-[radial-gradient(circle_at_1px_1px,rgb(18_18_18/0.035)_1px,transparent_0)] [background-size:18px_18px]";
+
+/**
+ * A conversa. Abre no fim (sem rolagem animada). Mensagem nova: se a pessoa está no fim, a conversa desce junto;
+ * se ela rolou para cima, a leitura não se mexe e aparece o aviso "N nova(s) mensagem(ns)".
+ */
+export function Conversation({ messages, onReply, label = "Mensagens" }: { messages: Msg[]; onReply?: (m: Msg) => void; label?: string }) {
+  const scroller = useRef<HTMLDivElement>(null);
+  const inner = useRef<HTMLDivElement>(null);
+  const stuck = useRef(true); // a pessoa está no fim: acompanha o que crescer (mensagem, foto que carregou, teclado que abriu)
+  const seen = useRef<{ lastId: string | null; optimistic: boolean } | null>(null);
+  const [unseen, setUnseen] = useState(0);
+  // Quem já estava na tela ao abrir não anima; só o que chega depois.
+  const [initialIds] = useState(() => new Set(messages.map((m) => m.id)));
+
+  const toEnd = useCallback(() => {
+    const el = scroller.current;
+    if (el) el.scrollTop = el.scrollHeight;
+    stuck.current = true;
+  }, []);
+
+  useLayoutEffect(() => {
+    const real = messages.filter((m) => m.id !== "optimistic");
+    const lastId = real.at(-1)?.id ?? null;
+    const optimistic = messages.length > real.length;
+    const prev = seen.current;
+    seen.current = { lastId, optimistic };
+    if (!prev) { toEnd(); return; } // abertura: direto no fim, antes da pintura
+    const at = prev.lastId ? real.findIndex((m) => m.id === prev.lastId) : -1;
+    const fresh = at >= 0 ? real.slice(at + 1) : prev.lastId === lastId ? [] : real; // lista trocada por inteiro: tudo conta como novo
+    const mine = (optimistic && !prev.optimistic) || fresh.some((m) => m.direction === "out");
+    if (mine || (fresh.length && stuck.current)) { toEnd(); setUnseen(0); } // eslint-disable-line react-hooks/set-state-in-effect -- o aviso zera junto com a rolagem
+    else if (fresh.length) setUnseen((n) => n + fresh.length);
+  }, [messages, toEnd]);
+
+  useLayoutEffect(() => {
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => { if (stuck.current) toEnd(); });
+    if (inner.current) ro.observe(inner.current);
+    if (scroller.current) ro.observe(scroller.current);
+    return () => ro.disconnect();
+  }, [toEnd]);
+
+  const onScroll = () => {
+    const el = scroller.current;
+    if (!el) return;
+    const atEnd = el.scrollHeight - el.scrollTop - el.clientHeight <= BOTTOM_SLACK;
+    stuck.current = atEnd;
+    if (atEnd) setUnseen((n) => (n ? 0 : n));
+  };
+
+  const rows = withDays(messages);
+  return (
+    <div className="relative flex-1 min-h-0 flex flex-col">
+      <div ref={scroller} onScroll={onScroll} role="log" aria-label={label} tabIndex={0}
+        className={`flex-1 min-h-0 overflow-y-auto overscroll-contain scroll-thin px-4 py-4 outline-offset-[-2px] ${WRAP}`}>
+        <div ref={inner} className="flex flex-col gap-1.5 min-h-full">
+          {messages.length === 0 && <p className="m-auto text-center text-muted text-sm max-w-[30ch]">Nenhuma mensagem ainda. A conversa aparece aqui assim que o cliente escrever.</p>}
+          {rows.map(({ m, day }) => (
+            <Bubble key={m.id} m={m} day={day} onReply={onReply} animateIn={!initialIds.has(m.id) && (m.direction === "in" || m.id === "optimistic")} />
+          ))}
+        </div>
+      </div>
+      <AnimatePresence>
+        {unseen > 0 && (
+          <motion.button type="button" key="novas" onClick={() => { toEnd(); setUnseen(0); }}
+            initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }} transition={{ duration: DUR.base, ease: EASE }}
+            className="absolute bottom-3 left-1/2 -translate-x-1/2 min-h-11 px-4 rounded-full bg-ink text-paper text-sm font-semibold shadow-[var(--shadow-pop)] inline-flex items-center gap-2">
+            {unseen === 1 ? "1 nova mensagem" : `${unseen} novas mensagens`} <span aria-hidden>↓</span>
+          </motion.button>
+        )}
       </AnimatePresence>
-      <div ref={end} />
     </div>
   );
 }

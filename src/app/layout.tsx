@@ -17,7 +17,8 @@ export const metadata: Metadata = {
   icons: { apple: "/apple-touch-icon.png" },
 };
 
-export const viewport: Viewport = { themeColor: "#fdfdfc" };
+// resizes-content: com o teclado aberto a página encolhe (em vez de o teclado cobrir o campo e o botão Enviar da conversa).
+export const viewport: Viewport = { themeColor: "#fdfdfc", interactiveWidget: "resizes-content" };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   // Ler os cabeçalhos deixa a renderização dinâmica: o Next aplica o nonce da CSP (src/proxy.ts) nos scripts.

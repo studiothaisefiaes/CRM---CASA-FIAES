@@ -60,7 +60,7 @@ export function Menu({ trigger, items, label, align = "right", className, trigge
           <motion.div
             ref={list} id={id} role="menu" aria-label={label} onKeyDown={onListKey}
             initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: DUR.fast, ease: EASE }}
-            className={cn("absolute z-50 top-full mt-1.5 min-w-44 p-1 bg-paper border border-line rounded-[var(--radius-card)] shadow-[var(--shadow-pop)]", align === "right" ? "right-0" : "left-0")}
+            className={cn("absolute z-50 top-full mt-1.5 min-w-44 max-h-[min(70dvh,26rem)] overflow-y-auto overscroll-contain p-1 bg-paper border border-line rounded-[var(--radius-card)] shadow-[var(--shadow-pop)]", align === "right" ? "right-0" : "left-0")}
           >
             {items.map((it) => (
               <button

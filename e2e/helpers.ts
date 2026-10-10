@@ -17,11 +17,19 @@ export async function login(page: Page, email = "gestao@e2e.local") {
 
 /** Login de verdade pelo formulário. Conta no limite de tentativas: só o setup e o spec de login usam. */
 export async function loginReal(page: Page, email = "gestao@e2e.local", password = "senha-e2e-123") {
-  await page.goto("/login");
-  await page.getByLabel("E-mail").fill(email);
-  await page.getByLabel("Senha").fill(password);
-  await page.getByRole("button", { name: "Entrar" }).click();
-  await expect(page).toHaveURL(/\/$/);
+  // Até 3 tentativas: se o dev server recarregar a página no meio (compilação), o formulário some e a tentativa recomeça do /login.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await page.goto("/login");
+      await page.getByLabel("E-mail").fill(email, { timeout: 8000 });
+      await page.getByLabel("Senha").fill(password, { timeout: 8000 });
+      await page.getByRole("button", { name: "Entrar" }).click({ timeout: 8000 });
+      await expect(page).toHaveURL(/\/$/, { timeout: 8000 });
+      return;
+    } catch (e) {
+      if (attempt >= 3) throw e;
+    }
+  }
 }
 
 export async function simulate(page: Page, opts: { phone: string; name: string; text: string; fromMe?: boolean }) {

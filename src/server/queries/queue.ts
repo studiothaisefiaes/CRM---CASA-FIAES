@@ -252,3 +252,20 @@ export async function nextWaitingId(user: Who, exceptId: string): Promise<string
     .orderBy(asc(deals.awaitingReplySince)).limit(1);
   return row?.id ?? null;
 }
+
+/**
+ * Um lead só, no formato da Fila: serve ao cabeçalho do painel quando o lead foi aberto por link (hard load) ou não está na lista
+ * (filtro, busca). Sem seções: as etiquetas de sinal ficam de fora, porque só a lista usa.
+ */
+export async function getQueueItem(id: string): Promise<QueueItem | null> {
+  if (!UUID.test(id)) return null;
+  const [r] = await lightRows([eq(deals.id, id)]);
+  if (!r) return null;
+  const d = (await details([id])).get(id);
+  return {
+    dealId: r.id, contactId: r.contactId, name: r.name?.trim() || r.phone, phone: r.phone, hasAvatar: d?.hasAvatar ?? false,
+    awaitingSince: r.awaitingReplySince ? new Date(r.awaitingReplySince).toISOString() : null, slaMinutes: r.slaMinutes,
+    lastMessage: d?.lastMessage ?? null, lastKind: d?.lastKind ?? null, lastDirection: r.lastDirection, lastAt: r.lastAt ? new Date(r.lastAt).toISOString() : null,
+    stageKey: r.stageKey, stageName: r.stageName, sourceLabel: d?.sourceLabel ?? "", ownerName: r.ownerName, signals: [],
+  };
+}

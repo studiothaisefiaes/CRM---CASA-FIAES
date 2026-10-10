@@ -43,6 +43,14 @@ export function Composer({ dealId, firstName, quickReplies, onOptimistic, onSent
   useEffect(() => () => { const r = recorder.current; if (r) { r.cancelled = true; clearInterval(r.timer); if (r.rec.state !== "inactive") r.rec.stop(); r.stream.getTracks().forEach((t) => t.stop()); } }, []);
   useEffect(() => () => { if (attachment) URL.revokeObjectURL(attachment.url); }, [attachment]);
   useEffect(() => { if (replyTo) ref.current?.focus(); }, [replyTo?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Teclado do celular: quando a área visível encolhe (iOS não redimensiona a página), o campo em foco volta para a vista e o Enviar não fica coberto.
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const keep = () => { if (document.activeElement === ref.current) ref.current?.scrollIntoView({ block: "nearest" }); };
+    vv.addEventListener("resize", keep);
+    return () => vv.removeEventListener("resize", keep);
+  }, []);
 
   const render = (b: string | null) => (b ?? "").replaceAll("{nome}", firstName || "").replace(/,\s*!/g, "!").replace(/\s{2,}/g, " ");
   const fill = (q: Reply) => { setText(render(q.body)); setSel(0); justFilled.current = true; setTimeout(() => { justFilled.current = false; }, 450); requestAnimationFrame(() => ref.current?.focus()); };
@@ -119,7 +127,7 @@ export function Composer({ dealId, firstName, quickReplies, onOptimistic, onSent
   };
 
   return (
-    <div className="relative border-t border-line bg-paper p-3">
+    <div className="sticky bottom-0 z-[1] shrink-0 border-t border-line bg-paper px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
       <AnimatePresence>
         {matches.length > 0 && (
           <motion.ul initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }} transition={{ duration: 0.16, ease: EASE }}
