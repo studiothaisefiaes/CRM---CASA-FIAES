@@ -124,11 +124,11 @@ test("gestão desliga e liga uma automação", async ({ page }) => {
 test("relatório exporta CSV que abre no Excel", async ({ page }) => {
   await login(page);
   await page.goto("/relatorios");
-  await expect(page.getByRole("heading", { name: "Funil" })).toBeVisible();
-  const [dl] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Exportar" }).click().then(() => page.getByRole("link", { name: "Funil por etapa" }).click())]);
+  await expect(page.getByRole("heading", { name: "Do primeiro contato à venda" })).toBeVisible();
+  const [dl] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Exportar" }).click().then(() => page.getByRole("link", { name: "Funil por marcos", exact: true }).click())]);
   expect(dl.suggestedFilename()).toMatch(/casa-fiaes-funil-.*\.csv/);
   const content = await (await dl.createReadStream()).toArray();
   const text = Buffer.concat(content).toString("utf8");
   expect(text.charCodeAt(0)).toBe(0xfeff);
-  expect(text).toContain("Etapa;Leads que passaram");
+  expect(text).toContain("Marco;Leads;% dos leads novos");
 });

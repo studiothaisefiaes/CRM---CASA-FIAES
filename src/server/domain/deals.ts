@@ -7,6 +7,7 @@ import { emit, logEvent } from "./events";
 import { archiveDeals, restoreDeals } from "./archive";
 import { isQuiet } from "./quiet";
 import { getBusinessHours } from "./hours";
+import { closesConversation } from "./message-kinds";
 import { businessSecondsBetween } from "../../lib/business-hours";
 
 export const CLOSED_KINDS = ["fechado", "perdido"] as const;
@@ -95,8 +96,6 @@ export type InboundInput = {
 /** Nó de mídia do WhatsApp, guardado para baixar o arquivo depois. */
 export type MediaNode = { key: Record<string, unknown>; message: Record<string, unknown> };
 
-/** Tipos que costumam só encerrar a conversa (figurinha de "obrigada"). */
-const closesConversation = (kind?: string) => kind === "sticker";
 
 export type InboundResult = { skipped: "telefone_invalido" } | { ignored: true } | { duplicate: true; dealId: string } | { dealId: string; created: boolean; messageId: string };
 

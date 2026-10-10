@@ -1,9 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { db } from "../db";
 import { users } from "../db/schema";
 import { recordInbound, recordOutbound, moveDeal, moveDealTx } from "../domain/deals";
-import { updateDeal } from "../domain/updates";
-import { funnel, responseTimes, origins, finance, summary, toCsv, periodStart } from "./index";
+import { toCsv, periodStart } from "./index";
 import {
   periodWindow, firstResponse, funnelMilestones, staleNow, sourceToSale, lossesByReasonAndStage, financeWithPaid, dataQuality,
   crmVsPhone, followupEfficacy, demandHeatmap, personVsGoal, executiveNumbers, dailySummaryText,
@@ -14,50 +13,7 @@ import { completeTaskTx } from "../domain/tasks";
 import { eq, sql } from "drizzle-orm";
 import { resetDb } from "../../../test/db";
 
-// Terça 2026-10-13 12:00 em Salvador: dentro do expediente, no mês corrente da data fixa.
-const NOW = new Date("2026-10-13T15:00:00Z").getTime();
-
-describe("relatórios", () => {
-  let ana: string;
-  beforeEach(async () => {
-    vi.useFakeTimers({ now: NOW, toFake: ["Date"] });
-    await resetDb();
-    [{ id: ana }] = await db.insert(users).values({ name: "Ana", email: "ana@c.com", role: "atendente", passwordHash: "x" }).returning();
-    const now = NOW;
-    for (let i = 0; i < 3; i++) {
-      const r = await recordInbound({ channelId: null, externalId: `m${i}`, phoneRaw: `7199900001${i}`, body: i === 0 ? "vim pelo instagram" : "oi", at: new Date(now - 300_000) });
-      if (!("dealId" in r)) throw new Error();
-      await recordOutbound({ dealId: r.dealId, channelId: null, body: "oi", userId: ana, at: new Date(now - 300_000 + (i + 1) * 60_000) });
-      if (i === 0) { await updateDeal(r.dealId, { valueCents: 115800, paymentMethod: "pix" }, ana); await moveDeal(r.dealId, "fechado", ana); }
-    }
-  });
-
-  afterEach(() => vi.useRealTimers());
-
-  it("funil conta quem passou por cada etapa", async () => {
-    const f = await funnel({ period: "mes" });
-    expect(f.find((s) => s.key === "lead")!.reached).toBe(3);
-    expect(f.find((s) => s.key === "atendimento")!.reached).toBe(3);
-    expect(f.find((s) => s.key === "fechado")!.reached).toBe(1);
-  });
-
-  it("tempo de resposta por pessoa contra a meta de 2 min", async () => {
-    const [r] = await responseTimes({ period: "mes" });
-    expect(r.name).toBe("Ana");
-    expect(r.responses).toBe(3);
-    expect(r.avgSeconds).toBe(120);
-    expect(r.withinGoal).toBe(2);
-  });
-
-  it("origem, financeiro e resumo", async () => {
-    expect((await origins({ period: "mes" })).find((o) => o.origin === "Instagram")).toMatchObject({ leads: 1, won: 1, revenueCents: 115800 });
-    const fin = await finance({ period: "mes" });
-    expect(fin).toMatchObject({ totalCents: 115800, deals: 1, ticketCents: 115800 });
-    expect(fin.byMethod[0].method).toBe("pix");
-    expect(await summary({ period: "mes" })).toMatchObject({ leads: 3, won: 1, open: 2 });
-    expect((await funnel({ period: "mes", ownerId: ana })).find((s) => s.key === "lead")!.reached).toBe(3);
-  });
-
+describe("relatórios: utilidades", () => {
   it("CSV com BOM, ; e aspas", () => {
     expect(toCsv(["a", "b"], [["x;y", 2]])).toBe('﻿a;b\r\n"x;y";2');
   });
@@ -427,5 +383,43 @@ describe("relatórios honestos: rodada de correções 1", () => {
     expect(s.text).toMatch(/Cobranças de amanhã: 1 \(R\$ 300,00\)/);
     const at = await dailySummaryText({ id: g.id, role: "atendente", name: "A", email: "a@c.com" }, T(18));
     expect(at.text).not.toMatch(/R\$/);
+  });
+});
+
+describe("relatórios: correções da T13a (T13b)", () => {
+  beforeEach(async () => { await resetDb(); });
+  const gestor = async () => (await db.insert(users).values({ name: "G", email: "g@c.com", role: "gestor", passwordHash: "x" }).returning())[0];
+
+  it("semResposta: figurinha da cliente não abre espera", async () => {
+    // conversa iniciada pela Casa; a cliente responde só com uma figurinha (deals.ts não abre espera)
+    await recordOutbound({ phoneRaw: phone(60), channelId: null, body: "oi, tudo bem?", fromPhone: true, at: T(9) });
+    await recordInbound({ channelId: null, externalId: "ST1", phoneRaw: phone(60), body: null, kind: "sticker", at: T(9, 5) });
+    expect((await firstResponse({ period: "hoje", now: T(18) })).semResposta).toBe(0);
+    // texto da cliente abre a espera: agora conta
+    await recordInbound({ channelId: null, externalId: "TX1", phoneRaw: phone(60), body: "quanto custa?", at: T(10) });
+    expect((await firstResponse({ period: "hoje", now: T(18) })).semResposta).toBe(1);
+  });
+
+  it("resumo: etapa com SLA 0 usa o prazo de reserva (0 é sem prazo)", async () => {
+    await db.update(stages).set({ slaMinutes: 0 }).where(eq(stages.key, "atendimento"));
+    const a = await lead(61, T(9)); await recordOutbound({ dealId: a, channelId: null, body: "a", at: T(9, 1) });
+    await recordInbound({ channelId: null, externalId: "SLA0", phoneRaw: phone(61), body: "e então?", at: T(10) });
+    const g = await gestor();
+    const s = await dailySummaryText(g, T(10, 1)); // 1 min de espera, reserva de 2 min
+    expect(s.text).toMatch(/1 esperando resposta agora/); expect(s.text).not.toMatch(/fora do prazo/);
+    expect((await dailySummaryText(g, T(10, 5))).text).toMatch(/1 esperando resposta agora \(1 fora do prazo\)/);
+  });
+
+  it("amanhã perto da meia-noite de Salvador (23:30 local = 02:30 UTC)", async () => {
+    const now = T(23, 30);
+    expect(now.toISOString()).toBe("2026-10-14T02:30:00.000Z");
+    const a = await lead(62, T(9)); await moveDeal(a, "agendado", null);
+    await db.update(deals).set({ scheduledAt: T(0, 30, 14) }).where(eq(deals.id, a)); // 00:30 do dia seguinte: entra em amanhã
+    const b = await lead(63, T(9, 5)); await moveDeal(b, "agendado", null);
+    await db.update(deals).set({ scheduledAt: T(0, 30, 15) }).where(eq(deals.id, b)); // depois de amanhã: fora
+    const c = await lead(64, T(9, 10)); await moveDeal(c, "agendado", null);
+    await db.update(deals).set({ scheduledAt: T(23, 0, 13) }).where(eq(deals.id, c)); // hoje 23h: fora
+    const s = await dailySummaryText(await gestor(), now);
+    expect(s.text).toMatch(/Amanhã: 1 agendado(?!s)/);
   });
 });

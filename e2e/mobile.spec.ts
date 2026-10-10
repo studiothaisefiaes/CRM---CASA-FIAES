@@ -53,3 +53,22 @@ test("celular: banner de conexão cabe em 390 px", async ({ page }) => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   } finally { await e2eSql("delete from channels where instance_name = 'e2e-banner-m'"); }
 });
+
+test("celular: relatórios cabem em 390 px, alvos de 44 px e mapa de calor rola só dentro do bloco", async ({ page }) => {
+  await login(page);
+  await simulate(page, { phone: "71 99700-9090", name: "Teresa Lima", text: "Oi, queria um horário." }); // garante ao menos uma mensagem no mapa de calor
+  await page.goto("/relatorios?periodo=mes");
+  await expect(page.getByRole("heading", { name: "Os números do período" })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  for (const name of ["Visão geral", "Análise"]) expect((await page.getByRole("tab", { name }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  expect((await page.getByRole("button", { name: "Exportar" }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await shot(page, "03-visao-geral-celular", { fullPage: true });
+  await page.getByRole("tab", { name: "Análise" }).click();
+  await expect(page).toHaveURL(/aba=analise/);
+  const region = page.getByRole("region", { name: /Mapa de calor/ });
+  await expect(region).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  const { sw, cw } = await region.evaluate((el) => ({ sw: el.scrollWidth, cw: el.clientWidth }));
+  expect(sw).toBeGreaterThan(cw); // rola dentro do bloco
+  expect(cw).toBeLessThanOrEqual(390);
+});

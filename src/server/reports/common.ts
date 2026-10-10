@@ -19,7 +19,7 @@ export type ReportFilter = {
 
 export const NOT_IDENTIFIED = "Não identificada";
 /** Tamanho mínimo de amostra para mostrar % ou comparar pessoas. */
-export const MIN_SAMPLE = 20;
+export { MIN_SAMPLE } from "../../lib/report-format";
 
 const BAHIA_OFFSET_MS = 3 * 3_600_000; // America/Bahia, UTC-3, sem horário de verão
 const DAY_MS = 86_400_000;
@@ -60,7 +60,7 @@ export const previousWindow = (w: PeriodWindow): Window => ({ from: w.prevFrom, 
 /** `coluna` até o fim da janela (inclusive no período atual, exclusive no anterior). Também serve para "já tinha acontecido até o corte". */
 export const upTo = (col: string, w: Window): SQL => (w.exclusive ? sql`${sql.raw(col)} < ${iso(w.to)}::timestamptz` : sql`${sql.raw(col)} <= ${iso(w.to)}::timestamptz`);
 /** Prazo de resposta de reserva quando a etapa não tem SLA: o SLA da etapa Lead, ou 2 min. Mesma regra em todo o relatório. */
-export const SLA_FALLBACK_SECONDS = sql`coalesce((select sla_minutes * 60 from stages where key = 'lead'), 120)`;
+export const SLA_FALLBACK_SECONDS = sql`coalesce((select nullif(sla_minutes, 0) * 60 from stages where key = 'lead'), 120)`;
 export const rows = async <T>(q: SQL) => (await db.execute(q)).rows as T[];
 export const pct = (part: number, whole: number): number | null => (whole > 0 ? Math.round((100 * part) / whole) : null);
 

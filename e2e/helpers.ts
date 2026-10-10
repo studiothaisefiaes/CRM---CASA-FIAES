@@ -36,9 +36,9 @@ export async function e2eSql(text: string, params: unknown[] = []) {
 }
 
 /** Salva um print em CF_SHOTS_DIR (headless); sem a variável, não faz nada. */
-export async function shot(page: Page, name: string) {
+export async function shot(page: Page, name: string, opts: { fullPage?: boolean } = {}) {
   const dir = process.env.CF_SHOTS_DIR;
   if (!dir) return;
   await page.waitForTimeout(700); // fim das animações de entrada
-  await page.screenshot({ path: `${dir}/${name}.png` });
+  await page.screenshot({ path: `${dir}/${name}.png`, fullPage: opts.fullPage });
 }

@@ -1,4 +1,5 @@
-import { and, asc, desc, eq, gte, isNull, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNotNull, isNull, or, sql } from "drizzle-orm";
+import type { FunilFilter } from "../../lib/report-links";
 import { db } from "../db";
 import { contacts, deals, messages, stages, users } from "../db/schema";
 
@@ -9,7 +10,10 @@ export type BoardCard = {
 };
 export type BoardStage = { id: string; key: string; name: string; kind: string; slaMinutes: number | null; color: string; cards: BoardCard[] };
 
-export async function getBoard(filter: { ownerId?: string | null; origin?: string | null; q?: string | null } = {}): Promise<BoardStage[]> {
+/** Filtros vindos dos relatórios (drill-down): lista só os leads daquele número. */
+export type BoardFilter = { ownerId?: string | null; origin?: string | null; q?: string | null; filtro?: FunilFilter | null; etapa?: string | null };
+
+export async function getBoard(filter: BoardFilter = {}): Promise<BoardStage[]> {
   const st = await db.select().from(stages).where(eq(stages.active, true)).orderBy(asc(stages.position));
   const since30 = new Date(Date.now() - 30 * 86_400_000);
   const conds = [or(isNull(deals.closedAt), gte(deals.closedAt, since30))!, isNull(deals.archivedAt)];
@@ -20,6 +24,16 @@ export async function getBoard(filter: { ownerId?: string | null; origin?: strin
     const digits = filter.q.replace(/\D/g, "");
     conds.push(or(sql`lower(coalesce(${contacts.name}, '')) like ${like}`, digits.length >= 3 ? sql`${contacts.phoneE164} like ${"%" + digits + "%"}` : sql`false`)!);
   }
+  if (filter.filtro === "atrasados") {
+    // Mesma regra do contador de atrasados: alerta de espera aberto (que não é de tarefa), sem contato ignorado.
+    conds.push(sql`exists (select 1 from alerts al where al.deal_id = ${deals.id} and al.wait_key is not null and al.wait_key not like 'task:%' and al.resolved_at is null)`, eq(contacts.ignored, false));
+  } else if (filter.filtro === "esperando") {
+    conds.push(isNotNull(deals.awaitingReplySince), isNull(deals.closedAt), eq(contacts.ignored, false));
+  } else if (filter.filtro === "parados") {
+    conds.push(isNull(deals.closedAt), eq(contacts.ignored, false),
+      sql`exists (select 1 from stages ps where ps.id = ${deals.stageId} and ps.stale_days is not null and ${deals.stageEnteredAt} <= now() - make_interval(days => ps.stale_days))`);
+  }
+  if (filter.etapa && /^[a-z0-9_]{1,40}$/i.test(filter.etapa)) conds.push(sql`exists (select 1 from stages es where es.id = ${deals.stageId} and es.key = ${filter.etapa})`);
   const rows = await db.select({
     id: deals.id, contactId: contacts.id, hasAvatar: sql<boolean>`(${contacts.avatarPath} is not null)`, contactName: contacts.name, phone: contacts.phoneE164, origin: deals.origin, ownerId: deals.ownerId, ownerName: users.name,
     stageId: deals.stageId, awaitingReplySince: deals.awaitingReplySince, stageEnteredAt: deals.stageEnteredAt, isClient: contacts.isClient,

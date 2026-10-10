@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import { NON_OPENING_KINDS } from "../domain/message-kinds";
 import { cohort, dealScope, iso, MIN_SAMPLE, NOT_IDENTIFIED, pct, periodWindow, previousWindow, rows, SLA_FALLBACK_SECONDS, SOURCE_EXPR, upTo, type ReportFilter, type Window } from "./common";
 
 const num = (n: number | string | null | undefined) => Number(n ?? 0);
@@ -64,7 +65,7 @@ async function firstResponseStats(f: ReportFilter, w: Window): Promise<FirstResp
   const [pending] = await rows<{ n: number }>(sql`
     with ${cohortStates(f, w)}
     select count(*)::int as n from c where c.kind not in ('fechado', 'perdido') and c.first_response_at is null
-      and exists (select 1 from messages m where m.deal_id = c.id and m.direction = 'in' and ${upTo("m.created_at", w)})`);
+      and exists (select 1 from messages m where m.deal_id = c.id and m.direction = 'in' and m.kind not in (${sql.join(NON_OPENING_KINDS.map((k) => sql`${k}`), sql`, `)}) and ${upTo("m.created_at", w)})`);
   return {
     n: agg.n, p50: agg.p50, p90: agg.p90, bands: { ate2: agg.ate2, de2a10: agg.de2a10, de10a60: agg.de10a60, mais1h: agg.mais1h },
     slaHitPct: pct(agg.hit, agg.n), slaHit: agg.hit, semResposta: pending?.n ?? 0,
@@ -394,4 +395,14 @@ export async function executiveNumbers(f: ReportFilter): Promise<ExecutiveNumber
     vendas: { atual: money(sa), anterior: money(saP) },
     ticketMedio: { atual: ticket(sa), anterior: ticket(saP), n: sa.withValue, nAnterior: saP.withValue },
   };
+}
+
+// ------------------------------------------------------------------------------------------------
+// Filtro de origem da tela
+// ------------------------------------------------------------------------------------------------
+/** Origens reais que existem nos leads ativos, para o seletor da tela ("Não identificada" sempre presente, por último). */
+export async function reportSources(): Promise<string[]> {
+  const r = await rows<{ s: string }>(sql`select distinct ${SOURCE_EXPR()} as s from deals d where ${dealScope({ period: "hoje" })}`);
+  const out = r.map((x) => x.s).filter((x) => x !== NOT_IDENTIFIED).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  return [...out, NOT_IDENTIFIED];
 }

@@ -28,7 +28,7 @@ export async function dailySummaryText(user: Pick<SessionUser, "id" | "role" | "
   const [mi, fr, sales, stale, waiting, hours, [tk], [tm]] = await Promise.all([
     funnelMilestones(f), firstResponse(f), salesAgg(f, w), staleNow({ now, ownerId: f.ownerId }),
     rows<{ since: Date; sla: number }>(sql`
-      select d.awaiting_reply_since as since, coalesce(s.sla_minutes * 60, ${SLA_FALLBACK_SECONDS})::int as sla from deals d join stages s on s.id = d.stage_id
+      select d.awaiting_reply_since as since, coalesce(nullif(s.sla_minutes, 0) * 60, ${SLA_FALLBACK_SECONDS})::int as sla from deals d join stages s on s.id = d.stage_id
       where d.closed_at is null and d.awaiting_reply_since is not null and d.awaiting_reply_since <= ${iso(now)}::timestamptz and ${dealScope(f)}`),
     getBusinessHours(),
     rows<{ n: number }>(sql`
