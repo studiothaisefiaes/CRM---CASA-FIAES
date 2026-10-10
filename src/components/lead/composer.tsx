@@ -127,7 +127,7 @@ export function Composer({ dealId, firstName, quickReplies, onOptimistic, onSent
   };
 
   return (
-    <div className="sticky bottom-0 z-[1] shrink-0 border-t border-line bg-paper px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+    <div className="sticky bottom-0 z-[1] shrink-0 border-t border-line bg-paper px-3 pt-3 pb-[max(0.375rem,env(safe-area-inset-bottom))] lg:pb-3">
       <AnimatePresence>
         {matches.length > 0 && (
           <motion.ul initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }} transition={{ duration: 0.16, ease: EASE }}

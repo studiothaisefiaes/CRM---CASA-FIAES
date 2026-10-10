@@ -18,8 +18,11 @@ export type PaneBack = false | "below-lg" | "always";
 
 const URGENCY = { late: "bg-alert text-white", warn: "bg-gold-soft text-gold-ink", ok: "bg-paper-2 text-ink" } as const;
 
-/** Só este pedaço bate o relógio (a cada segundo): o resto do painel não re-renderiza por causa dele. */
-function SlaChip({ since, slaMinutes, hidden, compact }: { since: string | null; slaMinutes: number | null; hidden: boolean; compact?: boolean }) {
+/**
+ * Só este pedaço bate o relógio (a cada segundo): o resto do painel não re-renderiza por causa dele. Um chip só: no celular é a espera curta
+ * ao lado do nome; no desktop vira a linha "Esperando resposta há … · prazo …" (o CSS decide qual texto aparece, o relógio é o mesmo).
+ */
+function SlaChip({ since, slaMinutes, hidden }: { since: string | null; slaMinutes: number | null; hidden: boolean }) {
   const { urgency, label } = useUrgency(since, slaMinutes);
   const show = !!label && !hidden;
   return (
@@ -27,10 +30,13 @@ function SlaChip({ since, slaMinutes, hidden, compact }: { since: string | null;
       {show && (
         <motion.span key="sla" initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: DUR.base, ease: EASE }}
           aria-label={`Esperando resposta há ${label}${slaMinutes ? `, prazo de ${slaMinutes} min` : ""}`} suppressHydrationWarning
-          className={cn("inline-flex shrink-0 items-center gap-1.5 rounded-full font-semibold", URGENCY[urgency], compact ? "h-8 px-2.5 text-sm" : "mt-3 h-8 px-3 text-sm")}>
+          className={cn("inline-flex shrink-0 items-center gap-1.5 h-8 px-2.5 lg:px-3 rounded-full text-sm font-semibold lg:col-span-3 lg:row-start-2 lg:justify-self-start lg:mt-3", URGENCY[urgency])}>
           <IconClock size={14} aria-hidden />
-          <span aria-hidden suppressHydrationWarning>{compact ? label : `Esperando resposta há ${label}`}</span>
-          {!compact && slaMinutes ? <span aria-hidden className="font-normal opacity-80">· prazo {slaMinutes} min</span> : null}
+          <span aria-hidden suppressHydrationWarning>
+            <span className="lg:hidden" suppressHydrationWarning>{label}</span>
+            <span className="hidden lg:inline" suppressHydrationWarning>Esperando resposta há {label}</span>
+          </span>
+          {slaMinutes ? <span aria-hidden className="hidden lg:inline font-normal opacity-80">· prazo {slaMinutes} min</span> : null}
         </motion.span>
       )}
     </AnimatePresence>
@@ -73,33 +79,25 @@ export function PaneHeader({ item, d, name, answered, back, tab, onTab, onMove, 
 
   return (
     <>
-      {/* Celular e janela estreita: uma linha só */}
-      <div className="lg:hidden flex items-center gap-1 h-14 pl-1 pr-1.5">
-        {back && <BackToQueue compact />}
-        <ContactAvatar contactId={contactId} hasAvatar={hasAvatar} name={name} size={32} className={back ? undefined : "ml-2"} />
-        <h2 className="min-w-0 flex-1 truncate text-base font-semibold ml-1.5">{name}</h2>
-        <SlaChip since={since} slaMinutes={sla} hidden={answered} compact />
-        <Menu label="Mais ações" trigger={<IconMore size={20} />} items={items} triggerClassName="size-11" />
-      </div>
-
-      {/* Desktop */}
-      <div className="hidden lg:block px-5 pt-3 pb-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex items-center gap-3.5">
-            {back === "always" && <BackToQueue compact className="-ml-2" />}
-            <ContactAvatar contactId={contactId} hasAvatar={hasAvatar} name={name} size={44} />
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="font-serif text-[28px] leading-tight font-light truncate">{name}</h2>
-                {d?.contact.isClient && <Badge tone="ok">Cliente</Badge>}
-              </div>
-              <p className="text-sm text-graphite mt-0.5 truncate">{formatPhoneClient(phone)}{origin ? ` · ${origin}` : ""}{d?.channelName ? ` · ${d.channelName}` : ""}</p>
-            </div>
+      {/* Uma estrutura só. Celular: uma linha (voltar, foto, nome, espera, ⋯). Desktop (lg): grade com foto, nome e contato, a linha da espera e as ações à vista. */}
+      <div className="flex items-center gap-1 h-14 pl-1 pr-1.5 lg:grid lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-start lg:gap-x-3.5 lg:gap-y-0 lg:h-auto lg:px-5 lg:pt-3 lg:pb-3">
+        <div className="flex items-center gap-1 lg:gap-0">
+          {back && <BackToQueue compact className={back === "always" ? "lg:-ml-2" : "lg:hidden"} />}
+          <ContactAvatar contactId={contactId} hasAvatar={hasAvatar} name={name} size={40} className={back ? undefined : "ml-2 lg:ml-0"} />
+        </div>
+        <div className="min-w-0 flex-1 lg:flex-none ml-1.5 lg:ml-0">
+          <div className="flex items-center gap-2">
+            <h2 className="min-w-0 truncate text-base font-semibold lg:font-serif lg:text-[28px] lg:leading-tight lg:font-light">{name}</h2>
+            {d?.contact.isClient && <Badge tone="ok" className="hidden lg:inline-flex">Cliente</Badge>}
           </div>
-          <button type="button" onClick={onClose} className="size-9 pointer-coarse:size-11 grid place-items-center rounded-[var(--radius-control)] text-muted hover:bg-paper-2 hover:text-ink" aria-label="Fechar conversa"><IconClose /></button>
+          <p className="hidden lg:block text-sm text-graphite mt-0.5 truncate">{formatPhoneClient(phone)}{origin ? ` · ${origin}` : ""}{d?.channelName ? ` · ${d.channelName}` : ""}</p>
         </div>
         <SlaChip since={since} slaMinutes={sla} hidden={answered} />
-        <div className="flex items-center gap-2 mt-3 flex-wrap min-h-9">
+        <Menu label="Mais ações" trigger={<IconMore size={20} />} items={items} className="lg:hidden" triggerClassName="size-11" />
+        <button type="button" onClick={onClose} className="hidden lg:grid size-9 pointer-coarse:size-11 place-items-center rounded-[var(--radius-control)] text-muted hover:bg-paper-2 hover:text-ink" aria-label="Fechar conversa"><IconClose /></button>
+
+        {/* Ações à vista (desktop); no celular moram no menu ⋯ */}
+        <div className="hidden lg:flex items-center gap-2 mt-3 flex-wrap min-h-9 lg:col-span-3">
           {d ? (
             <label className="relative">
               <span className="sr-only">Etapa</span>

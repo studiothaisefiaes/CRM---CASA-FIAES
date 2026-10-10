@@ -4,7 +4,7 @@ import { db } from "../db";
 import { alerts, contacts, deals, messages, stages, tasks, users } from "../db/schema";
 import { resetDb } from "../../../test/db";
 import { countLateLeads } from "./late-count";
-import { getQueue, nextWaitingId, type QueueResult } from "./queue";
+import { getQueue, getQueueItem, nextWaitingId, type QueueResult } from "./queue";
 import type { QueueView } from "../../lib/queue";
 
 beforeEach(async () => { await resetDb(); });
@@ -311,5 +311,24 @@ describe("getQueue: escopo, views e filtros", () => {
     });
     expect(q.sections[0].items[0].awaitingSince).toBe(ago(1).toISOString());
     expect(q.sections[0].items[0].signals).toContain("Cliente");
+  });
+});
+
+describe("getQueueItem: o item de um lead só, com as mesmas exclusões da Fila", () => {
+  it("devolve nome, espera e última mensagem de um lead aberto", async () => {
+    const { lead } = await setup();
+    const l = await lead({ awaitingReplySince: ago(3), last: { direction: "in", body: "Oi, tem horário?" } });
+    const item = await getQueueItem(l.id);
+    expect(item).toMatchObject({ dealId: l.id, name: expect.stringContaining("Cliente"), lastMessage: "Oi, tem horário?", lastDirection: "in", stageKey: "lead" });
+    expect(item!.awaitingSince).not.toBeNull();
+  });
+  it("não devolve lead arquivado, contato ignorado, id inválido nem lead que não existe", async () => {
+    const { lead } = await setup();
+    const arq = await lead({ archivedAt: ago(5) });
+    const ign = await lead({ ignored: true });
+    expect(await getQueueItem(arq.id)).toBeNull();
+    expect(await getQueueItem(ign.id)).toBeNull();
+    expect(await getQueueItem("nao-e-uuid")).toBeNull();
+    expect(await getQueueItem("00000000-0000-4000-8000-000000000001")).toBeNull();
   });
 });

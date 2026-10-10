@@ -42,7 +42,7 @@ export function QueueListRoute({ sections, query, selectedId, className }: { sec
   return (
     <>
       <QueueList sections={sections} selectedId={current} onOpen={onOpen} listRef={ref} onScroll={onScroll} className={className} />
-      {navigating && opening && <div className="lg:hidden fixed inset-x-0 top-14 bottom-20 z-20"><ConversationOpeningView item={opening} /></div>}
+      {navigating && opening && <div className="lg:hidden fixed inset-0 z-40"><ConversationOpeningView item={opening} /></div>}
     </>
   );
 }

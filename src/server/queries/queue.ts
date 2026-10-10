@@ -255,11 +255,12 @@ export async function nextWaitingId(user: Who, exceptId: string): Promise<string
 
 /**
  * Um lead só, no formato da Fila: serve ao cabeçalho do painel quando o lead foi aberto por link (hard load) ou não está na lista
- * (filtro, busca). Sem seções: as etiquetas de sinal ficam de fora, porque só a lista usa.
+ * (filtro, busca); não devolve lead arquivado nem contato ignorado. Sem seções: as etiquetas de sinal ficam de fora, porque só a lista usa.
  */
 export async function getQueueItem(id: string): Promise<QueueItem | null> {
   if (!UUID.test(id)) return null;
-  const [r] = await lightRows([eq(deals.id, id)]);
+  // Arquivados e contatos ignorados ficam fora, como na Fila.
+  const [r] = await lightRows([eq(deals.id, id), isNull(deals.archivedAt), eq(contacts.ignored, false)]);
   if (!r) return null;
   const d = (await details([id])).get(id);
   return {

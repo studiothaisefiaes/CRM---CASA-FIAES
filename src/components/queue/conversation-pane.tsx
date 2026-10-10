@@ -7,6 +7,7 @@ import { Bubble, Conversation, quotePreview, WRAP, type Msg } from "@/components
 import { Composer, type QuoteTarget } from "@/components/lead/composer";
 import { LeadSide, useStageMove } from "@/components/lead/lead-sheet";
 import { Empty } from "@/components/ui/empty";
+import { useToast } from "@/components/ui/toast";
 import { IconArrowRight, IconCheck } from "@/components/icons";
 import { useLive } from "@/components/shell/live";
 import { markConversationReadAction } from "@/app/(app)/funil/actions";
@@ -56,7 +57,7 @@ export function ConversationSkeletonShell({ item }: { item: QueueItem | null }) 
   return (
     <section aria-label="Conversa" className="min-h-0 min-w-0 flex-1 flex flex-col">
       <ConversationSkeleton item={item} error={null} onRetry={() => {}} />
-      <div aria-hidden className="shrink-0 border-t border-line bg-paper px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"><div className="h-11 rounded-[var(--radius-control)] bg-paper-2" /></div>
+      <div aria-hidden className="shrink-0 border-t border-line bg-paper px-3 pt-3 pb-[max(0.375rem,env(safe-area-inset-bottom))] lg:pb-3"><div className="h-11 rounded-[var(--radius-control)] bg-paper-2" /></div>
     </section>
   );
 }
@@ -84,17 +85,22 @@ export function ConversationPane({ dealId, initial, initialTab = "conversa", bac
   const [next, setNext] = useState<{ id: string | null; name: string | null } | null>(null);
   const [optimistic, setOptimistic] = useState<{ text: string; at: number } | null>(null);
   const [replyTo, setReplyTo] = useState<QuoteTarget | null>(null);
+  const [sentCount, setSentCount] = useState(0);
+  const toast = useToast();
   const openLead = useOpenLead();
   const closeLead = useCloseLead();
   const seq = useRef(0);
   const stale = useRef(false);
 
-  const load = useCallback(() => {
+  /** Busca a conversa. Devolve se deu certo (a rede ou o servidor podem falhar; quem chama decide o que fazer). */
+  const load = useCallback((): Promise<boolean> => {
     const mine = ++seq.current;
     return getConversationAction(dealId).then((r) => {
-      if (mine !== seq.current) return; // chegou uma resposta mais nova
-      if (r.ok) { setDetail(r.data); setError(null); } else setError((e) => e ?? r.error);
-    });
+      if (mine !== seq.current) return true; // chegou uma resposta mais nova
+      if (r.ok) { setDetail(r.data); setError(null); return true; }
+      setError((e) => e ?? r.error);
+      return false;
+    }, () => { if (mine === seq.current) setError((e) => e ?? "Não foi possível abrir a conversa. Tente de novo."); return false; });
   }, [dealId]);
 
   // O histórico primeiro (as Server Actions andam em fila); o "lido" logo depois, uma vez por abertura (o StrictMode do dev roda o efeito duas vezes).
@@ -130,12 +136,14 @@ export function ConversationPane({ dealId, initial, initialTab = "conversa", bac
   }, [detail, optimistic]);
 
   // Segura o balão provisório até o histórico novo chegar, para a mensagem enviada não piscar.
+  // Se a busca falhar, o balão fica (a mensagem foi enviada; sumir daria a impressão de que não foi) e a atendente é avisada.
   const onOptimistic = useCallback((text: string | null) => {
     if (text !== null) { setOptimistic({ text, at: Date.now() }); return; }
-    void load().finally(() => setOptimistic(null));
-  }, [load]);
+    void load().then((ok) => { if (ok) setOptimistic(null); else toast("Não deu para atualizar a conversa", "error"); });
+  }, [load, toast]);
   const onSent = useCallback(() => {
     setAnswered(true);
+    setSentCount((n) => n + 1);
     void nextWaitingAction(dealId).then((r) => { if (r.ok) setNext({ id: r.id, name: r.name }); });
   }, [dealId]);
   const onReply = useCallback((m: Msg) => setReplyTo({ id: m.id, text: quotePreview(m) }), []);
@@ -150,7 +158,7 @@ export function ConversationPane({ dealId, initial, initialTab = "conversa", bac
           <PaneHeader item={initial} d={detail} name={name} answered={answered} back={back} tab={tab} onTab={setTab} onMove={moveTo} onClose={closeLead} />
         </header>
         <section aria-label="Conversa" className={`min-h-0 min-w-0 flex-col flex-1 ${tab === "conversa" ? "flex" : "hidden"} xl:flex xl:col-start-1 xl:row-start-2`}>
-          {detail ? <Conversation messages={msgs} onReply={onReply} /> : <ConversationSkeleton item={initial} error={error} onRetry={() => { setError(null); void load(); }} />}
+          {detail ? <Conversation messages={msgs} onReply={onReply} forceEndKey={sentCount} visible={tab === "conversa"} /> : <ConversationSkeleton item={initial} error={error} onRetry={() => { setError(null); void load(); }} />}
           <AnimatePresence initial={false}>
             {answered && next && (
               <motion.div key="proximo" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: DUR.base, ease: EASE }} className="shrink-0 px-3 pt-2">

@@ -9,6 +9,7 @@ import { AlertsBell } from "./alerts-bell";
 import { useLiveAlerts } from "./use-live-alerts";
 import { logoutAction } from "./push-cleanup";
 import { initials } from "@/lib/format";
+import { isConversationPath } from "@/lib/lead-href";
 import { SPRING } from "@/lib/motion";
 import type { AlertItem } from "@/server/queries/alerts";
 
@@ -29,6 +30,8 @@ export function Sidebar({ user, alerts: initialAlerts }: { user: { name: string;
   const gestor = user.role === "gestor";
   const items = gestor ? [...NAV, { href: "/config", label: "Configurações", icon: IconSettings }] : NAV;
   const isActive = (href: string) => (href === "/" ? path === "/" : (MATCH[href] ?? [href]).some((p) => path.startsWith(p)));
+  // Conversa em tela cheia no celular: sem barra superior nem inferior (o cabeçalho do lead tem o voltar; o sino e o Sair ficam a um toque, na Fila).
+  const conversation = isConversationPath(path);
   const moreActive = path.startsWith("/config"); // /funil (Quadro) acende Atendimento, não "Mais"
   return (
     <>
@@ -60,14 +63,14 @@ export function Sidebar({ user, alerts: initialAlerts }: { user: { name: string;
       </aside>
 
       {/* Celular: barra superior + navegação inferior */}
-      <header className="lg:hidden sticky top-0 z-30 flex items-center justify-between h-14 px-4 bg-paper/90 backdrop-blur border-b border-line">
+      {!conversation && <header className="lg:hidden sticky top-0 z-30 flex items-center justify-between h-14 px-4 bg-paper/90 backdrop-blur border-b border-line">
         <Link href="/" className="font-serif text-[19px]">Casa <em className="text-gold">Fiaes</em></Link>
         <div className="flex items-center gap-1">
           <AlertsBell alerts={alerts} reload={reload} />
           <form action={logoutAction}><button className="size-11 grid place-items-center rounded-[var(--radius-control)] text-muted" aria-label="Sair"><IconLogout size={17} /></button></form>
         </div>
-      </header>
-      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 grid grid-cols-5 bg-paper/95 backdrop-blur border-t border-line pb-[env(safe-area-inset-bottom)]" aria-label="Principal">
+      </header>}
+      {!conversation && <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 grid grid-cols-5 bg-paper/95 backdrop-blur border-t border-line pb-[env(safe-area-inset-bottom)]" aria-label="Principal">
         {NAV.map((it) => {
           const active = isActive(it.href);
           return (
@@ -81,7 +84,7 @@ export function Sidebar({ user, alerts: initialAlerts }: { user: { name: string;
           {moreActive && <span className="absolute top-0 h-0.5 w-8 rounded-full bg-gold" />}
           <IconMore size={20} />Mais
         </button>
-      </nav>
+      </nav>}
       <Sheet open={more} onClose={() => setMore(false)} title="Mais" side="bottom">
         <ul className="flex flex-col -my-1">
           <li><Link href="/funil" onClick={() => setMore(false)} className="flex items-center gap-3 min-h-12 text-base"><IconFunnel size={19} className="text-graphite" />Quadro de leads</Link></li>

@@ -140,6 +140,7 @@ test.describe("celular: conversa em 390 px", () => {
   test.use({ deviceScaleFactor: 2 });
   test("cabeçalho de uma linha, composer sempre à vista e o teclado não cobre o Enviar", async ({ page, isMobile }) => {
     test.skip(!isMobile, "celular");
+    const erros = errosDoNavegador(page);
     await login(page);
     const fones = await dois(page, 3);
     const id = await leadId(fones.bianca);
@@ -148,6 +149,10 @@ test.describe("celular: conversa em 390 px", () => {
     await expect(lead).toBeVisible();
     await expect(lead.getByRole("combobox", { name: "Etapa" })).toBeHidden(); // as ações moram no menu ⋯
     const vp = page.viewportSize()!;
+
+    // Conversa em tela cheia: sem barra de navegação inferior nem barra superior do app
+    await expect(page.getByRole("navigation", { name: "Principal" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: /Casa\s*Fiaes/ })).toHaveCount(0);
 
     // Cabeçalho compacto: voltar, nome, SLA e ⋯ em uma linha
     const voltar = lead.getByRole("link", { name: "Voltar para a fila" });
@@ -170,7 +175,10 @@ test.describe("celular: conversa em 390 px", () => {
     const campo = lead.getByLabel("Mensagem");
     await expect(enviar).toBeInViewport({ ratio: 1 });
     await expect(campo).toBeInViewport({ ratio: 1 });
-    expect((await caixa(enviar)).height).toBeGreaterThanOrEqual(44);
+    const env = await caixa(enviar);
+    expect(env.height).toBeGreaterThanOrEqual(44);
+    expect(vp.height - (env.y + env.height), "o Enviar encosta no fundo (sem notch)").toBeLessThanOrEqual(8);
+    expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThanOrEqual(vp.height); // a página não rola
     expect(await campo.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(16);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
@@ -203,6 +211,7 @@ test.describe("celular: conversa em 390 px", () => {
     await expect(page).toHaveURL(new RegExp(`/atendimento/${cintia}$`));
     await expect(page.getByRole("region", { name: /Lead Cíntia Barreto/ })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+    expect(erros, "erros do navegador (inclui hidratação)").toEqual([]);
   });
 
   test("tocar numa conversa da lista já troca a tela, com o cabeçalho e a última mensagem, enquanto o servidor responde", async ({ page, isMobile }) => {

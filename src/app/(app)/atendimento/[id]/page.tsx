@@ -24,7 +24,7 @@ export default async function ConversaPage({ params }: PageProps<"/atendimento/[
   if (!item) notFound();
   const cols = withList ? "lg:grid-cols-[340px_minmax(0,1fr)] xl:grid-cols-[340px_minmax(0,1fr)_300px]" : "xl:grid-cols-[minmax(0,1fr)_300px]";
   return (
-    <main className={`h-[calc(100dvh-3.5rem-5rem)] lg:h-dvh overflow-hidden grid grid-cols-1 grid-rows-[minmax(0,1fr)] ${cols}`}>
+    <main className={`h-dvh overflow-hidden grid grid-cols-1 grid-rows-[minmax(0,1fr)] ${cols}`}>
       <LiveRefresh scopes={["queue"]} />
       {queue && <QueueColumn queue={queue} query="" view="todos" foco={null} filtro={null} q={null} fonte={null} onlyOwnLabel={false} selectedId={id} className="hidden lg:flex" />}
       <ConversationPane key={id} dealId={id} initial={queue?.sections.flatMap((s) => s.items).find((i) => i.dealId === id) ?? item} back={withList ? "below-lg" : "always"} />

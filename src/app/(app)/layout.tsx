@@ -5,6 +5,7 @@ import { countLateLeads } from "@/server/queries/late-count";
 import { Sidebar } from "@/components/shell/sidebar";
 import { LiveProvider, LiveRefresh } from "@/components/shell/live";
 import { LateWatch } from "@/components/shell/late-watch";
+import { AppFrame } from "@/components/shell/app-frame";
 import { ShellBannersView } from "@/components/shell/connection-banner";
 import { ToastProvider } from "@/components/ui/toast";
 import { HoursProvider } from "@/components/pipeline/timer";
@@ -21,10 +22,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           <LateWatch initial={late} />
           {/* Banners de conexão (channels) vêm do servidor; o sino busca /api/alertas sozinho (useLiveAlerts) e o atrasado, /api/alertas/atrasados. */}
           <LiveRefresh scopes={["channels"]} />
-          <div className="lg:pl-[232px] min-h-dvh pb-20 lg:pb-0">
-            <ShellBannersView banners={banners} role={user.role} />
-            {children}
-          </div>
+          <AppFrame banners={<ShellBannersView banners={banners} role={user.role} />}>{children}</AppFrame>
         </HoursProvider>
       </LiveProvider>
     </ToastProvider>

@@ -13,6 +13,8 @@ const UUID = /^[0-9a-f-]{36}$/i;
  */
 const known = new Map<string, QueueItem>();
 export const rememberItem = (item: QueueItem) => { known.set(item.dealId, item); };
+/** Esquece os itens (ao sair: o próximo usuário do aparelho não pode ver nome e mensagem de leads do anterior). */
+export const forgetKnownItems = () => { known.clear(); };
 export const knownItem = (id: string | null | undefined): QueueItem | null => (id ? known.get(id) ?? null : null);
 /** Chamado pela lista a cada atualização, antes da pintura (assim o painel nunca vê um id que a lista já tinha). */
 export function usePrimeItems(sections: QueueSection[]) {

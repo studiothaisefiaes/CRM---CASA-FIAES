@@ -97,10 +97,14 @@ export const WRAP = "bg-[radial-gradient(circle_at_1px_1px,rgb(18_18_18/0.035)_1
 /**
  * A conversa. Abre no fim (sem rolagem animada). Mensagem nova: se a pessoa está no fim, a conversa desce junto;
  * se ela rolou para cima, a leitura não se mexe e aparece o aviso "N nova(s) mensagem(ns)".
+ * Só o que a própria atendente envia desce sozinho (o balão provisório, ou `forceEndKey` mudando quando o envio é de mídia, sem balão provisório);
+ * saída por outro canal (celular da Casa, automação) segue a regra do aviso.
+ * `visible` é falso quando a conversa está escondida por uma aba (celular): ao reaparecer, volta ao fim se estava no fim, ou à posição em que ficou.
  */
-export function Conversation({ messages, onReply, label = "Mensagens" }: { messages: Msg[]; onReply?: (m: Msg) => void; label?: string }) {
+export function Conversation({ messages, onReply, label = "Mensagens", forceEndKey = 0, visible = true }: { messages: Msg[]; onReply?: (m: Msg) => void; label?: string; forceEndKey?: number; visible?: boolean }) {
   const scroller = useRef<HTMLDivElement>(null);
   const inner = useRef<HTMLDivElement>(null);
+  const lastTop = useRef(0); // onde a leitura estava (para voltar a ela depois de uma aba)
   const stuck = useRef(true); // a pessoa está no fim: acompanha o que crescer (mensagem, foto que carregou, teclado que abriu)
   const seen = useRef<{ lastId: string | null; optimistic: boolean } | null>(null);
   const [unseen, setUnseen] = useState(0);
@@ -122,14 +126,29 @@ export function Conversation({ messages, onReply, label = "Mensagens" }: { messa
     if (!prev) { toEnd(); return; } // abertura: direto no fim, antes da pintura
     const at = prev.lastId ? real.findIndex((m) => m.id === prev.lastId) : -1;
     const fresh = at >= 0 ? real.slice(at + 1) : prev.lastId === lastId ? [] : real; // lista trocada por inteiro: tudo conta como novo
-    const mine = (optimistic && !prev.optimistic) || fresh.some((m) => m.direction === "out");
+    const mine = optimistic && !prev.optimistic; // o balão provisório da própria atendente
     if (mine || (fresh.length && stuck.current)) { toEnd(); setUnseen(0); } // eslint-disable-line react-hooks/set-state-in-effect -- o aviso zera junto com a rolagem
     else if (fresh.length) setUnseen((n) => n + fresh.length);
   }, [messages, toEnd]);
 
+  // Envio de mídia (sem balão provisório): a própria atendente quer ver o que mandou.
+  const endKey = useRef(forceEndKey);
+  useLayoutEffect(() => {
+    if (endKey.current === forceEndKey) return;
+    endKey.current = forceEndKey;
+    toEnd(); setUnseen(0); // eslint-disable-line react-hooks/set-state-in-effect -- zera o aviso junto com a rolagem
+  }, [forceEndKey, toEnd]);
+
+  // Aba que reexibe a conversa (o navegador perde a rolagem de um elemento escondido).
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (!visible || !el) return;
+    if (stuck.current) toEnd(); else el.scrollTop = lastTop.current;
+  }, [visible, toEnd]);
+
   useLayoutEffect(() => {
     if (typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(() => { if (stuck.current) toEnd(); });
+    const ro = new ResizeObserver(() => { if (stuck.current && scroller.current?.clientHeight) toEnd(); });
     if (inner.current) ro.observe(inner.current);
     if (scroller.current) ro.observe(scroller.current);
     return () => ro.disconnect();
@@ -137,7 +156,8 @@ export function Conversation({ messages, onReply, label = "Mensagens" }: { messa
 
   const onScroll = () => {
     const el = scroller.current;
-    if (!el) return;
+    if (!el || !el.clientHeight) return; // escondida por uma aba: o navegador zera a rolagem, e isso não é a pessoa lendo
+    lastTop.current = el.scrollTop;
     const atEnd = el.scrollHeight - el.scrollTop - el.clientHeight <= BOTTOM_SLACK;
     stuck.current = atEnd;
     if (atEnd) setUnseen((n) => (n ? 0 : n));

@@ -16,7 +16,7 @@ export default async function ClientePage({ params }: PageProps<"/atendimento/[i
   const item = await getQueueItem(id);
   if (!item) notFound();
   return (
-    <main className="h-[calc(100dvh-3.5rem-5rem)] lg:h-dvh flex flex-col overflow-hidden">
+    <main className="h-dvh flex flex-col overflow-hidden">
       {/* Desktop: a conversa com os painéis mora em /atendimento/ID (que não redireciona de volta). */}
       <ViewportRedirect when="desktop" to={`/atendimento/${id}`} />
       <div className="shrink-0 flex items-center px-3 h-12 border-b border-line bg-paper">

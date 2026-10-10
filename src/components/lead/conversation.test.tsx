@@ -75,6 +75,44 @@ describe("rolagem da conversa", () => {
   });
 });
 
+describe("quem manda e o que isso faz com a rolagem", () => {
+  it("saída por outro canal (celular da Casa, automação) com a pessoa lá em cima segue a regra do aviso", () => {
+    const { rerender } = render(<Conversation messages={[msg({ id: "a" })]} />);
+    const log = screen.getByRole("log", { name: "Mensagens" });
+    medidas(log);
+    rolarPara(log, 100);
+    rerender(<Conversation messages={[msg({ id: "a" }), msg({ id: "b", direction: "out", fromPhone: true, status: "sent", body: "do celular" })]} />);
+    expect(log.scrollTop).toBe(100);
+    expect(screen.getByRole("button", { name: "1 nova mensagem" })).toBeTruthy();
+  });
+
+  it("envio de mídia (forceEndKey muda) desce, mesmo sem balão provisório", () => {
+    const { rerender } = render(<Conversation messages={[msg({ id: "a" })]} forceEndKey={0} />);
+    const log = screen.getByRole("log", { name: "Mensagens" });
+    medidas(log);
+    rolarPara(log, 100);
+    rerender(<Conversation messages={[msg({ id: "a" })]} forceEndKey={1} />);
+    expect(log.scrollTop).toBe(1000);
+  });
+
+  it("trocar de aba: se estava no fim, volta ao fim ao reexibir; se estava lendo, volta onde estava", () => {
+    const { rerender } = render(<Conversation messages={[msg({ id: "a" })]} visible />);
+    const log = screen.getByRole("log", { name: "Mensagens" });
+    medidas(log);
+    rolarPara(log, 700); // no fim
+    rerender(<Conversation messages={[msg({ id: "a" })]} visible={false} />);
+    log.scrollTop = 0; // o navegador zera a rolagem de um elemento escondido
+    rerender(<Conversation messages={[msg({ id: "a" })]} visible />);
+    expect(log.scrollTop).toBe(1000);
+
+    rolarPara(log, 200); // lendo no meio
+    rerender(<Conversation messages={[msg({ id: "a" })]} visible={false} />);
+    log.scrollTop = 0;
+    rerender(<Conversation messages={[msg({ id: "a" })]} visible />);
+    expect(log.scrollTop).toBe(200);
+  });
+});
+
 describe("balões memoizados", () => {
   const props = (m: Msg, over = {}) => ({ m, day: null, onReply: undefined, animateIn: false, ...over });
   it("objetos novos com o mesmo conteúdo não re-renderizam o balão", () => {
