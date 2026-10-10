@@ -52,7 +52,7 @@ test("gestão: o resumo fica recolhido até as 19h e abre em destaque depois", a
   await expect(resumo.getByRole("button", { name: "Copiar texto" })).toBeHidden(); // recolhido
   await expect(page.getByRole("heading", { name: "Minhas próximas ações" })).toBeVisible();
   await page.waitForTimeout(700);
-  expect(await topo("resumo-do-dia")).toBeGreaterThan(await topo("hero-esperando")); // o que pede ação vem antes
+  expect(await topo("resumo-do-dia")).toBeLessThan(await topo("hero-esperando")); // o resumo fica no topo nos dois modos (recolhido aqui)
   await shot(page, `gestao-antes-das-19h${isMobile ? "-390" : ""}`, { fullPage: !isMobile }); // no celular o recorte é a tela (a barra inferior é fixa e atravessaria a página inteira)
   await resumo.getByText("Resumo até agora").click();
   await expect(resumo.getByRole("button", { name: "Copiar texto" })).toBeVisible();
@@ -64,7 +64,7 @@ test("gestão: o resumo fica recolhido até as 19h e abre em destaque depois", a
   await expect(resumo.getByText("Resumo do dia")).toBeVisible();
   await expect(resumo.getByRole("button", { name: "Copiar texto" })).toBeVisible(); // aberto
   await page.waitForTimeout(700);
-  expect(await topo("resumo-do-dia")).toBeLessThan(await topo("hero-esperando")); // das 19h em diante, o resumo abre o dia
+  expect(await topo("resumo-do-dia")).toBeLessThan(await topo("hero-esperando")); // das 19h em diante, o resumo abre o dia, aberto e em destaque
   await shot(page, `gestao-depois-das-19h${isMobile ? "-390" : ""}`, { fullPage: !isMobile });
 });
 
@@ -77,6 +77,10 @@ test("o contador de atrasados é um link para a Fila filtrada, com o mesmo núme
   await expect(link).toBeVisible();
   expect((await link.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await expect(page).toHaveTitle(/\(1\) atrasados/);
+  const vermelhas = page.locator('a[data-late="sim"]');
+  await expect(vermelhas).toHaveCount(1); // as linhas vermelhas são as do contador
+  await expect(vermelhas).toContainText("Paula Atrasada");
+  await expect(vermelhas).toContainText(/atrasado/);
   await link.click();
   await expect(page).toHaveURL(/\/atendimento\?foco=atrasados/);
   await expect(page.getByRole("option", { name: /Paula Atrasada/ })).toBeVisible();
@@ -87,7 +91,7 @@ test("gestão: Compareceu e Faltou tiram o item da lista, com aviso do resultado
   const b = await agendado(2, "Carla Faltosa", ontem("16:00"));
   await login(page);
   await page.goto("/");
-  const secao = page.getByRole("region", { name: "Comparecimentos de ontem" });
+  const secao = page.getByRole("region", { name: "Comparecimentos para conferir" });
   await expect(secao.getByTestId("comparecimento-item")).toHaveCount(2);
   await expect(secao).toContainText("ontem 15:00");
 
@@ -106,7 +110,7 @@ test("gestão: Compareceu e Faltou tiram o item da lista, com aviso do resultado
   await expect(secao.getByTestId("comparecimento-item")).toHaveCount(0); // continua fora depois de recarregar
 });
 
-test("atendente: Minhas próximas ações (vencidas primeiro, concluir com um toque) e Comparecimentos de ontem", async ({ page, isMobile }) => {
+test("atendente: Minhas próximas ações (vencidas primeiro, concluir com um toque) e Comparecimentos para conferir", async ({ page, isMobile }) => {
   const c = await agendado(3, "Dora Agendada", ontem("14:00"), "ana@e2e.local");
   const d = await agendado(4, "Elaine Retorno", ontem("10:00"), "ana@e2e.local");
   await e2eSql("update deals set attendance = 'compareceu' where id = $1", [d.dealId]);
@@ -128,7 +132,7 @@ test("atendente: Minhas próximas ações (vencidas primeiro, concluir com um to
   await expect(acoes.getByText("Tarefa da gestão")).toHaveCount(0);
   expect(await itens.nth(0).getByRole("link").getAttribute("href")).toBe(`/atendimento?lead=${d.dealId}`);
 
-  const conf = page.getByRole("region", { name: "Comparecimentos de ontem" });
+  const conf = page.getByRole("region", { name: "Comparecimentos para conferir" });
   await expect(conf.getByTestId("comparecimento-item")).toHaveCount(1);
   await expect(conf).toContainText("Dora Agendada");
   await semPortal(page);

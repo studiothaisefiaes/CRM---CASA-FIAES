@@ -91,3 +91,47 @@ describe("Hoje: comparecimentos", () => {
     expect(t.attendance.map((a) => a.scheduledAt)).toEqual([bahia(12, 15).toISOString(), bahia(13, 10).toISOString()]);
   });
 });
+
+describe("Hoje: o que está esperando e quem é vermelho", () => {
+  it("só tem `late` quem tem alerta de espera aberto; passou do SLA sem alerta não é atrasado (uma regra só, a do contador)", async () => {
+    const { ana, mk, alert } = await setup();
+    const longe = new Date(Date.now() - 6 * 3_600_000);
+    const comAlerta = await mk(ana.id, { awaitingReplySince: longe }, "lead");
+    const semAlerta = await mk(ana.id, { awaitingReplySince: longe }, "lead");
+    await alert(comAlerta.d.id);
+    const t = await getToday(as(ana), NOW);
+    const by = new Map(t.waiting.map((w) => [w.id, w.late]));
+    expect(by.get(comAlerta.d.id)).toBe(true);
+    expect(by.get(semAlerta.d.id)).toBe(false);
+    expect(t.waiting.filter((w) => w.late).length).toBe(t.late); // o contador e as linhas vermelhas batem
+  });
+});
+
+describe("Hoje: contato ignorado fica de fora", () => {
+  it("esperando, agenda, follow-up, cobrança e contagem de novos não trazem lead de contato ignorado", async () => {
+    const { ana, mk } = await setup();
+    const agora = new Date();
+    const mkIgn = async (kind: string, over: Partial<typeof deals.$inferInsert>) => {
+      const x = await mk(ana.id, over, kind);
+      await db.update(contacts).set({ ignored: true }).where(eq(contacts.id, x.c.id));
+      return x;
+    };
+    const ign = [
+      await mkIgn("lead", { awaitingReplySince: agora }),
+      await mkIgn("agendado", { scheduledAt: agora }),
+      await mkIgn("followup", {}),
+      await mkIgn("atendimento", { chargeAt: agora }),
+    ];
+    const ok = [
+      await mk(ana.id, { awaitingReplySince: agora }, "lead"),
+      await mk(ana.id, { scheduledAt: agora }, "agendado"),
+      await mk(ana.id, {}, "followup"),
+      await mk(ana.id, { chargeAt: agora }, "atendimento"),
+    ];
+    const t = await getToday(as(ana), NOW);
+    const ids = new Set([...t.waiting, ...t.scheduled, ...t.followups, ...t.dues].map((i) => i.id));
+    for (const x of ign) expect(ids.has(x.d.id)).toBe(false);
+    for (const x of ok) expect(ids.has(x.d.id)).toBe(true);
+    expect(Number(t.counts.abertos)).toBe(4); // só os 4 do controle
+  });
+});

@@ -57,9 +57,9 @@ export default async function HojePage({ searchParams }: PageProps<"/">) {
       <h1 className="font-serif text-[40px] lg:text-[48px] leading-none font-light mt-1">{greeting(now)}, {user.name.split(" ")[0]}.</h1>
       <LiveRefresh scopes={["queue"]} />
       {vapid && <PushOptIn publicKey={vapid.publicKey} />}
-      {/* Depois das 19h a gestão abre o dia pelo resumo; antes disso o que pede ação agora vem primeiro e o resumo fica recolhido logo abaixo. */}
-      {mode.highlight && summaryBlock && <div className="mt-8">{summaryBlock}</div>}
-      <Stagger className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-6" itemClassNames={["col-span-2", "", ""]}>
+      {/* O resumo da gestão fica sempre no topo: recolhido até as 19h, aberto e em destaque depois. */}
+      {summaryBlock && <div className="mt-8">{summaryBlock}</div>}
+      <Stagger className={`grid grid-cols-2 lg:grid-cols-4 gap-3 ${summaryBlock ? "mt-5" : "mt-8"}`} itemClassNames={["col-span-2", "", ""]}>
         <div data-testid="hero-esperando" className={`h-full rounded-[var(--radius-panel)] p-5 lg:p-6 flex flex-wrap items-end justify-between gap-x-4 gap-y-4 ${late ? "bg-alert-soft border border-alert/40" : "bg-ink text-paper"}`}>
           <div>
             <p className={`text-sm ${late ? "text-alert" : "text-paper/70"}`}>Esperando resposta agora</p>
@@ -87,7 +87,6 @@ export default async function HojePage({ searchParams }: PageProps<"/">) {
           <p className="text-xs text-muted mt-2">{t.scheduled.length} agendado{t.scheduled.length === 1 ? "" : "s"} · {t.counts.abertos} em andamento</p>
         </div>
       </Stagger>
-      {!mode.highlight && summaryBlock && <div className="mt-5">{summaryBlock}</div>}
       <div className="grid lg:grid-cols-[1.35fr_1fr] gap-5 mt-6">
         <div className="flex flex-col gap-5 min-w-0">
         <section aria-labelledby="h-proximas" className="rounded-[var(--radius-panel)] border border-line bg-paper">
@@ -99,7 +98,7 @@ export default async function HojePage({ searchParams }: PageProps<"/">) {
         </section>
         <section aria-labelledby="h-comparecimentos" className="rounded-[var(--radius-panel)] border border-line bg-paper">
           <header className="px-5 pt-4 pb-3">
-            <h2 id="h-comparecimentos" className="font-serif text-[22px] font-light">Comparecimentos de ontem</h2>
+            <h2 id="h-comparecimentos" className="font-serif text-[22px] font-light">Comparecimentos para conferir</h2>
             <p className="text-sm text-muted mt-0.5">Agendados sem Compareceu ou Faltou, e os de hoje que já passaram do horário.</p>
           </header>
           <AttendanceList items={t.attendance} nowMs={now.getTime()} />

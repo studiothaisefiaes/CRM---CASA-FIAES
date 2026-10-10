@@ -2,7 +2,9 @@
 import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 import type { TodayItem } from "@/server/queries/today";
-import { useUrgency } from "@/components/pipeline/timer";
+import { useHours, useNow } from "@/components/pipeline/timer";
+import { businessSecondsBetween } from "@/lib/business-hours";
+import { ringState, slaStatus } from "@/lib/queue";
 import { formatPhoneClient } from "@/lib/phone-client";
 import { IconClock, IconArrowRight } from "@/components/icons";
 import { Empty } from "@/components/ui/empty";
@@ -20,16 +22,25 @@ export function WaitingList({ items }: { items: TodayItem[] }) {
   );
 }
 
+/**
+ * Uma regra só, a da Fila: vermelho é o alerta de espera aberto (`late`, o mesmo do contador). Passou do prazo sem alerta ainda: dourado, "prazo estourado há N".
+ * O texto vem de `slaStatus`, o mesmo da linha da Fila.
+ */
 function Row({ i }: { i: TodayItem }) {
-  const { urgency, label } = useUrgency(i.at, i.slaMinutes);
+  const now = useNow();
+  const hours = useHours();
+  const waitSeconds = i.at ? businessSecondsBetween(new Date(i.at).getTime(), now, hours) : 0;
+  const ring = ringState({ awaiting: true, late: !!i.late, waitSeconds, slaMinutes: i.slaMinutes });
+  const status = slaStatus({ ring, alert: !!i.late, waitSeconds, slaMinutes: i.slaMinutes });
+  const red = !!i.late, gold = !red && (ring === "late" || ring === "near");
   return (
-    <Link href={leadHref(i.id)} className={`group flex items-center gap-3 px-3 py-2.5 rounded-[var(--radius-control)] transition-colors ${urgency === "late" ? "bg-alert-soft hover:bg-alert-soft/80" : "hover:bg-paper-2"}`}>
-      <span className={`size-2 rounded-full shrink-0 ${urgency === "late" ? "bg-alert animate-pulse" : urgency === "warn" ? "bg-gold" : "bg-line-strong"}`} />
+    <Link href={leadHref(i.id)} data-late={red ? "sim" : "nao"} className={`group flex items-center gap-3 px-3 py-2.5 min-h-11 rounded-[var(--radius-control)] transition-colors ${red ? "bg-alert-soft hover:bg-alert-soft/80" : "hover:bg-paper-2"}`}>
+      <span className={`size-2 rounded-full shrink-0 ${red ? "bg-alert animate-pulse" : gold ? "bg-gold" : "bg-line-strong"}`} />
       <span className="min-w-0 flex-1">
         <span className="block text-base font-medium truncate">{i.name ?? formatPhoneClient(i.phone)}</span>
         <span className="block text-xs text-muted">{i.stageName}</span>
       </span>
-      <span className={`inline-flex items-center gap-1 text-sm font-semibold tabular ${urgency === "late" ? "text-alert" : urgency === "warn" ? "text-gold-ink" : "text-graphite"}`} suppressHydrationWarning><IconClock size={14} />{label}</span>
+      <span className={`inline-flex items-center gap-1 text-sm font-semibold tabular text-right ${red ? "text-alert" : gold ? "text-gold-ink" : "text-graphite"}`} suppressHydrationWarning><IconClock size={14} className="shrink-0" />{status?.text ?? "dentro do prazo"}</span>
       <IconArrowRight size={15} className="text-muted opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all" />
     </Link>
   );

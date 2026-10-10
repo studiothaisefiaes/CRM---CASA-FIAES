@@ -6,9 +6,9 @@ import { listTasks } from "../domain/tasks";
 import { staleNow, type StaleRow } from "../reports/queries";
 import { bahiaAt } from "../../lib/next-action";
 import { attendanceDue, type AttendanceDue } from "./queue";
-import { countLateLeads } from "./late-count";
+import { countLateLeads, lateDealIds } from "./late-count";
 
-export type TodayItem = { id: string; name: string | null; phone: string; stageName: string; stageKey: string; slaMinutes: number | null; at: string | null; extra?: string | null };
+export type TodayItem = { late?: boolean; id: string; name: string | null; phone: string; stageName: string; stageKey: string; slaMinutes: number | null; at: string | null; extra?: string | null };
 
 /** Uma próxima ação (ou retorno) da pessoa, vencida ou para hoje. `dealId` nulo: tarefa do contato, sem lead. */
 export type TodayTask = { id: string; title: string; kind: string; dueAt: string; overdue: boolean; dealId: string | null; contactId: string; name: string };
@@ -37,7 +37,8 @@ async function myTasks(user: Pick<SessionUser, "id">, now: Date): Promise<TodayT
 }
 
 export async function getToday(user: SessionUser, now: Date = new Date()) {
-  const scope = user.role === "gestor" ? sql`d.archived_at is null` : sql`d.archived_at is null and (d.owner_id = ${user.id} or d.owner_id is null)`;
+  // Fora do Hoje: lead arquivado e contato ignorado (como na Fila, no Quadro e nos Relatórios).
+  const scope = user.role === "gestor" ? sql`d.archived_at is null and c.ignored = false` : sql`d.archived_at is null and c.ignored = false and (d.owner_id = ${user.id} or d.owner_id is null)`;
   const q = async (where: ReturnType<typeof sql>, at: ReturnType<typeof sql>, order: ReturnType<typeof sql>, extra = sql`null`) =>
     ((await db.execute(sql`
       select d.id, c.name, c.phone_e164 as phone, s.name as "stageName", s.key as "stageKey", s.sla_minutes as "slaMinutes", ${at} as at, ${extra} as extra
@@ -45,7 +46,7 @@ export async function getToday(user: SessionUser, now: Date = new Date()) {
       where ${scope} and ${where} order by ${order} limit 40`)).rows as TodayItem[]).map((r) => ({ ...r, at: r.at ? new Date(r.at).toISOString() : null }));
 
   const todayLocal = sql`(now() - ${sql.raw(OFFSET)})::date`;
-  const [waiting, scheduled, followups, birthdays, dues, counts, late, tasks, attendance, stale] = await Promise.all([
+  const [waitingRows, scheduled, followups, birthdays, dues, counts, late, lateIds, tasks, attendance, stale] = await Promise.all([
     q(sql`d.closed_at is null and d.awaiting_reply_since is not null`, sql`d.awaiting_reply_since`, sql`d.awaiting_reply_since asc`),
     q(sql`d.scheduled_at is not null and (d.scheduled_at - ${sql.raw(OFFSET)})::date = ${todayLocal}`, sql`d.scheduled_at`, sql`d.scheduled_at asc`),
     q(sql`d.closed_at is null and s.kind = 'followup'`, sql`d.stage_entered_at`, sql`s.position desc, d.stage_entered_at asc`),
@@ -59,9 +60,10 @@ export async function getToday(user: SessionUser, now: Date = new Date()) {
         count(*) filter (where d.closed_at is null)::int as abertos,
         (select count(*)::int from alerts a where (a.created_at - ${sql.raw(OFFSET)})::date = ${todayLocal} and a.type = 'sem_resposta_minutos' and a.user_id is not null
            ${user.role === "gestor" ? sql`` : sql`and a.user_id = ${user.id}`}) as atrasos
-      from deals d where ${scope}`),
+      from deals d join contacts c on c.id = d.contact_id where ${scope}`),
     // "Atrasado" é uma regra só (a do sino, do título da aba e da Fila): leads com alerta de espera aberto, nível 1 e 2 da mesma espera contam 1.
     countLateLeads(user),
+    lateDealIds(user),
     myTasks(user, now),
     // Os agendados que já passaram do horário sem Compareceu/Faltou (ontem e os de hoje que já passaram): a mesma conferência da Fila.
     attendanceDue(user, now),
@@ -73,6 +75,8 @@ export async function getToday(user: SessionUser, now: Date = new Date()) {
       coalesce((select sla_minutes from stages where key = 'lead'), 2) * 60 as goal
     from deal_events e where e.type = 'resposta' and (e.created_at - ${sql.raw(OFFSET)})::date = ${todayLocal}
       ${user.role === "gestor" ? sql`` : sql`and e.user_id = ${user.id}`}`)).rows[0] as { n: number; avg: number; within: number; goal: number };
+  // `late` é o alerta de espera aberto (a regra do contador): só quem tem alerta fica vermelho; quem passou do prazo sem alerta (o motor ainda não rodou) fica em dourado.
+  const waiting = waitingRows.map((w) => ({ ...w, late: lateIds.has(w.id) }));
   return { waiting, scheduled, followups, birthdays, dues, late, resp, tasks, attendance, stale: stale.filter((r) => r.parados > 0), counts: counts.rows[0] as { novos: number; abertos: number; atrasos: number } };
 }
 
