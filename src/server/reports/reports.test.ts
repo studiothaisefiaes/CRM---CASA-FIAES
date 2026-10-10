@@ -9,7 +9,8 @@ import {
   crmVsPhone, followupEfficacy, demandHeatmap, personVsGoal, executiveNumbers, dailySummaryText,
 } from "./index";
 import { archiveDeals } from "../domain/archive";
-import { deals, lists, leadSources, tasks } from "../db/schema";
+import { deals, lists, leadSources, tasks, contacts, stages } from "../db/schema";
+import { completeTaskTx } from "../domain/tasks";
 import { eq, sql } from "drizzle-orm";
 import { resetDb } from "../../../test/db";
 
@@ -268,7 +269,7 @@ describe("relatórios honestos (T13a)", () => {
     await recordInbound({ channelId: null, externalId: "FU1", phoneRaw: phone(90), body: "quero sim", at: T(10, 30) });
     await sell(d1, T(11), 20_000);
     const rows = await followupEfficacy({ period: "hoje", now: T(18) });
-    expect(rows).toEqual([{ kind: "retorno", previstas: 3, concluidas: 2, noPrazo: 1, comResposta: 1, fechados: 1, respostaPct: 50 }]);
+    expect(rows).toEqual([{ kind: "retorno", previstas: 3, concluidas: 2, canceladas: 0, noPrazo: 1, comResposta: 1, fechados: 1, respostaPct: 50 }]);
   });
 
   it("mapa de calor hora x dia (domingo = 0, fuso de Salvador)", async () => {
@@ -290,9 +291,10 @@ describe("relatórios honestos (T13a)", () => {
     for (let k = 0; k < 20; k++) await reply(bia, T(9, k), 60);
     for (let k = 0; k < 20; k++) await reply(ana, T(10, k), k < 10 ? 60 : 300);
     for (let k = 0; k < 3; k++) await reply(caio, T(11, k), 60);
+    await db.update(stages).set({ slaMinutes: 4 }).where(eq(stages.key, "lead")); // a meta mostrada é a do Lead de agora
     const r = await personVsGoal({ period: "hoje", now: T(18) });
     expect(r.map((x) => x.name)).toEqual(["Ana", "Bia"]);
-    expect(r[0]).toMatchObject({ n: 20, p50: 180, slaHitPct: 50, goalSeconds: 120, previous: null });
+    expect(r[0]).toMatchObject({ n: 20, p50: 180, slaHitPct: 50, goalSeconds: 240, previous: null });
     expect(r[1]).toMatchObject({ n: 20, slaHitPct: 100 });
     expect((await personVsGoal({ period: "hoje", now: T(18, 0, 14) }))).toEqual([]);
   });
@@ -306,7 +308,7 @@ describe("relatórios honestos (T13a)", () => {
     const n = await executiveNumbers({ period: "hoje", now: T(18) });
     expect(n.leadsNovos).toMatchObject({ atual: 2, anterior: 1 });
     expect(n.pctPrimeiraRespostaNoSla).toMatchObject({ atual: 100, anterior: null, n: 1, nAnterior: 0 });
-    expect(n.agendamentosMarcados).toMatchObject({ atual: 1, anterior: 0 });
+    expect(n.agendamentosMarcados).toMatchObject({ atual: 2, anterior: 0 }); // b agendou; a fechou direto (o funil é monotônico)
     expect(n.vendas).toEqual({ atual: { n: 1, cents: 80_000 }, anterior: { n: 0, cents: 0 } });
     expect(n.ticketMedio).toMatchObject({ atual: 80_000, anterior: null });
   });
@@ -326,5 +328,104 @@ describe("relatórios honestos (T13a)", () => {
     expect(g.links.some((l) => l.href.includes("atrasados"))).toBe(false);
     expect(g.highlight).toBe(true);
     expect((await dailySummaryText({ id: ana.id, role: "atendente", name: "Ana", email: "ana@c.com" }, T(15))).highlight).toBe(false);
+  });
+});
+
+describe("relatórios honestos: rodada de correções 1", () => {
+  beforeEach(async () => { await resetDb(); });
+  const backdate = (dealId: string, at: Date) => db.execute(sql`update deal_events set created_at = ${at.toISOString()}::timestamptz where deal_id = ${dealId} and type in ('etapa_alterada', 'resposta')`);
+
+  it("período anterior só vê o que já tinha acontecido no horário de corte", async () => {
+    const y = await lead(1, T(9, 0, 12));
+    await recordOutbound({ dealId: y, channelId: null, body: "a", at: T(19, 0, 12) });   // depois do corte de ontem (18h)
+    await sell(y, T(20, 0, 12), 30_000);
+    await backdate(y, T(19, 0, 12));
+    const fr = await firstResponse({ period: "hoje", now: T(18), compare: true });
+    expect(fr.previous).toMatchObject({ n: 0, slaHitPct: null, semResposta: 1 });
+    const m = await funnelMilestones({ period: "hoje", now: T(18), compare: true });
+    expect(m.previous).toMatchObject({ leads: 1, respondidos: 0, agendados: 0, fechados: 0, emAberto: 1 });
+    const n = await executiveNumbers({ period: "hoje", now: T(18) });
+    expect(n.pctPrimeiraRespostaNoSla.nAnterior).toBe(0);
+    expect(n.vendas.anterior).toEqual({ n: 0, cents: 0 });
+    // olhando de hoje à noite, o mesmo lead de ontem já aparece completo
+    expect(await funnelMilestones({ period: "7d", now: T(21) })).toMatchObject({ respondidos: 1, fechados: 1 });
+  });
+
+  it("funil monotônico: lead fechado direto conta como agendado", async () => {
+    const a = await lead(2, T(9)); await moveDeal(a, "fechado", null);
+    await lead(3, T(9, 5));
+    const m = await funnelMilestones({ period: "hoje", now: T(18) });
+    expect(m).toMatchObject({ leads: 2, respondidos: 1, agendados: 1, fechados: 1 });
+    expect(m.conv.agendado).toBe(50);
+    expect((await sourceToSale({ period: "hoje", now: T(18) })).find((r) => r.origem === "Não identificada")).toMatchObject({ agendados: 1, fechados: 1 });
+  });
+
+  it("semResposta não conta lead iniciado pela Casa", async () => {
+    await recordOutbound({ phoneRaw: phone(4), channelId: null, body: "oi, tudo bem?", fromPhone: true, at: T(9) });
+    await lead(5, T(9, 5));
+    expect((await firstResponse({ period: "hoje", now: T(18) })).semResposta).toBe(1);
+    expect((await funnelMilestones({ period: "hoje", now: T(18) })).leads).toBe(2);
+  });
+
+  it("follow-up: tarefa cancelada não é concluída e vem à parte", async () => {
+    const d = await lead(6, T(8)); const c = (await db.select().from(deals).where(eq(deals.id, d)))[0].contactId;
+    const [ok] = await db.insert(tasks).values({ dealId: d, contactId: c, kind: "retorno", title: "a", dueAt: T(10) }).returning();
+    const [no] = await db.insert(tasks).values({ dealId: d, contactId: c, kind: "retorno", title: "b", dueAt: T(10) }).returning();
+    await db.transaction(async (tx) => { await completeTaskTx(tx, ok.id, null, "concluida", T(9, 30)); await completeTaskTx(tx, no.id, null, "cancelada", T(9, 40)); });
+    expect(await followupEfficacy({ period: "hoje", now: T(18) })).toEqual([
+      { kind: "retorno", previstas: 1, concluidas: 1, canceladas: 1, noPrazo: 1, comResposta: 0, fechados: 0, respostaPct: 0 },
+    ]);
+  });
+
+  it("ticket médio divide só pelas vendas que têm valor", async () => {
+    const a = await lead(7, T(9)); await sell(a, T(10), 100_000);
+    const b = await lead(8, T(9, 5)); await db.transaction((tx) => moveDealTx(tx, b, "fechado", null, "manual", T(11)));
+    const n = await executiveNumbers({ period: "hoje", now: T(18) });
+    expect(n.vendas.atual).toEqual({ n: 2, cents: 100_000 });
+    expect(n.ticketMedio).toMatchObject({ atual: 100_000, n: 1 });
+    const fin = await financeWithPaid({ period: "hoje", now: T(18) });
+    expect(fin).toMatchObject({ vendas: 2, vendasComValor: 1, ticketCents: 100_000 });
+    expect((await financeWithPaid({ period: "hoje", now: T(18, 0, 14) })).ticketCents).toBeNull();
+    expect((await executiveNumbers({ period: "hoje", now: T(18, 0, 14) })).ticketMedio).toMatchObject({ atual: null, n: 0 });
+  });
+
+  it("resumo com amostra pequena mostra 'x de y', não porcentagem", async () => {
+    for (let i = 0; i < 3; i++) { const id = await lead(10 + i, T(9, i)); await recordOutbound({ dealId: id, channelId: null, body: "a", at: new Date(T(9, i).getTime() + (i === 0 ? 300_000 : 60_000)) }); }
+    const [g] = await db.insert(users).values({ name: "G", email: "g@c.com", role: "gestor", passwordHash: "x" }).returning();
+    const s = await dailySummaryText({ id: g.id, role: "gestor", name: "G", email: "g@c.com" }, T(18));
+    expect(s.text).toMatch(/2 de 3 dentro do prazo/); expect(s.text).not.toMatch(/66%|67%/);
+  });
+
+  it("espera sem SLA na etapa usa o SLA do Lead (ou 2 min), igual à primeira resposta", async () => {
+    await db.update(stages).set({ slaMinutes: null }).where(eq(stages.key, "atendimento"));
+    const a = await lead(20, T(9)); await recordOutbound({ dealId: a, channelId: null, body: "a", at: T(9, 1) });
+    await recordInbound({ channelId: null, externalId: "S2", phoneRaw: phone(20), body: "e então?", at: T(10) });
+    const [g] = await db.insert(users).values({ name: "G", email: "g@c.com", role: "gestor", passwordHash: "x" }).returning();
+    const s = await dailySummaryText({ id: g.id, role: "gestor", name: "G", email: "g@c.com" }, T(12));
+    expect(s.text).toMatch(/1 esperando resposta agora \(1 fora do prazo\)/);
+  });
+
+  it("janela anterior é aberta no fim: o instante da fronteira não conta duas vezes", async () => {
+    await lead(30, T(0, 0, 1));   // 1/10 00:00 local, exatamente onde o mês atual começa
+    const m = await funnelMilestones({ period: "mes", now: T(12, 0, 31), compare: true });
+    expect(m.leads).toBe(1);
+    expect(m.previous!.leads).toBe(0);
+  });
+
+  it("resumo: tarefa sem lead de contato ignorado não conta; amanhã mostra agendados e cobranças", async () => {
+    const [ign] = await db.insert(contacts).values({ phoneE164: "+5571999990001", ignored: true }).returning();
+    const [ok] = await db.insert(contacts).values({ phoneE164: "+5571999990002" }).returning();
+    await db.insert(tasks).values({ contactId: ign.id, kind: "geral", title: "x", dueAt: T(9) });
+    await db.insert(tasks).values({ contactId: ok.id, kind: "geral", title: "y", dueAt: T(9) });
+    const a = await lead(40, T(9)); await moveDeal(a, "agendado", null);
+    await db.update(deals).set({ scheduledAt: T(10, 0, 14) }).where(eq(deals.id, a));
+    const b = await lead(41, T(9, 5)); await sell(b, T(10), 50_000, { chargeAt: T(9, 0, 14), paidAt: T(10), paidCents: 20_000 });
+    const [g] = await db.insert(users).values({ name: "G", email: "g@c.com", role: "gestor", passwordHash: "x" }).returning();
+    const s = await dailySummaryText({ id: g.id, role: "gestor", name: "G", email: "g@c.com" }, T(18));
+    expect(s.text).toMatch(/1 tarefa atrasada/);
+    expect(s.text).toMatch(/Amanhã: 1 agendado/);
+    expect(s.text).toMatch(/Cobranças de amanhã: 1 \(R\$ 300,00\)/);
+    const at = await dailySummaryText({ id: g.id, role: "atendente", name: "A", email: "a@c.com" }, T(18));
+    expect(at.text).not.toMatch(/R\$/);
   });
 });

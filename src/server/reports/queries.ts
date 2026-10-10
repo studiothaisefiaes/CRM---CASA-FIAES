@@ -1,24 +1,49 @@
 import { sql } from "drizzle-orm";
-import { cohort, dealScope, iso, MIN_SAMPLE, NOT_IDENTIFIED, pct, periodWindow, rows, SOURCE_EXPR, type ReportFilter, type Window } from "./common";
+import { cohort, dealScope, iso, MIN_SAMPLE, NOT_IDENTIFIED, pct, periodWindow, previousWindow, rows, SLA_FALLBACK_SECONDS, SOURCE_EXPR, upTo, type ReportFilter, type Window } from "./common";
 
 const num = (n: number | string | null | undefined) => Number(n ?? 0);
 
 // ------------------------------------------------------------------------------------------------
 // R4: primeira resposta
 // ------------------------------------------------------------------------------------------------
-/** Primeiras respostas humanas dos leads da coorte: 1 por lead, `waitedSeconds` já em segundos de expediente. */
+/**
+ * Primeiras respostas humanas dos leads da coorte: 1 por lead, `waitedSeconds` já em segundos de expediente.
+ * Só vale a resposta que já tinha acontecido até o fim da janela (no período anterior, até o corte).
+ * Prazo (`sla`): o da etapa no momento da resposta; etapa sem prazo usa a reserva do Lead (ou 2 min).
+ */
 const firstResponses = (f: ReportFilter, w: Window) => sql`
   select (e.payload->>'waitedSeconds')::int as w, e.user_id,
-    coalesce((e.payload->>'slaSeconds')::int, (select sla_minutes * 60 from stages where key = 'lead'), 120) as sla,
+    coalesce((e.payload->>'slaSeconds')::int, ${SLA_FALLBACK_SECONDS}) as sla,
     e.payload->>'stage' as stage, (e.payload->>'fromPhone' = 'true') as from_phone
   from deals d
   join lateral (select ev.payload, ev.user_id from deal_events ev where ev.deal_id = d.id and ev.type = 'resposta' and ev.payload->>'first' = 'true' order by ev.created_at limit 1) e on true
-  where ${cohort(f, w)}`;
+  where d.first_response_at is not null and ${upTo("d.first_response_at", w)} and ${cohort(f, w)}`;
+
+/**
+ * Estado dos leads da coorte no fim da janela: `c` (primeira resposta e fechado/perdido só valem se já tinham acontecido; senão o lead
+ * ainda estava em aberto) e `reached` (etapas que o lead já tinha alcançado, pela etapa atual e pelas mudanças de etapa até o corte).
+ */
+const cohortStates = (f: ReportFilter, w: Window) => sql`
+  c as (
+    select d.id, d.value_cents, d.stage_id, d.stage_entered_at, ${SOURCE_EXPR()} as origem,
+      case when d.first_response_at is not null and ${upTo("d.first_response_at", w)} then d.first_response_at end as first_response_at,
+      case when d.closed_at is not null and not (${upTo("d.closed_at", w)}) then 'aberto' else s.kind::text end as kind
+    from deals d join stages s on s.id = d.stage_id where ${cohort(f, w)}
+  ),
+  reached as (
+    select c.id, s.kind::text as kind from c join stages s on s.id = c.stage_id where ${upTo("c.stage_entered_at", w)}
+    union select c.id, s2.kind::text from c join deal_events e on e.deal_id = c.id and e.type = 'etapa_alterada' and ${upTo("e.created_at", w)}
+      join stages s2 on s2.key = e.payload->>'para'
+  )`;
+/** Chegou a Agendado ou além: fechar direto também passa pelo marco (o funil é monotônico). */
+const REACHED_AGENDADO = sql`exists (select 1 from reached r where r.id = c.id and r.kind in ('agendado', 'fechado'))`;
 
 export type Bands = { ate2: number; de2a10: number; de10a60: number; mais1h: number };
 export type FirstResponseStats = {
   n: number; p50: number | null; p90: number | null; bands: Bands; slaHitPct: number | null;
-  /** Leads da coorte ainda sem primeira resposta (e ainda abertos). */
+  /** Quantas das n respostas saíram dentro do prazo (o numerador de `slaHitPct`). */
+  slaHit: number;
+  /** Leads da coorte, ainda abertos no corte, em que a cliente escreveu e ninguém respondeu (lead iniciado pela Casa, sem mensagem da cliente, não entra). */
   semResposta: number;
   byStage: { stage: string; name: string; n: number; p50: number | null; slaSeconds: number | null; slaHitPct: number | null }[];
 };
@@ -37,18 +62,19 @@ async function firstResponseStats(f: ReportFilter, w: Window): Promise<FirstResp
       max(fr.sla)::int as sla, count(*) filter (where fr.w <= fr.sla)::int as hit
     from fr left join stages s on s.key = fr.stage where fr.stage is not null group by fr.stage, s.name, s.position order by s.position nulls last`);
   const [pending] = await rows<{ n: number }>(sql`
-    select count(*)::int as n from deals d join stages s on s.id = d.stage_id
-    where s.kind not in ('fechado', 'perdido') and d.first_response_at is null and ${cohort(f, w)}`);
+    with ${cohortStates(f, w)}
+    select count(*)::int as n from c where c.kind not in ('fechado', 'perdido') and c.first_response_at is null
+      and exists (select 1 from messages m where m.deal_id = c.id and m.direction = 'in' and ${upTo("m.created_at", w)})`);
   return {
     n: agg.n, p50: agg.p50, p90: agg.p90, bands: { ate2: agg.ate2, de2a10: agg.de2a10, de10a60: agg.de10a60, mais1h: agg.mais1h },
-    slaHitPct: pct(agg.hit, agg.n), semResposta: pending?.n ?? 0,
+    slaHitPct: pct(agg.hit, agg.n), slaHit: agg.hit, semResposta: pending?.n ?? 0,
     byStage: byStage.map((s) => ({ stage: s.stage, name: s.name ?? s.stage, n: s.n, p50: s.p50, slaSeconds: s.sla, slaHitPct: pct(s.hit, s.n) })),
   };
 }
 
 export async function firstResponse(f: ReportFilter): Promise<FirstResponseStats & { previous?: FirstResponseStats }> {
   const w = periodWindow(f);
-  const [cur, prev] = await Promise.all([firstResponseStats(f, w), f.compare ? firstResponseStats(f, { from: w.prevFrom, to: w.prevTo }) : null]);
+  const [cur, prev] = await Promise.all([firstResponseStats(f, w), f.compare ? firstResponseStats(f, previousWindow(w)) : null]);
   return prev ? { ...cur, previous: prev } : cur;
 }
 
@@ -63,14 +89,10 @@ export type Milestones = {
 
 async function milestones(f: ReportFilter, w: Window): Promise<Milestones> {
   const [r] = await rows<{ leads: number; respondidos: number; agendados: number; fechados: number; perdidos: number; abertos: number }>(sql`
-    with c as (select d.id, d.first_response_at, d.stage_id, s.kind from deals d join stages s on s.id = d.stage_id where ${cohort(f, w)}),
-    reached as (
-      select c.id, c.kind from c
-      union select c.id, s2.kind from c join deal_events e on e.deal_id = c.id and e.type = 'etapa_alterada' join stages s2 on s2.key = e.payload->>'para'
-    )
+    with ${cohortStates(f, w)}
     select count(*)::int as leads,
       count(*) filter (where c.first_response_at is not null or exists (select 1 from reached r where r.id = c.id and r.kind in ('atendimento', 'agendado', 'followup', 'fechado')))::int as respondidos,
-      count(*) filter (where exists (select 1 from reached r where r.id = c.id and r.kind = 'agendado'))::int as agendados,
+      count(*) filter (where ${REACHED_AGENDADO})::int as agendados,
       count(*) filter (where c.kind = 'fechado')::int as fechados, count(*) filter (where c.kind = 'perdido')::int as perdidos,
       count(*) filter (where c.kind not in ('fechado', 'perdido'))::int as abertos
     from c`);
@@ -82,7 +104,7 @@ async function milestones(f: ReportFilter, w: Window): Promise<Milestones> {
 
 export async function funnelMilestones(f: ReportFilter): Promise<Milestones & { previous?: Milestones }> {
   const w = periodWindow(f);
-  const [cur, prev] = await Promise.all([milestones(f, w), f.compare ? milestones(f, { from: w.prevFrom, to: w.prevTo }) : null]);
+  const [cur, prev] = await Promise.all([milestones(f, w), f.compare ? milestones(f, previousWindow(w)) : null]);
   return prev ? { ...cur, previous: prev } : cur;
 }
 
@@ -111,12 +133,8 @@ export type SourceRow = { origem: string; leads: number; agendados: number; fech
 export async function sourceToSale(f: ReportFilter): Promise<SourceRow[]> {
   const w = periodWindow(f);
   const r = await rows<SourceRow>(sql`
-    with c as (select d.id, ${SOURCE_EXPR()} as origem, s.kind, d.value_cents from deals d join stages s on s.id = d.stage_id where ${cohort(f, w)}),
-    ag as (
-      select c.id from c join deal_events e on e.deal_id = c.id and e.type = 'etapa_alterada' join stages s2 on s2.key = e.payload->>'para' and s2.kind = 'agendado'
-      union select id from c where kind = 'agendado'
-    )
-    select c.origem, count(*)::int as leads, count(*) filter (where c.id in (select id from ag))::int as agendados,
+    with ${cohortStates(f, w)}
+    select c.origem, count(*)::int as leads, count(*) filter (where ${REACHED_AGENDADO})::int as agendados,
       count(*) filter (where c.kind = 'fechado')::int as fechados, coalesce(sum(c.value_cents) filter (where c.kind = 'fechado'), 0)::float8 as "receitaCents"
     from c group by c.origem order by leads desc, c.origem`);
   const out = r.map((x) => ({ ...x, receitaCents: num(x.receitaCents) }));
@@ -144,7 +162,7 @@ export async function lossesByReasonAndStage(f: ReportFilter): Promise<Losses> {
         select coalesce(l.label, 'Sem motivo informado') as motivo,
           (select e.payload->>'de' from deal_events e where e.deal_id = d.id and e.type = 'etapa_alterada' and e.payload->>'para' = s.key order by e.created_at desc limit 1) as de
         from deals d join stages s on s.id = d.stage_id left join lists l on l.id = d.lost_reason_id
-        where s.kind = 'perdido' and d.closed_at >= ${iso(w.from)}::timestamptz and d.closed_at <= ${iso(w.to)}::timestamptz and ${dealScope(f)}
+        where s.kind = 'perdido' and d.closed_at >= ${iso(w.from)}::timestamptz and ${upTo("d.closed_at", w)} and ${dealScope(f)}
       )
       select lost.motivo, coalesce(st.name, lost.de, 'Não registrada') as stage, count(*)::int as n
       from lost left join stages st on st.key = lost.de group by 1, 2 order by n desc, 1, 2`),
@@ -172,11 +190,12 @@ export async function lossesByReasonAndStage(f: ReportFilter): Promise<Losses> {
 // ------------------------------------------------------------------------------------------------
 /** Quanto já foi pago: o valor pago informado; se só há data de pagamento, a venda inteira. */
 const PAID = sql`(case when d.paid_cents is not null then d.paid_cents when d.paid_at is not null then coalesce(d.value_cents, 0) else 0 end)`;
-const REMAINING = sql`greatest(coalesce(d.value_cents, 0) - ${PAID}, 0)`;
+export const REMAINING = sql`greatest(coalesce(d.value_cents, 0) - ${PAID}, 0)`;
 
 export type ChargeItem = { id: string; name: string | null; phone: string; chargeAt: string; remainingCents: number };
 export type FinanceWithPaid = {
-  vendas: number; totalCents: number; pagoCents: number; aReceberCents: number; ticketCents: number | null;
+  vendas: number; /** Vendas que têm valor informado (o denominador do ticket). */ vendasComValor: number;
+  totalCents: number; pagoCents: number; aReceberCents: number; ticketCents: number | null;
   byMethod: { method: string | null; n: number; totalCents: number; pagoCents: number }[];
   vencidas: { n: number; cents: number; items: ChargeItem[] };
   aVencer: { n: number; cents: number; items: ChargeItem[] };
@@ -191,8 +210,8 @@ export async function financeWithPaid(f: ReportFilter): Promise<FinanceWithPaid>
     where s.kind = 'fechado' and d.charge_at is not null and ${overdue ? sql`d.charge_at < ${now}::timestamptz` : sql`d.charge_at >= ${now}::timestamptz`}
       and ${REMAINING} > 0 and ${dealScope(f)} order by d.charge_at ${overdue ? sql`desc` : sql`asc`} limit 30`);
   const [byMethod, [agg], over, up] = await Promise.all([
-    rows<{ method: string | null; n: number; total: number; pago: number; receber: number }>(sql`
-      select d.payment_method as method, count(*)::int as n, coalesce(sum(d.value_cents), 0)::float8 as total,
+    rows<{ method: string | null; n: number; comValor: number; total: number; pago: number; receber: number }>(sql`
+      select d.payment_method as method, count(*)::int as n, count(d.value_cents)::int as "comValor", coalesce(sum(d.value_cents), 0)::float8 as total,
         coalesce(sum(${PAID}), 0)::float8 as pago, coalesce(sum(${REMAINING}), 0)::float8 as receber
       from deals d join stages s on s.id = d.stage_id
       where s.kind = 'fechado' and d.closed_at >= ${from}::timestamptz and d.closed_at <= ${now}::timestamptz and ${dealScope(f)}
@@ -207,11 +226,12 @@ export async function financeWithPaid(f: ReportFilter): Promise<FinanceWithPaid>
     charges(true), charges(false),
   ]);
   const vendas = byMethod.reduce((a, b) => a + b.n, 0);
+  const vendasComValor = byMethod.reduce((a, b) => a + b.comValor, 0);
   const totalCents = byMethod.reduce((a, b) => a + num(b.total), 0);
   const fix = (i: ChargeItem[]) => i.map((x) => ({ ...x, remainingCents: num(x.remainingCents) }));
   return {
-    vendas, totalCents, pagoCents: byMethod.reduce((a, b) => a + num(b.pago), 0), aReceberCents: byMethod.reduce((a, b) => a + num(b.receber), 0),
-    ticketCents: vendas ? Math.round(totalCents / vendas) : null,
+    vendas, vendasComValor, totalCents, pagoCents: byMethod.reduce((a, b) => a + num(b.pago), 0), aReceberCents: byMethod.reduce((a, b) => a + num(b.receber), 0),
+    ticketCents: vendasComValor ? Math.round(totalCents / vendasComValor) : null,
     byMethod: byMethod.map((m) => ({ method: m.method, n: m.n, totalCents: num(m.total), pagoCents: num(m.pago) })),
     vencidas: { n: agg?.overdueN ?? 0, cents: num(agg?.overdueC), items: fix(over) },
     aVencer: { n: agg?.upN ?? 0, cents: num(agg?.upC), items: fix(up) },
@@ -267,19 +287,25 @@ export async function crmVsPhone(f: ReportFilter): Promise<{ crm: number; celula
 // ------------------------------------------------------------------------------------------------
 // R10: eficácia de follow-up
 // ------------------------------------------------------------------------------------------------
-export type FollowupRow = { kind: string; previstas: number; concluidas: number; noPrazo: number; comResposta: number; fechados: number; respostaPct: number | null };
+export type FollowupRow = { kind: string; previstas: number; concluidas: number; canceladas: number; noPrazo: number; comResposta: number; fechados: number; respostaPct: number | null };
 
-/** Tarefas com prazo no período (e já vencidas), por tipo: quantas foram feitas, no prazo, e o que aconteceu depois. */
+/**
+ * Tarefas com prazo no período (e já vencidas), por tipo. Cancelada (evento `tarefa` com acao = cancelada) não é concluída nem prevista:
+ * vem à parte em `canceladas`. Das concluídas: no prazo (até o horário combinado), com resposta da cliente em até 72 h depois, e lead fechado depois.
+ */
 export async function followupEfficacy(f: ReportFilter): Promise<FollowupRow[]> {
   const w = periodWindow(f);
   const r = await rows<Omit<FollowupRow, "respostaPct">>(sql`
-    select t.kind, count(*)::int as previstas, count(t.done_at)::int as concluidas,
-      count(*) filter (where t.done_at <= t.due_at)::int as "noPrazo",
-      count(*) filter (where t.done_at is not null and exists (select 1 from messages m where m.deal_id = t.deal_id and m.direction = 'in'
+    select t.kind, count(*) filter (where not x.cancelada)::int as previstas, count(*) filter (where x.cancelada)::int as canceladas,
+      count(t.done_at) filter (where not x.cancelada)::int as concluidas,
+      count(*) filter (where not x.cancelada and t.done_at <= t.due_at)::int as "noPrazo",
+      count(*) filter (where not x.cancelada and t.done_at is not null and exists (select 1 from messages m where m.deal_id = t.deal_id and m.direction = 'in'
         and m.created_at > t.done_at and m.created_at <= t.done_at + interval '72 hours'))::int as "comResposta",
-      count(*) filter (where t.done_at is not null and s.kind = 'fechado' and d.closed_at >= t.done_at)::int as fechados
+      count(*) filter (where not x.cancelada and t.done_at is not null and s.kind = 'fechado' and d.closed_at >= t.done_at)::int as fechados
     from tasks t join deals d on d.id = t.deal_id join stages s on s.id = d.stage_id
-    where t.due_at >= ${iso(w.from)}::timestamptz and t.due_at <= ${iso(w.to)}::timestamptz and ${dealScope(f)}
+    cross join lateral (select exists (select 1 from deal_events ce where ce.deal_id = t.deal_id and ce.type = 'tarefa'
+      and ce.payload->>'acao' = 'cancelada' and ce.payload->>'tarefa' = t.id::text) as cancelada) x
+    where t.due_at >= ${iso(w.from)}::timestamptz and ${upTo("t.due_at", w)} and ${dealScope(f)}
     group by t.kind order by t.kind`);
   return r.map((x) => ({ ...x, respostaPct: pct(x.comResposta, x.concluidas) }));
 }
@@ -293,7 +319,7 @@ export async function demandHeatmap(f: ReportFilter): Promise<number[][]> {
   const r = await rows<{ dow: number; h: number; n: number }>(sql`
     select extract(dow from m.created_at at time zone 'America/Bahia')::int as dow, extract(hour from m.created_at at time zone 'America/Bahia')::int as h, count(*)::int as n
     from messages m join deals d on d.id = m.deal_id
-    where m.direction = 'in' and m.created_at >= ${iso(w.from)}::timestamptz and m.created_at <= ${iso(w.to)}::timestamptz and ${dealScope(f)}
+    where m.direction = 'in' and m.created_at >= ${iso(w.from)}::timestamptz and ${upTo("m.created_at", w)} and ${dealScope(f)}
     group by 1, 2`);
   const grid = Array.from({ length: 7 }, () => Array<number>(24).fill(0));
   for (const x of r) grid[x.dow][x.h] = x.n;
@@ -310,14 +336,18 @@ async function personStats(f: ReportFilter, w: Window) {
   return rows<{ userId: string; name: string; n: number; p50: number | null; hit: number; sla: number }>(sql`
     with fr as (${firstResponses(f, w)})
     select fr.user_id as "userId", u.name, count(*)::int as n, round(percentile_cont(0.5) within group (order by fr.w))::int as p50,
-      count(*) filter (where fr.w <= fr.sla)::int as hit, max(fr.sla)::int as sla
+      count(*) filter (where fr.w <= fr.sla)::int as hit, (${SLA_FALLBACK_SECONDS})::int as sla
     from fr join users u on u.id = fr.user_id group by fr.user_id, u.name`);
 }
 
-/** Cada atendente contra a meta e contra o próprio período anterior. Só com n >= 20; ordem alfabética; sem ranking. */
+/**
+ * Cada atendente contra a meta e contra o próprio período anterior. Só com n >= 20; ordem alfabética; sem ranking.
+ * A resposta dada pelo celular vale para quem está com o lead (quem assumiu). `goalSeconds` é a meta da etapa Lead de agora (ou 2 min);
+ * o % no prazo usa o prazo da etapa de cada resposta.
+ */
 export async function personVsGoal(f: ReportFilter): Promise<PersonRow[]> {
   const w = periodWindow(f);
-  const [cur, prev] = await Promise.all([personStats(f, w), personStats(f, { from: w.prevFrom, to: w.prevTo })]);
+  const [cur, prev] = await Promise.all([personStats(f, w), personStats(f, previousWindow(w))]);
   const before = new Map(prev.map((p) => [p.userId, p]));
   return cur.filter((p) => p.n >= MIN_SAMPLE)
     .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))
@@ -334,11 +364,11 @@ export async function personVsGoal(f: ReportFilter): Promise<PersonRow[]> {
 // R2: os 5 números
 // ------------------------------------------------------------------------------------------------
 export async function salesAgg(f: ReportFilter, w: Window) {
-  const [r] = await rows<{ n: number; cents: number }>(sql`
-    select count(*)::int as n, coalesce(sum(d.value_cents), 0)::float8 as cents
+  const [r] = await rows<{ n: number; withValue: number; cents: number }>(sql`
+    select count(*)::int as n, count(d.value_cents)::int as "withValue", coalesce(sum(d.value_cents), 0)::float8 as cents
     from deals d join stages s on s.id = d.stage_id
-    where s.kind = 'fechado' and d.closed_at >= ${iso(w.from)}::timestamptz and d.closed_at <= ${iso(w.to)}::timestamptz and ${dealScope(f)}`);
-  return { n: r.n, cents: num(r.cents) };
+    where s.kind = 'fechado' and d.closed_at >= ${iso(w.from)}::timestamptz and ${upTo("d.closed_at", w)} and ${dealScope(f)}`);
+  return { n: r.n, withValue: r.withValue, cents: num(r.cents) };
 }
 
 export type Metric = { atual: number | null; anterior: number | null; n: number; nAnterior: number };
@@ -350,16 +380,18 @@ export type ExecutiveNumbers = {
 
 /** Os 5 números do topo, cada um com o período atual e o anterior de mesmo tamanho (hoje x ontem até a mesma hora) e o n por trás. */
 export async function executiveNumbers(f: ReportFilter): Promise<ExecutiveNumbers> {
-  const w = periodWindow(f), pw: Window = { from: w.prevFrom, to: w.prevTo }, cw: Window = { from: w.from, to: w.to };
+  const w = periodWindow(f), pw = previousWindow(w), cw: Window = { from: w.from, to: w.to };
   const [fr, frP, mi, miP, sa, saP] = await Promise.all([
     firstResponseStats(f, cw), firstResponseStats(f, pw), milestones(f, cw), milestones(f, pw), salesAgg(f, cw), salesAgg(f, pw),
   ]);
-  const ticket = (s: { n: number; cents: number }) => (s.n ? Math.round(s.cents / s.n) : null);
+  // Ticket: soma dos valores dividida só pelas vendas que têm valor (venda sem valor não puxa a média para baixo).
+  const ticket = (s: { withValue: number; cents: number }) => (s.withValue ? Math.round(s.cents / s.withValue) : null);
+  const money = (s: { n: number; cents: number }) => ({ n: s.n, cents: s.cents });
   return {
     leadsNovos: { atual: mi.leads, anterior: miP.leads, n: mi.leads, nAnterior: miP.leads },
     pctPrimeiraRespostaNoSla: { atual: fr.slaHitPct, anterior: frP.slaHitPct, n: fr.n, nAnterior: frP.n },
     agendamentosMarcados: { atual: mi.agendados, anterior: miP.agendados, n: mi.leads, nAnterior: miP.leads },
-    vendas: { atual: sa, anterior: saP },
-    ticketMedio: { atual: ticket(sa), anterior: ticket(saP), n: sa.n, nAnterior: saP.n },
+    vendas: { atual: money(sa), anterior: money(saP) },
+    ticketMedio: { atual: ticket(sa), anterior: ticket(saP), n: sa.withValue, nAnterior: saP.withValue },
   };
 }

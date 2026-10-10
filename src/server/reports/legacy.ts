@@ -59,16 +59,17 @@ export async function objections(f: ReportFilter) {
 /** @deprecated use financeWithPaid. */
 export async function finance(f: ReportFilter) {
   const w = periodWindow(f);
-  const byMethod = await rows<{ method: string | null; n: number; totalCents: number }>(sql`
-    select d.payment_method as method, count(*)::int as n, coalesce(sum(d.value_cents), 0)::bigint::int as "totalCents"
+  const byMethod = await rows<{ method: string | null; n: number; withValue: number; totalCents: number }>(sql`
+    select d.payment_method as method, count(*)::int as n, count(d.value_cents)::int as "withValue", coalesce(sum(d.value_cents), 0)::bigint::int as "totalCents"
     from deals d join stages s on s.id = d.stage_id where s.kind = 'fechado' and d.closed_at >= ${iso(w.from)}::timestamptz and d.closed_at <= ${iso(w.to)}::timestamptz and ${dealScope(f)}
     group by d.payment_method order by "totalCents" desc`);
   const totalCents = byMethod.reduce((a, b) => a + Number(b.totalCents), 0);
   const deals = byMethod.reduce((a, b) => a + b.n, 0);
+  const withValue = byMethod.reduce((a, b) => a + b.withValue, 0);
   const upcoming = await rows<{ id: string; name: string | null; phone: string; chargeAt: string; valueCents: number | null }>(sql`
     select d.id, c.name, c.phone_e164 as phone, d.charge_at as "chargeAt", d.value_cents as "valueCents"
     from deals d join contacts c on c.id = d.contact_id where d.charge_at >= ${iso(w.to)}::timestamptz and ${dealScope(f)} order by d.charge_at limit 30`);
-  return { byMethod, totalCents, deals, ticketCents: deals ? Math.round(totalCents / deals) : 0, upcoming };
+  return { byMethod, totalCents, deals, ticketCents: withValue ? Math.round(totalCents / withValue) : 0, upcoming };
 }
 
 /** @deprecated use executiveNumbers. Ganhos e perdidos agora são da coorte (leads criados no período): conversão não passa de 100%. */

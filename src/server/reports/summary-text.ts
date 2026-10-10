@@ -2,8 +2,8 @@ import { sql } from "drizzle-orm";
 import type { SessionUser } from "../auth/sessions-store";
 import { getBusinessHours } from "../domain/hours";
 import { businessSecondsBetween } from "../../lib/business-hours";
-import { dealScope, iso, periodWindow, rows, type ReportFilter } from "./common";
-import { firstResponse, funnelMilestones, salesAgg, staleNow } from "./queries";
+import { dealScope, iso, MIN_SAMPLE, periodStart, periodWindow, rows, SLA_FALLBACK_SECONDS, type ReportFilter } from "./common";
+import { firstResponse, funnelMilestones, REMAINING, salesAgg, staleNow } from "./queries";
 
 export type DailySummary = { text: string; links: { label: string; href: string }[]; highlight: boolean };
 
@@ -24,18 +24,25 @@ export async function dailySummaryText(user: Pick<SessionUser, "id" | "role" | "
   const gestor = user.role === "gestor";
   const f: ReportFilter = { period: "hoje", now, ownerId: gestor ? null : user.id };
   const w = periodWindow(f);
-  const [mi, fr, sales, stale, waiting, hours, [tk]] = await Promise.all([
+  const tomorrow = { from: new Date(periodStart("hoje", now).getTime() + 86_400_000), to: new Date(periodStart("hoje", now).getTime() + 2 * 86_400_000) };
+  const [mi, fr, sales, stale, waiting, hours, [tk], [tm]] = await Promise.all([
     funnelMilestones(f), firstResponse(f), salesAgg(f, w), staleNow({ now, ownerId: f.ownerId }),
-    rows<{ since: Date; sla: number | null }>(sql`
-      select d.awaiting_reply_since as since, s.sla_minutes as sla from deals d join stages s on s.id = d.stage_id
+    rows<{ since: Date; sla: number }>(sql`
+      select d.awaiting_reply_since as since, coalesce(s.sla_minutes * 60, ${SLA_FALLBACK_SECONDS})::int as sla from deals d join stages s on s.id = d.stage_id
       where d.closed_at is null and d.awaiting_reply_since is not null and d.awaiting_reply_since <= ${iso(now)}::timestamptz and ${dealScope(f)}`),
     getBusinessHours(),
     rows<{ n: number }>(sql`
       select count(*)::int as n from tasks t left join deals d on d.id = t.deal_id
-      where t.done_at is null and t.due_at < ${iso(now)}::timestamptz and (t.deal_id is null or (${dealScope({ period: "hoje" })}))
+      where t.done_at is null and t.due_at < ${iso(now)}::timestamptz
+        and ((t.deal_id is null and not exists (select 1 from contacts ic where ic.id = t.contact_id and ic.ignored)) or (t.deal_id is not null and ${dealScope({ period: "hoje" })}))
         ${gestor ? sql`` : sql`and t.assignee_id = ${user.id}`}`),
+    rows<{ agendados: number; cobrancas: number; cobrancasCents: number }>(sql`
+      select count(*) filter (where d.scheduled_at >= ${iso(tomorrow.from)}::timestamptz and d.scheduled_at < ${iso(tomorrow.to)}::timestamptz and d.closed_at is null)::int as agendados,
+        count(*) filter (where s.kind = 'fechado' and d.charge_at >= ${iso(tomorrow.from)}::timestamptz and d.charge_at < ${iso(tomorrow.to)}::timestamptz and ${REMAINING} > 0)::int as cobrancas,
+        coalesce(sum(${REMAINING}) filter (where s.kind = 'fechado' and d.charge_at >= ${iso(tomorrow.from)}::timestamptz and d.charge_at < ${iso(tomorrow.to)}::timestamptz), 0)::float8 as "cobrancasCents"
+      from deals d join stages s on s.id = d.stage_id where ${dealScope(f)}`),
   ]);
-  const late = waiting.filter((x) => x.sla && businessSecondsBetween(new Date(x.since).getTime(), now.getTime(), hours) >= x.sla * 60).length;
+  const late = waiting.filter((x) => businessSecondsBetween(new Date(x.since).getTime(), now.getTime(), hours) >= x.sla).length;
   const parados = stale.reduce((a, s) => a + s.parados, 0);
   const tasksLate = tk?.n ?? 0;
   const day = now.toLocaleDateString("pt-BR", { timeZone: "America/Bahia", weekday: "long", day: "2-digit", month: "2-digit" });
@@ -43,16 +50,22 @@ export async function dailySummaryText(user: Pick<SessionUser, "id" | "role" | "
 
   const lines = [`Resumo de hoje (${day})`];
   lines.push(mi.leads ? `• ${plural(mi.leads, "lead novo", "leads novos")}: ${mi.respondidos} com resposta, ${plural(mi.agendados, "agendado", "agendados")}` : "• Nenhum lead novo hoje");
-  if (fr.n) lines.push(`• Primeira resposta: mediana de ${span(fr.p50 ?? 0)}, ${fr.slaHitPct}% dentro do prazo (${fr.n} ${fr.n === 1 ? "lead" : "leads"})`);
+  // Amostra pequena: "3 de 9 dentro do prazo", nunca um % que parece firme.
+  if (fr.n) lines.push(`• Primeira resposta: mediana de ${span(fr.p50 ?? 0)}, ${fr.n >= MIN_SAMPLE ? `${fr.slaHitPct}%` : `${fr.slaHit} de ${fr.n}`} dentro do prazo`);
   if (sales.n) lines.push(`• ${plural(sales.n, "venda fechada", "vendas fechadas")}${gestor ? ` (${brl(sales.cents)})` : ""}`);
   lines.push(waiting.length ? `• ${waiting.length} esperando resposta agora${late ? ` (${late} fora do prazo)` : ""}` : "• Ninguém esperando resposta agora");
   if (tasksLate) lines.push(`• ${plural(tasksLate, "tarefa atrasada", "tarefas atrasadas")}`);
   if (parados) lines.push(`• ${plural(parados, "lead parado", "leads parados")} além do limite da etapa`);
+  const amanhaAgendados = tm?.agendados ?? 0, amanhaCobrancas = tm?.cobrancas ?? 0;
+  if (amanhaAgendados) lines.push(`• Amanhã: ${plural(amanhaAgendados, "agendado", "agendados")}`);
+  if (amanhaCobrancas) lines.push(`• Cobranças de amanhã: ${amanhaCobrancas}${gestor ? ` (${brl(tm.cobrancasCents)})` : ""}`);
 
   const links: DailySummary["links"] = [];
   if (late) links.push({ label: `Ver atrasados (${late})`, href: "/atendimento?filtro=atrasados" });
   else if (waiting.length) links.push({ label: "Ver quem espera resposta", href: "/atendimento?filtro=esperando" });
   if (tasksLate) links.push({ label: "Ver tarefas atrasadas", href: "/atendimento?filtro=tarefas-atrasadas" });
+  if (amanhaAgendados) links.push({ label: "Ver agendados de amanhã", href: "/funil?filtro=agendados-amanha" });
+  if (amanhaCobrancas) links.push({ label: "Ver cobranças de amanhã", href: "/funil?filtro=cobrancas-amanha" });
   if (parados) links.push({ label: "Ver parados", href: "/funil?filtro=parados" });
   if (gestor) links.push({ label: "Abrir relatórios de hoje", href: "/relatorios?periodo=hoje" });
   return { text: lines.join("\n"), links, highlight: hourLocal >= 19 };

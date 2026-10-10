@@ -32,7 +32,8 @@ export function periodStart(p: Period, now = new Date()): Date {
   return new Date(startLocal + BAHIA_OFFSET_MS);
 }
 
-export type Window = { from: Date; to: Date };
+/** `exclusive`: o instante `to` não pertence à janela (período anterior; evita contar a fronteira duas vezes). */
+export type Window = { from: Date; to: Date; exclusive?: boolean };
 export type PeriodWindow = Window & { prevFrom: Date; prevTo: Date };
 
 /**
@@ -54,6 +55,12 @@ export function periodWindow(f: Pick<ReportFilter, "period" | "now">): PeriodWin
 }
 
 export const iso = (d: Date) => d.toISOString();
+/** A janela do período anterior: aberta no fim, para o instante da fronteira valer só para o período atual. */
+export const previousWindow = (w: PeriodWindow): Window => ({ from: w.prevFrom, to: w.prevTo, exclusive: true });
+/** `coluna` até o fim da janela (inclusive no período atual, exclusive no anterior). Também serve para "já tinha acontecido até o corte". */
+export const upTo = (col: string, w: Window): SQL => (w.exclusive ? sql`${sql.raw(col)} < ${iso(w.to)}::timestamptz` : sql`${sql.raw(col)} <= ${iso(w.to)}::timestamptz`);
+/** Prazo de resposta de reserva quando a etapa não tem SLA: o SLA da etapa Lead, ou 2 min. Mesma regra em todo o relatório. */
+export const SLA_FALLBACK_SECONDS = sql`coalesce((select sla_minutes * 60 from stages where key = 'lead'), 120)`;
 export const rows = async <T>(q: SQL) => (await db.execute(q)).rows as T[];
 export const pct = (part: number, whole: number): number | null => (whole > 0 ? Math.round((100 * part) / whole) : null);
 
@@ -78,9 +85,9 @@ export function dealScope(f: ReportFilter, alias = "d", opts: { novos?: boolean 
   return sql.join(parts, sql` and `);
 }
 
-/** Coorte: os leads novos criados de `from` até `to` (inclusive: o instante de agora entra). */
+/** Coorte: os leads novos criados na janela (no período atual o instante de agora entra; no anterior, o corte não). */
 export const cohort = (f: ReportFilter, w: Window, alias = "d"): SQL =>
-  sql`${sql.raw(alias)}.created_at >= ${iso(w.from)}::timestamptz and ${sql.raw(alias)}.created_at <= ${iso(w.to)}::timestamptz and ${dealScope(f, alias, { novos: true })}`;
+  sql`${sql.raw(alias)}.created_at >= ${iso(w.from)}::timestamptz and ${upTo(`${alias}.created_at`, w)} and ${dealScope(f, alias, { novos: true })}`;
 
 /** CSV com BOM e ; (abre direto no Excel em português). */
 export function toCsv(header: string[], data: (string | number | null | undefined)[][]) {
