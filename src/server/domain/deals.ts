@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, notInArray, or, sql } from "drizzle-orm";
 import { db, type Tx } from "../db";
 import { alerts, auditLog, contacts, deals, messages, stages, users, type Stage } from "../db/schema";
 import { normalizePhone } from "./phone";
@@ -234,7 +234,11 @@ export async function recordOutbound(input: OutboundInput) {
     // Respondeu: os alertas de espera deste lead se resolvem sozinhos.
     const resolvedNow = new Date(); // hora real da resolução (a mensagem pode ter chegado atrasada)
     await tx.update(alerts).set({ resolvedAt: resolvedNow, readAt: sql`coalesce(${alerts.readAt}, ${resolvedNow.toISOString()}::timestamptz)` })
-      .where(and(eq(alerts.dealId, dealId), eq(alerts.type, "sem_resposta_minutos"), sql`${alerts.resolvedAt} is null`));
+      .where(and(sql`${alerts.resolvedAt} is null`, or(
+        sql`${alerts.waitKey} like ${dealId + ":%"}`,
+        // alertas anteriores à chave de espera
+        and(eq(alerts.dealId, dealId), eq(alerts.type, "sem_resposta_minutos"), isNull(alerts.waitKey)),
+      )));
 
     const [stage] = await tx.select().from(stages).where(eq(stages.id, deal.stageId));
     if (stage?.kind === "lead") await moveDealTx(tx, dealId, "atendimento", input.userId ?? null, "respondido", at);

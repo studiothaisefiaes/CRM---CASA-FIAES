@@ -43,7 +43,7 @@ export async function responseTimes(f: ReportFilter) {
       select e.user_id, (e.payload->>'waitedSeconds')::int as w from deal_events e join deals d on d.id = e.deal_id
       where e.type = 'resposta' and e.created_at >= ${from}::timestamptz and ${dealScope(f)}
     ),
-    a as (select user_id, count(*)::int as n from alerts where type = 'sem_resposta_minutos' and audience = 'responsavel' and created_at >= ${from}::timestamptz group by user_id)
+    a as (select user_id, count(*)::int as n from alerts where type = 'sem_resposta_minutos' and user_id is not null and created_at >= ${from}::timestamptz group by user_id)
     select r.user_id as "userId", coalesce(u.name, 'Sem responsável') as name, count(*)::int as responses,
       round(avg(r.w))::int as "avgSeconds", percentile_cont(0.5) within group (order by r.w)::int as "medianSeconds",
       count(*) filter (where r.w <= (select s from goal))::int as "withinGoal", (select s from goal)::int as "goalSeconds",

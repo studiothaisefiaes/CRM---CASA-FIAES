@@ -28,7 +28,7 @@ const describeTrigger = (t: Trigger) => {
   }
 };
 const describeAction = (a: Action, stages: StageOpt[]) =>
-  a.type === "mover_para_etapa" ? `mover para ${stages.find((s) => s.key === a.stage)?.name ?? a.stage}` : a.type === "mover_para_proximo_followup" ? "mover para o próximo follow-up" : a.type === "alertar_gestao" ? "avisar a gestão" : a.type === "enviar_mensagem" ? "enviar mensagem à cliente" : "alertar quem é responsável";
+  a.type === "mover_para_etapa" ? `mover para ${stages.find((s) => s.key === a.stage)?.name ?? a.stage}` : a.type === "mover_para_proximo_followup" ? "mover para o próximo follow-up" : a.type === "alertar_gestao" ? "avisar a gestão" : a.type === "escalar_gestao" ? "escalar o alerta para a gestão" : a.type === "enviar_mensagem" ? "enviar mensagem à cliente" : "alertar quem é responsável";
 
 const GROUPS: { title: string; hint: string; types: Trigger["type"][]; icon: "clock" | "flow" | "cal" }[] = [
   { title: "Atendimento", hint: "prazos de resposta e leads parados", types: ["sem_resposta_minutos", "parado_dias"], icon: "clock" },
@@ -104,7 +104,7 @@ function Editor({ item, stages, onClose }: { item: Item | "new" | null; stages: 
     setV({ ...v, trigger: (u === "minutos" ? { type, minutes: val } : u === "horas" ? { type, hours: val } : u === "dias" ? { type, days: val } : { type }) as Trigger });
   };
   const setAction = (i: number, a: Action) => setV({ ...v, actions: v.actions.map((x, j) => (j === i ? a : x)) });
-  const newAction = (type: Action["type"]): Action => type === "mover_para_etapa" ? { type, stage: "atendimento" } : type === "mover_para_proximo_followup" ? { type }
+  const newAction = (type: Action["type"]): Action => type === "mover_para_etapa" ? { type, stage: "atendimento" } : type === "mover_para_proximo_followup" || type === "escalar_gestao" ? { type }
     : { type, message: type === "alertar_gestao" ? "Atenção: {nome}" : type === "enviar_mensagem" ? "Oi, {nome}! " : "Hora de falar com {nome}" };
 
   return (

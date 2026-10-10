@@ -29,7 +29,7 @@ export async function getToday(user: SessionUser) {
     db.execute(sql`select
         count(*) filter (where (d.created_at - ${sql.raw(OFFSET)})::date = ${todayLocal})::int as novos,
         count(*) filter (where d.closed_at is null)::int as abertos,
-        (select count(*)::int from alerts a where (a.created_at - ${sql.raw(OFFSET)})::date = ${todayLocal} and a.type = 'sem_resposta_minutos' and a.audience = 'responsavel'
+        (select count(*)::int from alerts a where (a.created_at - ${sql.raw(OFFSET)})::date = ${todayLocal} and a.type = 'sem_resposta_minutos' and a.user_id is not null
            ${user.role === "gestor" ? sql`` : sql`and a.user_id = ${user.id}`}) as atrasos
       from deals d where ${scope}`),
   ]);

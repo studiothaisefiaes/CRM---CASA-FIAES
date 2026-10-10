@@ -20,6 +20,7 @@ export const conditionSchema = z.discriminatedUnion("type", [
 export const actionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("alertar_responsavel"), message: z.string().min(3).max(200) }),
   z.object({ type: z.literal("alertar_gestao"), message: z.string().min(3).max(200) }),
+  z.object({ type: z.literal("escalar_gestao") }),
   z.object({ type: z.literal("mover_para_etapa"), stage: z.string() }),
   z.object({ type: z.literal("mover_para_proximo_followup") }),
   z.object({ type: z.literal("enviar_mensagem"), message: z.string().min(3).max(1000) }),
@@ -51,6 +52,7 @@ export const TRIGGER_LABELS: Record<Trigger["type"], string> = {
 export const ACTION_LABELS: Record<Action["type"], string> = {
   alertar_responsavel: "Alertar quem é responsável",
   alertar_gestao: "Avisar a gestão",
+  escalar_gestao: "Escalar o alerta para a gestão",
   mover_para_etapa: "Mover para a etapa",
   mover_para_proximo_followup: "Mover para o próximo follow-up",
   enviar_mensagem: "Enviar mensagem à cliente no WhatsApp",

@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { db, type Tx } from "../db";
 import { alerts, automationRuns, automations, deals, settings, stages, type Automation } from "../db/schema";
 import { businessMinutesBetween, isOpen, DEFAULT_HOURS, type BusinessHours } from "../../lib/business-hours";
@@ -6,6 +6,7 @@ import { formatPhone } from "../domain/phone";
 import { logEvent, emit } from "../domain/events";
 import { moveDealTx } from "../domain/deals";
 import { getBusinessHours } from "../domain/hours";
+import { waitKeyOf } from "./wait-key";
 import { actionSchema, conditionSchema, triggerSchema, type Action, type Trigger } from "./types";
 
 export const TZ_OFFSET_MIN = -180; // America/Bahia (UTC-3, sem horário de verão)
@@ -15,6 +16,8 @@ type Outbox = { dealId: string; text: string }[];
 type Candidate = {
   dealId: string; ownerId: string | null; stageKey: string; stageName: string; contactName: string | null; phone: string;
   windowKey: string; minutes?: number; days?: number; since?: string | Date | null;
+  /** Só nos gatilhos de espera: desde quando a cliente aguarda resposta. */
+  awaitingSince?: Date;
 };
 
 function localDate(d: Date) { return new Date(d.getTime() + TZ_OFFSET_MIN * 60_000); }
@@ -95,7 +98,7 @@ export async function candidatesFor(trigger: Trigger, now: Date, hours?: Busines
     else if (trigger.type === "aniversario_em_dias") windowKey = `aniversario:${localDate(now).getUTCFullYear()}`;
     else windowKey = `${trigger.type}:${since!.toISOString()}`;
     const waited = (r as { waited?: number }).waited;
-    return { ...r, windowKey, minutes: waited ?? elapsedMin, days: Math.floor(elapsedMin / 1440) };
+    return { ...r, windowKey, minutes: waited ?? elapsedMin, days: Math.floor(elapsedMin / 1440), ...(trigger.type === "sem_resposta_minutos" && since ? { awaitingSince: since } : {}) };
   });
 }
 
@@ -123,11 +126,28 @@ async function execute(tx: Tx, a: Action, c: Candidate, auto: Automation, trigge
     case "alertar_gestao": {
       const audience = a.type === "alertar_gestao" || !c.ownerId ? "gestao" : "responsavel";
       const message = render(a.message, c, ctx.stageName);
+      // Espera: um alerta ativo por espera (índice alerts_wait_uq); os demais gatilhos seguem só pela janela.
+      const waitKey = c.awaitingSince ? waitKeyOf(c.dealId, c.awaitingSince) : null;
       const [row] = await tx.insert(alerts).values({
         dealId: c.dealId, userId: audience === "responsavel" ? c.ownerId : null, audience, type: trigger.type, severity, message,
-        dedupeKey: `${dedupeBase}:${a.type}`, createdAt: now,
+        dedupeKey: `${dedupeBase}:${a.type}`, createdAt: now, ...(waitKey ? { waitKey, level: 1 } : {}),
       }).onConflictDoNothing().returning({ id: alerts.id });
       if (row) await logEvent(tx, c.dealId, "alerta", { alertId: row.id, tipo: trigger.type, mensagem: message, para: audience }, c.ownerId);
+      return row ? "alerta" : null;
+    }
+    case "escalar_gestao": {
+      // Sobe o alerta da mesma espera para a gestão; sem alerta aberto, cria direto no nível 2.
+      if (!c.awaitingSince) return null;
+      const waitKey = waitKeyOf(c.dealId, c.awaitingSince);
+      const message = render("{nome} está sem resposta há {minutos} min", c, ctx.stageName);
+      const [up] = await tx.update(alerts).set({ level: 2, audience: "gestao", escalatedAt: now, message, readAt: null })
+        .where(and(eq(alerts.waitKey, waitKey), isNull(alerts.resolvedAt))).returning({ id: alerts.id });
+      if (up) { await logEvent(tx, c.dealId, "alerta", { alertId: up.id, tipo: trigger.type, mensagem: message, para: "gestao", escalado: true }, c.ownerId); return "escalado"; }
+      const [row] = await tx.insert(alerts).values({
+        dealId: c.dealId, userId: null, audience: "gestao", type: trigger.type, severity, message, dedupeKey: `${dedupeBase}:${a.type}`,
+        createdAt: now, waitKey, level: 2, escalatedAt: now,
+      }).onConflictDoNothing().returning({ id: alerts.id });
+      if (row) await logEvent(tx, c.dealId, "alerta", { alertId: row.id, tipo: trigger.type, mensagem: message, para: "gestao", escalado: true }, c.ownerId);
       return row ? "alerta" : null;
     }
     case "mover_para_etapa": {

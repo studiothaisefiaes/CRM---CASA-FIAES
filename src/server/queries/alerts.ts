@@ -11,7 +11,7 @@ export async function getMyAlerts(user: SessionUser, limit = 30) {
     .where(and(mine, gte(alerts.createdAt, new Date(Date.now() - 7 * 86_400_000)), isNull(deals.archivedAt)))
     .orderBy(desc(alerts.createdAt)).limit(limit);
   return rows.map(({ a, contactName, phone }) => ({
-    id: a.id, dealId: a.dealId, type: a.type, severity: a.severity, message: a.message, createdAt: a.createdAt.toISOString(),
+    id: a.id, dealId: a.dealId, type: a.type, severity: a.severity, level: a.level, message: a.message, createdAt: a.createdAt.toISOString(),
     read: !!a.readAt || !!a.resolvedAt, resolved: !!a.resolvedAt, contactName, phone,
   }));
 }

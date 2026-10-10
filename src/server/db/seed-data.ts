@@ -37,10 +37,10 @@ export const DEFAULT_AUTOMATIONS: (AutomationInput & { key: string })[] = [
     actions: [{ type: "alertar_responsavel", message: "{nome} está esperando resposta há {minutos} min" }],
   },
   {
-    key: "gestao_10min", name: "Avisar a gestão: sem resposta há 10 minutos", enabled: true,
+    key: "gestao_10min", name: "Escalar para a gestão: sem resposta há 10 minutos", enabled: true,
     trigger: { type: "sem_resposta_minutos", minutes: 10 },
     conditions: [{ type: "etapa_em", stages: ["lead", "atendimento", "followup_1", "followup_2", "followup_3", "followup_4"] }],
-    actions: [{ type: "alertar_gestao", message: "{nome} está sem resposta há {minutos} min" }],
+    actions: [{ type: "escalar_gestao" }],
   },
   {
     key: "atendimento_3min", name: "Conversa sem resposta no prazo", enabled: true,

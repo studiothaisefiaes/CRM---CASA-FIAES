@@ -23,7 +23,7 @@ describe("motor de automações", () => {
     await db.insert(users).values({ name: "Ana", email: "ana@c.com", role: "atendente", passwordHash: "x" });
   });
 
-  it("lead sem resposta: alerta ao responsável no prazo da etapa (2 min) e à gestão só aos 10 min", async () => {
+  it("lead sem resposta: alerta ao responsável no prazo da etapa (2 min) e o mesmo alerta escala para a gestão aos 10 min", async () => {
     await lead();
     await runRules(min(1));
     expect((await db.select().from(alerts)).length).toBe(0);
@@ -35,7 +35,9 @@ describe("motor de automações", () => {
     expect(rows[0].severity).toBe("urgente");
     await runRules(min(10));
     rows = await db.select().from(alerts);
-    expect(rows.map((r) => r.audience).sort()).toEqual(["gestao", "responsavel"]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ audience: "gestao", level: 2 });
+    expect(rows[0].escalatedAt).not.toBeNull();
   });
 
   it("prazo da etapa editado vale para o alerta", async () => {
