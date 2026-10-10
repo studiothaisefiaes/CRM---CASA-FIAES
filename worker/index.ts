@@ -9,10 +9,12 @@ import { settings } from "../src/server/db/schema";
 import { downloadPendingMedia, refreshAvatars } from "../src/server/whatsapp/media";
 import { checkConnections } from "../src/server/whatsapp/watchdog";
 import { remindDueTasks } from "../src/server/domain/tasks";
+import { sendPushForPendingAlerts } from "../src/server/push";
+import { vapidConfig } from "../src/server/env";
 
 // Worker do CRM: automações (a cada minuto), reprocessamento de webhooks e limpeza.
 // Roda separado do app: `npm run worker` (no Contabo, sob pm2).
-const QUEUES = { rules: "regras", webhooks: "webhooks-reprocessar", history: "historico-whatsapp", media: "midia-whatsapp", cleanup: "limpeza", reminders: "lembretes" } as const;
+const QUEUES = { rules: "regras", webhooks: "webhooks-reprocessar", history: "historico-whatsapp", media: "midia-whatsapp", cleanup: "limpeza", reminders: "lembretes", push: "push-alertas" } as const;
 
 async function main() {
   const boss = new PgBoss({ connectionString: process.env.DATABASE_URL!, schema: "pgboss" });
@@ -24,6 +26,9 @@ async function main() {
   await boss.schedule(QUEUES.history, "* * * * *", null, { tz: "America/Bahia", singletonKey: "historico" });
   await boss.schedule(QUEUES.media, "* * * * *", null, { tz: "America/Bahia", singletonKey: "midia" });
   await boss.schedule(QUEUES.reminders, "*/5 * * * *", null, { tz: "America/Bahia", singletonKey: "lembretes" });
+  const pushOn = !!vapidConfig();
+  if (pushOn) await boss.schedule(QUEUES.push, "* * * * *", null, { tz: "America/Bahia", singletonKey: "push" });
+  else await boss.unschedule(QUEUES.push).catch(() => {});
   await boss.schedule(QUEUES.cleanup, "15 4 * * *", null, { tz: "America/Bahia" });
 
   // Batida do worker: gravada ao fim de cada rodada das regras (todo minuto), o que prova que o motor roda.
@@ -53,6 +58,8 @@ async function main() {
   });
   // Tarefas que vencem nos próximos 15 min: um aviso para o responsável.
   await boss.work(QUEUES.reminders, { batchSize: 1 }, async () => { const r = await remindDueTasks(); if (r.alerts) console.log("[lembretes]", r); });
+  // Push no celular: só com as chaves VAPID no .env (sem elas o job nem é agendado).
+  if (pushOn) await boss.work(QUEUES.push, { batchSize: 1 }, async () => { const r = await sendPushForPendingAlerts(); if (r.sent || r.failed) console.log("[push]", r); });
   await boss.work(QUEUES.cleanup, async () => { await purgeExpiredSessions(); await purgeOldWebhookEvents(); });
 
   // Primeira rodada imediata (sem esperar o próximo minuto cheio).

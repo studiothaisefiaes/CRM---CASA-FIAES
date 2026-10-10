@@ -62,3 +62,12 @@ it("escalar_gestao só vale com gatilho de espera", () => {
   expect(r.success).toBe(false);
   if (!r.success) expect(r.error.issues[0].message).toMatch(/sem resposta/i);
 });
+
+it("escalar o alerta reabre o aviso por push (pushed_at volta a nulo) para a gestão ser avisada", async () => {
+  await newLead();
+  await runRules(at(3));
+  await db.update(alerts).set({ pushedAt: new Date() });
+  for (const m of [10, 12]) await runRules(at(m));
+  const [a] = (await db.select().from(alerts)).filter((x) => !x.resolvedAt);
+  expect(a).toMatchObject({ level: 2, pushedAt: null });
+});

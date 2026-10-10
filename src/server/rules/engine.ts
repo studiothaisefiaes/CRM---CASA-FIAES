@@ -122,7 +122,7 @@ function render(tpl: string, c: Candidate, stageName: string) {
 async function escalate(tx: Tx, c: Candidate, trigger: Trigger, now: Date, message: string, dedupeKey: string) {
   if (!c.awaitingSince) return null;
   const waitKey = waitKeyOf(c.dealId, c.awaitingSince);
-  const [up] = await tx.update(alerts).set({ level: 2, audience: "gestao", escalatedAt: now, message, readAt: null })
+  const [up] = await tx.update(alerts).set({ level: 2, audience: "gestao", escalatedAt: now, message, readAt: null, pushedAt: null })
     .where(and(eq(alerts.waitKey, waitKey), isNull(alerts.resolvedAt))).returning({ id: alerts.id });
   if (up) { await logEvent(tx, c.dealId, "alerta", { alertId: up.id, tipo: trigger.type, mensagem: message, para: "gestao", escalado: true }, c.ownerId); return "escalado"; }
   const [row] = await tx.insert(alerts).values({

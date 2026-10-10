@@ -15,6 +15,11 @@ const schema = z.object({
   /** Pasta dos backups (scripts/backup.sh). Fica fora do repositório. Padrão: ~/backups/casa-fiaes-crm. */
   BACKUP_DIR: z.string().optional(),
   /** Quantos proxies confiáveis (Caddy) ficam na frente do app: 1 em produção, 0 em dev. Define de onde sai o IP no rate limit. */
+  /** Chaves VAPID do push no celular (npm run vapid). Sem o par, o push fica desligado, sem erro. */
+  VAPID_PUBLIC_KEY: z.string().min(1).optional(),
+  VAPID_PRIVATE_KEY: z.string().min(1).optional(),
+  /** mailto: ou https: de contato do app, exigido pelo serviço de push. Padrão: APP_URL. */
+  VAPID_SUBJECT: z.string().min(1).optional(),
   TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).default(1),
 });
 
@@ -32,4 +37,11 @@ export function env(): Env {
   // Simulador nunca liga em produção, mesmo com a flag esquecida.
   if (cached.NODE_ENV === "production") cached.DEV_TOOLS = false;
   return cached;
+}
+
+/** Chaves VAPID (par completo) ou null quando o push está desligado. */
+export function vapidConfig(): { publicKey: string; privateKey: string; subject: string } | null {
+  const e = env();
+  if (!e.VAPID_PUBLIC_KEY || !e.VAPID_PRIVATE_KEY) return null;
+  return { publicKey: e.VAPID_PUBLIC_KEY, privateKey: e.VAPID_PRIVATE_KEY, subject: e.VAPID_SUBJECT ?? e.APP_URL };
 }

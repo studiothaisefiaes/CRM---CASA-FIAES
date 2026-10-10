@@ -5,6 +5,8 @@ import { getToday, type TodayItem } from "@/server/queries/today";
 import { WaitingList } from "@/components/today/waiting-list";
 import { Stagger } from "@/components/today/stagger";
 import { IconCalendar, IconCake, IconMoney, IconRefresh, IconArrowRight } from "@/components/icons";
+import { PushOptIn } from "@/components/shell/push-optin";
+import { vapidConfig } from "@/server/env";
 import { formatPhoneClient } from "@/lib/phone-client";
 
 export const metadata = { title: "Hoje" };
@@ -22,11 +24,13 @@ export default async function HojePage({ searchParams }: PageProps<"/">) {
   const date = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long", timeZone: "America/Bahia" });
   const fmt = seconds;
   const next = t.waiting[0];
+  const vapid = vapidConfig();
   return (
     <main className="px-5 lg:px-8 pt-6 lg:pt-9 pb-12 max-w-[1240px]">
       {sp.aviso === "sem-permissao" && <p className="mb-5 text-sm bg-gold-soft text-gold-ink rounded-[var(--radius-control)] px-3 py-2">Só a gestão tem acesso às configurações.</p>}
       <p className="text-sm text-muted first-letter:uppercase">{date}</p>
       <h1 className="font-serif text-[40px] lg:text-[48px] leading-none font-light mt-1">{greeting()}, {user.name.split(" ")[0]}.</h1>
+      {vapid && <PushOptIn publicKey={vapid.publicKey} />}
       <Stagger className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-8" itemClassNames={["col-span-2", "", ""]}>
         <div className={`h-full rounded-[var(--radius-panel)] p-5 lg:p-6 flex flex-wrap items-end justify-between gap-x-4 gap-y-4 ${late ? "bg-alert-soft border border-alert/40" : "bg-ink text-paper"}`}>
           <div>

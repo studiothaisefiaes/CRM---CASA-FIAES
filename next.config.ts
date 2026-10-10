@@ -13,6 +13,10 @@ const nextConfig: NextConfig = {
   // A CSP (com nonce por requisição) fica no src/proxy.ts; aqui só o que vale igual para tudo.
   async headers() {
     return [{
+      // O navegador confere o service worker a cada abertura; nunca pode vir de cache.
+      source: "/sw.js",
+      headers: [{ key: "Cache-Control", value: "no-cache, no-store, must-revalidate" }],
+    }, {
       source: "/:path*",
       headers: [
         { key: "X-Content-Type-Options", value: "nosniff" },
