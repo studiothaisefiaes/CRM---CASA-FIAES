@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, devices, type Page } from "@playwright/test";
 import { login, simulate, ageLead, e2eSql, shot } from "./helpers";
 
 /** Seis leads em seis seções da Fila (a Casa fica aberta 24 h no banco de e2e, então a espera conta o tempo todo). */
@@ -231,5 +231,78 @@ test.describe("celular: lista em 390 px", () => {
     const nav = page.getByRole("navigation", { name: "Principal" }).last();
     await expect(nav.getByRole("link", { name: "Atendimento" })).toHaveAttribute("aria-current", "page");
     await expect(nav.getByRole("button", { name: "Mais" })).not.toHaveClass(/text-ink/);
+  });
+});
+
+/** Um lead novo e o id dele (para abrir /atendimento?lead=ID e /atendimento/ID). */
+async function leadParaAbrir(page: Page) {
+  await simulate(page, { phone: "71 99710-3001", name: "Rita Camelo", text: "Oi, queria um horário." });
+  const [row] = await e2eSql("select d.id from deals d join contacts c on c.id = d.contact_id where c.phone_e164 = '+5571997103001' and d.archived_at is null");
+  return String(row.id);
+}
+
+/** Endereços que o quadro principal mostrou, na ordem (o mesmo endereço em seguida, por replaceState do Next, conta uma vez só). */
+function navegacoes(page: Page) {
+  const urls: string[] = [];
+  page.on("framenavigated", (f) => {
+    if (f !== page.mainFrame()) return;
+    const u = new URL(f.url());
+    const atual = u.pathname + u.search;
+    if (urls.at(-1) !== atual) urls.push(atual);
+  });
+  return urls;
+}
+
+test.describe("rota /atendimento/ID serve a qualquer largura, sem ida e volta", () => {
+  test.describe("User-Agent de celular com janela de 1280 px", () => {
+    test.use({ userAgent: devices["iPhone 13"].userAgent, viewport: { width: 1280, height: 800 } });
+    test("?lead=ID vai para /ID uma vez só, estabiliza e mostra o lead", async ({ page, isMobile }) => {
+      test.skip(isMobile, "desktop");
+      await login(page);
+      const id = await leadParaAbrir(page);
+      const urls = navegacoes(page);
+      await page.goto(`/atendimento?lead=${id}`);
+      await expect(page).toHaveURL(new RegExp(`/atendimento/${id}$`));
+      await expect(page.getByRole("region", { name: /Lead Rita Camelo/ })).toBeVisible();
+      await page.waitForTimeout(2000); // se houvesse loop, a URL continuaria trocando
+      await expect(page).toHaveURL(new RegExp(`/atendimento/${id}$`));
+      expect(urls.length, `navegações: ${urls.join(" -> ")}`).toBeLessThanOrEqual(2);
+      expect(urls.at(-1)).toBe(`/atendimento/${id}`);
+      await expect(page.getByRole("region", { name: "Dados do cliente" })).toBeVisible(); // 1280: conversa | dados lado a lado
+    });
+  });
+
+  test("desktop normal: /atendimento/ID mostra os painéis com o lead aberto, sem redirecionar", async ({ page, isMobile }) => {
+    test.skip(isMobile, "desktop");
+    await login(page);
+    const id = await leadParaAbrir(page);
+    const urls = navegacoes(page);
+    await page.goto(`/atendimento/${id}`);
+    const lead = page.getByRole("region", { name: /Lead Rita Camelo/ });
+    await expect(lead).toBeVisible();
+    await expect(page.getByRole("listbox", { name: "Fila" })).toBeVisible();
+    await expect(page.getByRole("option", { name: /Rita Camelo/ })).toHaveAttribute("aria-selected", "true");
+    expect(Math.round((await page.getByRole("region", { name: "Fila de atendimento" }).boundingBox())!.width)).toBe(340);
+    expect(Math.round((await page.getByRole("region", { name: "Dados do cliente" }).boundingBox())!.width)).toBe(300);
+    await expect(page.getByRole("link", { name: "Voltar para a fila" })).toBeHidden();
+    await page.waitForTimeout(1500);
+    expect(urls, "sem redirecionar").toEqual([`/atendimento/${id}`]);
+  });
+
+  test.describe("janela estreita no desktop (User-Agent comum)", () => {
+    test.use({ viewport: { width: 390, height: 800 } });
+    test("?lead=ID estabiliza em /ID com a conversa em tela cheia", async ({ page, isMobile }) => {
+      test.skip(isMobile, "desktop");
+      await login(page);
+      const id = await leadParaAbrir(page);
+      const urls = navegacoes(page);
+      await page.goto(`/atendimento?lead=${id}`);
+      await expect(page).toHaveURL(new RegExp(`/atendimento/${id}$`));
+      await expect(page.getByRole("region", { name: /Lead Rita Camelo/ })).toBeVisible();
+      await expect(page.getByRole("link", { name: "Voltar para a fila" })).toBeVisible();
+      await page.waitForTimeout(1500);
+      await expect(page).toHaveURL(new RegExp(`/atendimento/${id}$`));
+      expect(urls.length, `navegações: ${urls.join(" -> ")}`).toBeLessThanOrEqual(2);
+    });
   });
 });

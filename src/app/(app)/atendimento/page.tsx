@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/server/auth/session";
@@ -7,11 +6,9 @@ import { getDealDetail } from "@/server/queries/deal";
 import { LiveRefresh } from "@/components/shell/live";
 import { LeadPanel } from "@/components/lead/lead-sheet";
 import { Empty } from "@/components/ui/empty";
-import { QueueListRoute, QueueRestore, ViewportRedirect } from "@/components/queue/queue-route";
-import { QueueSummary } from "@/components/queue/queue-summary";
-import { QueueFilters } from "@/components/queue/queue-filters";
-import { ViewSwitch } from "@/components/queue/view-switch";
-import { FILTER_LABEL, parseQueueFilter } from "@/lib/report-links";
+import { QueueRestore, ViewportRedirect } from "@/components/queue/queue-route";
+import { QueueColumn } from "@/components/queue/queue-column";
+import { parseQueueFilter } from "@/lib/report-links";
 import { parseQueueFoco, parseQueueView, queueQuery } from "@/lib/queue";
 import { isMobileUserAgent } from "@/lib/device";
 
@@ -41,24 +38,7 @@ export default async function AtendimentoPage({ searchParams }: PageProps<"/aten
       <QueueRestore hasParams={Object.keys(sp).length > 0} />
       <LiveRefresh scopes={["queue"]} />
       {leadId && <ViewportRedirect when="mobile" to={`/atendimento/${leadId}`} />}
-      <section aria-label="Fila de atendimento" className="min-h-0 flex flex-col bg-paper lg:border-r border-line">
-        <div className="shrink-0 px-4 pt-3 lg:pt-5 pb-3 border-b border-line">
-          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-            <h1 className="font-serif text-[28px] leading-none font-light tracking-[-0.01em]">Atendimento</h1>
-            <ViewSwitch current="fila" />
-          </div>
-          <QueueSummary counts={queue.counts} view={view} foco={foco} filtro={filtro} />
-          {filtro && (
-            <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm" role="status">
-              <span className="rounded-full bg-gold-soft text-gold-ink px-3 py-1 font-medium">Mostrando: {FILTER_LABEL[filtro].toLowerCase()}{user.role !== "gestor" ? " (só os seus)" : ""}{fonte ? ` · origem ${fonte}` : ""}</span>
-              <Link href="/atendimento?view=todos" replace className="inline-flex items-center min-h-11 lg:min-h-8 text-graphite underline underline-offset-2 hover:text-ink">Mostrar todos</Link>
-            </p>
-          )}
-          <QueueFilters view={view} q={q ?? ""} counts={queue.counts} />
-          {queue.truncated && <p role="status" className="mt-2 text-xs text-muted">Mostrando {queue.truncated.shown} de {queue.truncated.total} conversas. Use a busca ou uma visão para ver as outras.</p>}
-        </div>
-        <QueueListRoute sections={queue.sections} query={query} selectedId={leadId} className="flex-1" />
-      </section>
+      <QueueColumn queue={queue} query={query} view={view} foco={foco} filtro={filtro} q={q} fonte={fonte} onlyOwnLabel={user.role !== "gestor"} selectedId={leadId} />
       {detail && leadId ? (
         <div className="hidden lg:contents"><LeadPanel key={leadId} d={detail} nextId={nextId} /></div>
       ) : (
