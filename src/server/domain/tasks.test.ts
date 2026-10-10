@@ -31,7 +31,7 @@ it("remarcar substitui o comparecimento aberto; limpar o agendamento remove", as
   await updateDeal(dealId, { scheduledAt: "2026-10-15T13:00:00.000Z" }, uid);
   await updateDeal(dealId, { scheduledAt: "2026-10-20T13:00:00.000Z" }, uid);
   const open = () => db.select().from(tasks).where(and(eq(tasks.kind, "comparecimento"), isNull(tasks.doneAt)));
-  let rows = await open();
+  const rows = await open();
   expect(rows).toHaveLength(1); expect(rows[0].dueAt.toISOString().slice(0, 10)).toBe("2026-10-21");
   await updateDeal(dealId, { scheduledAt: "" }, uid);
   expect(await open()).toHaveLength(0);
