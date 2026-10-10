@@ -86,7 +86,7 @@ export async function sendFromCrm(dealId: string, text: string, userId: string, 
     await emit("mensagem_falhou", { dealId });
     throw new SendError(`Não foi possível enviar: ${msg}`);
   }
-  return recordOutbound({ dealId, channelId: channel.id, externalId, body, userId, status: "sent", claimMessageId: await absorbEcho(pending.id, channel.id, externalId) });
+  return confirmSent(pending.id, { dealId, channelId: channel.id, externalId, body, userId });
 }
 
 type Upload = { name: string; mime: string; data: Buffer };
@@ -156,7 +156,33 @@ export async function sendMediaFromCrm(dealId: string, file: Upload, caption: st
     await emit("mensagem_falhou", { dealId });
     throw new SendError(`Não foi possível enviar: ${msg}`);
   }
-  return recordOutbound({ dealId, channelId: channel.id, externalId, userId, status: "sent", claimMessageId: await absorbEcho(pending.id, channel.id, externalId) });
+  return confirmSent(pending.id, { dealId, channelId: channel.id, externalId, userId });
+}
+
+/** Só para testes: roda entre a conferência do eco e a confirmação, para provocar a corrida de forma determinística. */
+export const sendHooks: { beforeConfirm?: () => Promise<void> } = {};
+
+const isExternalIdConflict = (e: unknown) => {
+  const err = e as { code?: string; constraint?: string; cause?: { code?: string; constraint?: string } } | null;
+  return (err?.code ?? err?.cause?.code) === "23505" && ((err?.constraint ?? err?.cause?.constraint) ?? "messages_external_uq") === "messages_external_uq";
+};
+
+/**
+ * Confirma o envio. Se o eco do WhatsApp criar a linha entre a conferência e a confirmação (violação de `messages_external_uq`),
+ * funde de novo e conclui sem erro: a mensagem já foi entregue.
+ */
+async function confirmSent(pendingId: string, input: { dealId: string; channelId: string; externalId: string | null; body?: string; userId: string }) {
+  const confirm = (claimMessageId: string) => recordOutbound({ ...input, status: "sent", claimMessageId });
+  const claim = await absorbEcho(pendingId, input.channelId, input.externalId);
+  await sendHooks.beforeConfirm?.();
+  try {
+    return await confirm(claim);
+  } catch (e) {
+    if (claim !== pendingId || !isExternalIdConflict(e)) throw e;
+    const again = await absorbEcho(pendingId, input.channelId, input.externalId);
+    if (again === pendingId) throw e;
+    return confirm(again);
+  }
 }
 
 /**

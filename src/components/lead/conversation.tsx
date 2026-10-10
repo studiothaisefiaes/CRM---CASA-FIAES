@@ -5,7 +5,7 @@ import { IconMic, IconReply } from "@/components/icons";
 import { IconButton } from "@/components/ui/icon-button";
 import { SPRING } from "@/lib/motion";
 
-export type Msg = { id: string; direction: "in" | "out"; kind: string; body: string | null; status: string; createdAt: string; sender: string | null; fromPhone: boolean; error?: string | null; hasMedia?: boolean; quotedBody?: string | null; edited?: boolean; deleted?: boolean };
+export type Msg = { id: string; externalId?: string | null; direction: "in" | "out"; kind: string; body: string | null; status: string; createdAt: string; sender: string | null; fromPhone: boolean; error?: string | null; hasMedia?: boolean; quotedBody?: string | null; edited?: boolean; deleted?: boolean };
 
 /** Foto, figurinha, áudio, vídeo ou documento vindos do WhatsApp (arquivo servido por /api/media/[id]). */
 function Media({ m }: { m: Msg }) {
@@ -73,7 +73,7 @@ export function Conversation({ messages, onReply }: { messages: Msg[]; onReply?:
                 </span>
                 {out && m.status === "failed" && <span className="block text-xs text-alert mt-1">Não chegou na cliente. Copie o texto e envie de novo.</span>}
               </div>
-              {onReply && m.id !== "optimistic" && m.status !== "pending" && m.status !== "failed" && !m.deleted && (
+              {onReply && m.id !== "optimistic" && m.externalId && m.status !== "pending" && m.status !== "failed" && !m.deleted && (
                 <IconButton label="Responder" onClick={() => onReply(m)}
                   className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-70 transition-opacity"><IconReply size={16} /></IconButton>
               )}

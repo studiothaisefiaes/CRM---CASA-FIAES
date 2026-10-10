@@ -77,7 +77,7 @@ export function LeadSheet({ d, nextId }: { d: DealDetail; nextId?: string | null
   const name = d.contact.name?.trim() || formatPhoneClient(d.contact.phoneE164);
   const firstName = d.contact.name?.trim().split(/\s+/)[0] ?? "";
   const msgs: Msg[] = useMemo(() => {
-    const base = d.messages.map((m) => ({ id: m.id, direction: m.direction, kind: m.kind, body: m.body, status: m.status, createdAt: new Date(m.createdAt).toISOString(), sender: m.sender, fromPhone: m.fromPhone, error: m.error, hasMedia: m.hasMedia, quotedBody: m.quotedBody, edited: !!m.editedAt, deleted: !!m.deletedAt }));
+    const base = d.messages.map((m) => ({ id: m.id, externalId: m.externalId, direction: m.direction, kind: m.kind, body: m.body, status: m.status, createdAt: new Date(m.createdAt).toISOString(), sender: m.sender, fromPhone: m.fromPhone, error: m.error, hasMedia: m.hasMedia, quotedBody: m.quotedBody, edited: !!m.editedAt, deleted: !!m.deletedAt }));
     return optimistic ? [...base, { id: "optimistic", direction: "out" as const, kind: "text", body: optimistic, status: "pending", createdAt: new Date().toISOString(), sender: null, fromPhone: false }] : base;
   }, [d.messages, optimistic]);
 

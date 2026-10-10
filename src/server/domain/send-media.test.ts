@@ -3,7 +3,7 @@ import { eq, isNotNull } from "drizzle-orm";
 import { db } from "../db";
 import { channels, dealEvents, messages, users } from "../db/schema";
 import { recordInbound } from "./deals";
-import { sendFromCrm, sendMediaFromCrm, markConversationRead } from "./send";
+import { sendFromCrm, sendMediaFromCrm, markConversationRead, sendHooks } from "./send";
 import { setWhatsappProvider } from "../whatsapp/evolution";
 import { ingestEvolution } from "../whatsapp/webhook";
 import { ensureMedia } from "../whatsapp/media";
@@ -27,7 +27,7 @@ beforeEach(async () => {
   const r = await recordInbound({ channelId: chId, externalId: "IN1", phoneRaw: "71999995555", body: "oi" });
   if (!("dealId" in r)) throw new Error(); dealId = r.dealId; setWhatsappProvider(fake);
 });
-afterEach(() => setWhatsappProvider(null));
+afterEach(() => { setWhatsappProvider(null); delete sendHooks.beforeConfirm; });
 
 it("envia PDF e grava como documento", async () => {
   await sendMediaFromCrm(dealId, { name: "tabela.pdf", mime: "application/pdf", data: Buffer.from("%PDF-1.7 ...") }, "Nossa tabela", uid);
@@ -142,4 +142,19 @@ it("documento com legenda baixa com o nome do arquivo, não com a legenda", asyn
   await sendMediaFromCrm(dealId, { name: "tabela.pdf", mime: "application/pdf", data: Buffer.from("%PDF-1.7 x") }, "Nossa tabela", uid);
   const f = await ensureMedia((await outs())[0].id);
   expect(f?.name).toBe("tabela.pdf");
+});
+it("corrida: o eco cria a linha entre a conferência e a confirmação, conclui sem erro e sem duplicar", async () => {
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0]);
+  // Roda depois da conferência do eco (que não achou nada) e antes do UPDATE do id externo.
+  sendHooks.beforeConfirm = async () => { await echo("OUT2", { imageMessage: { mimetype: "image/png" } }); };
+  // O eco aqui não casa com a pendente (já "sent"): força a linha separada do cenário de corrida.
+  const origin = fake.sendMedia;
+  fake.sendMedia = async (...a: Parameters<typeof origin>) => { const r = await origin(...a); await db.update(messages).set({ status: "sent" }).where(eq(messages.direction, "out")); return r; };
+  try {
+    await expect(sendMediaFromCrm(dealId, { name: "f.png", mime: "image/png", data: png }, null, uid)).resolves.toBeDefined();
+  } finally { fake.sendMedia = origin; }
+  const o = await outs();
+  expect(o).toHaveLength(1);
+  expect(o[0]).toMatchObject({ externalId: "OUT2", sentByUserId: uid });
+  expect(o[0].mediaPath).toBeTruthy();
 });

@@ -63,17 +63,18 @@ export function Composer({ dealId, firstName, quickReplies, onOptimistic, onSent
       const chunks: Blob[] = [];
       const live = stream;
       let seconds = 0;
-      const timer = setInterval(() => { seconds += 1; setRecording({ seconds }); if (seconds >= 15 * 60) rec.stop(); }, 1000);
-      recorder.current = { rec, stream: live, chunks, cancelled: false, timer };
       rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+      // O timer e o registro do gravador só existem depois que o start() deu certo: se ele lançar, nada fica preso.
       rec.onstop = () => {
         const r = recorder.current; recorder.current = null;
-        clearInterval(timer); live.getTracks().forEach((t) => t.stop()); setRecording(null);
+        clearInterval(r?.timer); live.getTracks().forEach((t) => t.stop()); setRecording(null);
         if (!r || r.cancelled || !chunks.length) return;
         const base = type.split(";")[0];
         attach(new File(chunks, `gravacao.${EXT[base] ?? "webm"}`, { type: base }), true);
       };
       rec.start();
+      const timer = setInterval(() => { seconds += 1; setRecording({ seconds }); if (seconds >= 15 * 60) rec.stop(); }, 1000);
+      recorder.current = { rec, stream: live, chunks, cancelled: false, timer };
       setRecording({ seconds: 0 });
     } catch (e) {
       stream?.getTracks().forEach((t) => t.stop());
