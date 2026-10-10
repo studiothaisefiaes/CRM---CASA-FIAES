@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { compareMetric, insufficientText, longSpan, MIN_SAMPLE, PREVIOUS_LABEL, shareText } from "@/lib/report-format";
 import { seconds } from "@/lib/format";
-import { staleHref, waitingHref } from "@/lib/report-links";
+import { staleHref, waitingHref, type LinkScope } from "@/lib/report-links";
 import type { Period } from "@/server/reports/common";
 import type { Overview } from "@/server/reports/screen";
 import { money } from "@/lib/format";
@@ -18,7 +18,7 @@ import { SummaryBlock } from "./summary-block";
 export const numLink = "inline-flex items-center justify-end underline decoration-gold-ink/50 underline-offset-4 text-gold-ink font-semibold pointer-coarse:min-h-11 pointer-coarse:min-w-11";
 
 /** Visão geral: R1, R2, R4, R5, R6, R8, R9, R16 e, no rodapé, R15. */
-export function OverviewTab({ data: d, period, qs, gestor }: { data: Overview; period: Period; qs: string; gestor: boolean }) {
+export function OverviewTab({ data: d, period, qs, gestor, scope }: { data: Overview; period: Period; qs: string; gestor: boolean; scope: LinkScope }) {
   const csv = (tipo: string, label: string) => ({ href: `/api/relatorios/${tipo}?${qs}`, label });
   return (
     <div className="flex flex-col gap-10">
@@ -27,11 +27,11 @@ export function OverviewTab({ data: d, period, qs, gestor }: { data: Overview; p
         <ExecutiveNumbers numbers={d.numbers} slaHit={d.response.slaHit} slaN={d.response.n} previousLabel={PREVIOUS_LABEL[period]} />
       </Section>
       <div className="grid lg:grid-cols-2 gap-x-14 gap-y-10">
-        <FirstResponse d={d} csv={csv("resposta", "primeira resposta")} />
+        <FirstResponse d={d} scope={scope} csv={csv("resposta", "primeira resposta")} />
         <Section id="funil" title="Do primeiro contato à venda" lead="Leads novos do período, por marco." csv={csv("funil", "funil por marcos")} legend="funil">
           <FunnelMilestones m={d.funnel} />
         </Section>
-        <Stale d={d} csv={csv("parados", "parados agora")} />
+        <Stale d={d} scope={scope} csv={csv("parados", "parados agora")} />
         <Channel d={d} csv={csv("canal", "CRM ou celular")} />
       </div>
       <Sources d={d} gestor={gestor} csv={csv("origem", "origem até a venda")} />
@@ -41,7 +41,7 @@ export function OverviewTab({ data: d, period, qs, gestor }: { data: Overview; p
   );
 }
 
-function FirstResponse({ d, csv }: { d: Overview; csv: { href: string; label: string } }) {
+function FirstResponse({ d, csv, scope }: { d: Overview; scope: LinkScope; csv: { href: string; label: string } }) {
   const r = d.response;
   const goal = r.byStage.find((s) => s.stage === "lead")?.slaSeconds ?? 120;
   const cmp = r.previous ? compareMetric(r.p50, r.previous.p50, { kind: "seconds", n: r.n, nPrev: r.previous.n, lowerIsBetter: true }) : null;
@@ -86,7 +86,7 @@ function FirstResponse({ d, csv }: { d: Overview; csv: { href: string; label: st
       )}
       {r.semResposta > 0 && (
         <p className="mt-4 text-[14px]">
-          <Link href={waitingHref()} className={numLink}>{r.semResposta} {r.semResposta === 1 ? "lead novo sem resposta" : "leads novos sem resposta"}</Link>
+          <Link href={waitingHref(scope)} className={numLink}>{r.semResposta} {r.semResposta === 1 ? "lead novo sem resposta" : "leads novos sem resposta"}</Link>
           <span className="text-muted"> · ver quem espera</span>
         </p>
       )}
@@ -94,17 +94,35 @@ function FirstResponse({ d, csv }: { d: Overview; csv: { href: string; label: st
   );
 }
 
-function Stale({ d, csv }: { d: Overview; csv: { href: string; label: string } }) {
+function Stale({ d, csv, scope }: { d: Overview; scope: LinkScope; csv: { href: string; label: string } }) {
   const total = d.stale.reduce((a, s) => a + s.parados, 0);
-  const cols: Col<(typeof d.stale)[number]>[] = [
-    { key: "stage", label: "Etapa", render: (s) => s.stage },
-    { key: "total", label: "Abertos", align: "right", render: (s) => s.total },
-    { key: "parados", label: "Parados", align: "right", render: (s) => (s.parados > 0 ? <Link href={staleHref(s.stageKey)} className={numLink}>{s.parados}</Link> : <span className="text-muted">0</span>) },
-    { key: "old", label: "Mais antigo parado", align: "right", render: (s) => (s.maisAntigoSeg == null ? <span className="text-muted">—</span> : longSpan(s.maisAntigoSeg)) },
-  ];
+  // Etapas sem nada aberto saem da tabela e viram uma linha só (no celular a tabela fica curta e continua em 3 colunas).
+  const shown = d.stale.filter((s) => s.total > 0 || s.parados > 0);
+  const empty = d.stale.filter((s) => s.total === 0 && s.parados === 0).map((s) => s.stage);
   return (
-    <Section id="parados" title="Parados agora" lead={total > 0 ? <><Link href={staleHref()} className={numLink}>{total} {total === 1 ? "lead parado" : "leads parados"}</Link> além do limite da etapa.</> : "Nenhum lead parado além do limite da etapa."} csv={csv} legend="parados">
-      <DataList rows={d.stale} cols={cols} rowKey={(s) => s.stageKey} caption="Leads parados por etapa" />
+    <Section id="parados" title="Parados agora" lead={total > 0 ? <><Link href={staleHref(undefined, scope)} className={numLink}>{total} {total === 1 ? "lead parado" : "leads parados"}</Link> além do limite da etapa.</> : "Nenhum lead parado além do limite da etapa."} csv={csv} legend="parados">
+      {shown.length > 0 && (
+        <table className="w-full text-[14px]">
+          <caption className="sr-only">Leads abertos e parados por etapa</caption>
+          <thead><tr className="text-left text-[13px] text-muted">
+            <th scope="col" className="py-2 pr-3 font-medium">Etapa</th>
+            <th scope="col" className="py-2 pr-3 font-medium text-right">Abertos</th>
+            <th scope="col" className="py-2 font-medium text-right">Parados</th>
+          </tr></thead>
+          <tbody>
+            {shown.map((s) => (
+              <tr key={s.stageKey} className="border-t border-line">
+                <th scope="row" className="py-2.5 pr-3 text-left font-medium">{s.stage}</th>
+                <td className="py-2.5 pr-3 text-right tabular">{s.total}</td>
+                <td className="py-2.5 text-right tabular">
+                  {s.parados > 0 ? <><Link href={staleHref(s.stageKey, scope)} className={numLink}>{s.parados}</Link><span className="block text-[12px] text-muted">mais antigo: {longSpan(s.maisAntigoSeg)}</span></> : <span className="text-muted">0</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {empty.length > 0 && <p className="text-[13px] text-muted mt-2">{empty.join(", ")}: nada aberto.</p>}
     </Section>
   );
 }
@@ -184,7 +202,7 @@ function Losses({ d, csv }: { d: Overview; csv: { href: string; label: string } 
 function Quality({ d, csv }: { d: Overview; csv: { href: string; label: string } }) {
   const q = d.quality;
   return (
-    <Section id="qualidade" title="Qualidade dos dados" lead="O que falta preencher nos leads de hoje para os relatórios ficarem confiáveis." csv={csv} legend="qualidade">
+    <Section id="qualidade" title="Qualidade dos dados" lead="O que falta preencher nos leads ativos agora (não depende do período) para os relatórios ficarem confiáveis." csv={csv} legend="qualidade">
       <ul className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-10 gap-y-2 text-[14px]">
         {q.checks.map((c) => (
           <li key={c.key} className="flex items-baseline justify-between gap-3 border-b border-line py-1.5">

@@ -1,8 +1,7 @@
 import { sql } from "drizzle-orm";
 import type { SessionUser } from "../auth/sessions-store";
-import { getBusinessHours } from "../domain/hours";
-import { businessSecondsBetween } from "../../lib/business-hours";
-import { dealScope, iso, MIN_SAMPLE, periodStart, periodWindow, rows, SLA_FALLBACK_SECONDS, type ReportFilter } from "./common";
+import { countLateLeads } from "../queries/late-count";
+import { dealScope, iso, MIN_SAMPLE, periodStart, periodWindow, rows, type ReportFilter } from "./common";
 import { firstResponse, funnelMilestones, REMAINING, salesAgg, staleNow } from "./queries";
 
 export type DailySummary = { text: string; links: { label: string; href: string }[]; highlight: boolean };
@@ -25,12 +24,13 @@ export async function dailySummaryText(user: Pick<SessionUser, "id" | "role" | "
   const f: ReportFilter = { period: "hoje", now, ownerId: gestor ? null : user.id };
   const w = periodWindow(f);
   const tomorrow = { from: new Date(periodStart("hoje", now).getTime() + 86_400_000), to: new Date(periodStart("hoje", now).getTime() + 2 * 86_400_000) };
-  const [mi, fr, sales, stale, waiting, hours, [tk], [tm]] = await Promise.all([
+  const [mi, fr, sales, stale, waiting, late, [tk], [tm]] = await Promise.all([
     funnelMilestones(f), firstResponse(f), salesAgg(f, w), staleNow({ now, ownerId: f.ownerId }),
-    rows<{ since: Date; sla: number }>(sql`
-      select d.awaiting_reply_since as since, coalesce(nullif(s.sla_minutes, 0) * 60, ${SLA_FALLBACK_SECONDS})::int as sla from deals d join stages s on s.id = d.stage_id
+    rows<{ id: string }>(sql`
+      select d.id from deals d
       where d.closed_at is null and d.awaiting_reply_since is not null and d.awaiting_reply_since <= ${iso(now)}::timestamptz and ${dealScope(f)}`),
-    getBusinessHours(),
+    // "Atrasado" é uma definição só, a do motor e do shell: alerta de espera aberto (o mesmo número do sino e da lista /funil?filtro=atrasados).
+    countLateLeads(user),
     rows<{ n: number }>(sql`
       select count(*)::int as n from tasks t left join deals d on d.id = t.deal_id
       where t.done_at is null and t.due_at < ${iso(now)}::timestamptz
@@ -42,7 +42,6 @@ export async function dailySummaryText(user: Pick<SessionUser, "id" | "role" | "
         coalesce(sum(${REMAINING}) filter (where s.kind = 'fechado' and d.charge_at >= ${iso(tomorrow.from)}::timestamptz and d.charge_at < ${iso(tomorrow.to)}::timestamptz), 0)::float8 as "cobrancasCents"
       from deals d join stages s on s.id = d.stage_id where ${dealScope(f)}`),
   ]);
-  const late = waiting.filter((x) => businessSecondsBetween(new Date(x.since).getTime(), now.getTime(), hours) >= x.sla).length;
   const parados = stale.reduce((a, s) => a + s.parados, 0);
   const tasksLate = tk?.n ?? 0;
   const day = now.toLocaleDateString("pt-BR", { timeZone: "America/Bahia", weekday: "long", day: "2-digit", month: "2-digit" });

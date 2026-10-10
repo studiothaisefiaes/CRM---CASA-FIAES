@@ -25,7 +25,7 @@ export default async function RelatoriosPage({ searchParams }: PageProps<"/relat
   const filter = { period, ownerId: dono, source };
   const qs = new URLSearchParams({ periodo: period, ...(dono ? { dono } : {}), ...(source ? { origem: source } : {}) }).toString();
   const [people, sources, data] = await Promise.all([
-    gestor ? activeUsers() : Promise.resolve([]), reportSources(),
+    gestor ? activeUsers() : Promise.resolve([]), reportSources(gestor ? null : user.id),
     aba === "analise" ? loadAnalysis(user, filter) : loadOverview(user, filter),
   ]);
   return (
@@ -34,10 +34,10 @@ export default async function RelatoriosPage({ searchParams }: PageProps<"/relat
         actions={<><PeriodTabs people={people} origins={sources} /><ExportMenu qs={qs} gestor={gestor} /></>} />
       <div className="px-5 lg:px-8 flex flex-col gap-8 max-w-[1280px]">
         <ReportTabs value={aba} />
-        <div role="tabpanel" aria-label={aba === "analise" ? "Análise" : "Visão geral"} className="min-w-0">
+        <div role="tabpanel" id="rel-panel" aria-labelledby={`rel-tab-${aba}`} className="min-w-0">
           {"followup" in data
             ? <AnalysisTab data={data} qs={qs} />
-            : <OverviewTab data={data} period={period} qs={qs} gestor={gestor} />}
+            : <OverviewTab data={data} period={period} qs={qs} gestor={gestor} scope={{ dono, fonte: source }} />}
         </div>
       </div>
     </main>

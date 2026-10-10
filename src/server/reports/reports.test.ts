@@ -2,13 +2,14 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { db } from "../db";
 import { users } from "../db/schema";
 import { recordInbound, recordOutbound, moveDeal, moveDealTx } from "../domain/deals";
-import { toCsv, periodStart } from "./index";
+import { toCsv, periodStart, csvDisposition } from "./index";
 import {
   periodWindow, firstResponse, funnelMilestones, staleNow, sourceToSale, lossesByReasonAndStage, financeWithPaid, dataQuality,
   crmVsPhone, followupEfficacy, demandHeatmap, personVsGoal, executiveNumbers, dailySummaryText,
 } from "./index";
 import { archiveDeals } from "../domain/archive";
-import { deals, lists, leadSources, tasks, contacts, stages } from "../db/schema";
+import { deals, lists, leadSources, tasks, contacts, stages, alerts } from "../db/schema";
+import { countLateLeads } from "../queries/late-count";
 import { completeTaskTx } from "../domain/tasks";
 import { eq, sql } from "drizzle-orm";
 import { resetDb } from "../../../test/db";
@@ -16,6 +17,24 @@ import { resetDb } from "../../../test/db";
 describe("relatórios: utilidades", () => {
   it("CSV com BOM, ; e aspas", () => {
     expect(toCsv(["a", "b"], [["x;y", 2]])).toBe('﻿a;b\r\n"x;y";2');
+  });
+
+  it("CSV não deixa texto virar fórmula no Excel, mas número negativo fica intacto", () => {
+    const csv = toCsv(["a"], [['=HYPERLINK("http://x";"clique")'], ["@SUM(A1)"], ["-2+3"], ["+1"], ["\tx"], [-5], ["normal"], ["linha\nquebrada"]]);
+    const lines = csv.slice(1).split("\r\n");
+    expect(lines[1]).toBe('"\'=HYPERLINK(""http://x"";""clique"")"');
+    expect(lines[2]).toBe("'@SUM(A1)");
+    expect(lines[3]).toBe("'-2+3");
+    expect(lines[4]).toBe("'+1");
+    expect(lines[5]).toBe("'\tx");
+    expect(lines[6]).toBe("-5");
+    expect(lines[7]).toBe("normal");
+    expect(csv).toContain('"linha\nquebrada"');
+  });
+
+  it("nome do arquivo CSV: ASCII em filename e o original em filename*", () => {
+    expect(csvDisposition("funil", "Este mês")).toBe(`attachment; filename="casa-fiaes-funil-este-mes.csv"; filename*=UTF-8''casa-fiaes-funil-este-m%C3%AAs.csv`);
+    expect(csvDisposition("origem", "7 dias")).toBe(`attachment; filename="casa-fiaes-origem-7-dias.csv"; filename*=UTF-8''casa-fiaes-origem-7-dias.csv`);
   });
 
   it("início do período no fuso de Salvador", () => {
@@ -270,7 +289,8 @@ describe("relatórios honestos (T13a)", () => {
   });
 
   it("resumo do dia tem os números e o link para os atrasados", async () => {
-    await recordInbound({ channelId: null, externalId: "R1", phoneRaw: "71999994005", body: "oi", at: T(10) });
+    const r1 = await recordInbound({ channelId: null, externalId: "R1", phoneRaw: "71999994005", body: "oi", at: T(10) }); if (!("dealId" in r1)) throw new Error();
+    await db.insert(alerts).values({ dealId: r1.dealId, type: "sem_resposta_minutos", message: "x", dedupeKey: "k-r1", waitKey: `${r1.dealId}:espera` });
     const [g] = await db.insert(users).values({ name: "G2", email: "g2@c.com", role: "gestor", passwordHash: "x" }).returning();
     const s = await dailySummaryText({ id: g.id, role: "gestor", name: "G2", email: "g2@c.com" }, T(19));
     expect(s.text).toMatch(/1 lead novo/); expect(s.text).toMatch(/esper/);
@@ -352,15 +372,6 @@ describe("relatórios honestos: rodada de correções 1", () => {
     expect(s.text).toMatch(/2 de 3 dentro do prazo/); expect(s.text).not.toMatch(/66%|67%/);
   });
 
-  it("espera sem SLA na etapa usa o SLA do Lead (ou 2 min), igual à primeira resposta", async () => {
-    await db.update(stages).set({ slaMinutes: null }).where(eq(stages.key, "atendimento"));
-    const a = await lead(20, T(9)); await recordOutbound({ dealId: a, channelId: null, body: "a", at: T(9, 1) });
-    await recordInbound({ channelId: null, externalId: "S2", phoneRaw: phone(20), body: "e então?", at: T(10) });
-    const [g] = await db.insert(users).values({ name: "G", email: "g@c.com", role: "gestor", passwordHash: "x" }).returning();
-    const s = await dailySummaryText({ id: g.id, role: "gestor", name: "G", email: "g@c.com" }, T(12));
-    expect(s.text).toMatch(/1 esperando resposta agora \(1 fora do prazo\)/);
-  });
-
   it("janela anterior é aberta no fim: o instante da fronteira não conta duas vezes", async () => {
     await lead(30, T(0, 0, 1));   // 1/10 00:00 local, exatamente onde o mês atual começa
     const m = await funnelMilestones({ period: "mes", now: T(12, 0, 31), compare: true });
@@ -400,14 +411,28 @@ describe("relatórios: correções da T13a (T13b)", () => {
     expect((await firstResponse({ period: "hoje", now: T(18) })).semResposta).toBe(1);
   });
 
-  it("resumo: etapa com SLA 0 usa o prazo de reserva (0 é sem prazo)", async () => {
-    await db.update(stages).set({ slaMinutes: 0 }).where(eq(stages.key, "atendimento"));
+  it("etapa com SLA 0 (sem prazo) usa a reserva de 2 min na primeira resposta", async () => {
+    await db.update(stages).set({ slaMinutes: 0 }).where(eq(stages.key, "lead"));
     const a = await lead(61, T(9)); await recordOutbound({ dealId: a, channelId: null, body: "a", at: T(9, 1) });
-    await recordInbound({ channelId: null, externalId: "SLA0", phoneRaw: phone(61), body: "e então?", at: T(10) });
+    const b = await lead(62, T(10)); await recordOutbound({ dealId: b, channelId: null, body: "a", at: T(10, 5) });
+    const fr = await firstResponse({ period: "hoje", now: T(18) });
+    expect(fr).toMatchObject({ n: 2, slaHit: 1, slaHitPct: 50 }); // 1 min cabe nos 2 min de reserva; 5 min não
+  });
+
+  it("'atrasados' do resumo é a mesma conta da lista e do sino (alerta de espera aberto)", async () => {
+    const a = await lead(65, T(9)); const b = await lead(66, T(9, 5)); await lead(67, T(9, 10)); // 3 esperando; só a e b com alerta
+    const ana = await mkUser("Ana"); await db.update(deals).set({ ownerId: ana.id }).where(eq(deals.id, a));
+    for (const [d, k] of [[a, "a"], [b, "b"]] as const) await db.insert(alerts).values({ dealId: d, type: "sem_resposta_minutos", message: "x", dedupeKey: `k-${k}`, waitKey: `${d}:espera` });
     const g = await gestor();
-    const s = await dailySummaryText(g, T(10, 1)); // 1 min de espera, reserva de 2 min
-    expect(s.text).toMatch(/1 esperando resposta agora/); expect(s.text).not.toMatch(/fora do prazo/);
-    expect((await dailySummaryText(g, T(10, 5))).text).toMatch(/1 esperando resposta agora \(1 fora do prazo\)/);
+    const sg = await dailySummaryText(g, T(12));
+    expect(sg.text).toMatch(/3 esperando resposta agora \(2 fora do prazo\)/);
+    expect(sg.links.find((l) => l.href.includes("atrasados"))!.label).toBe("Ver atrasados (2)");
+    expect(await countLateLeads(g)).toBe(2);
+    const sa = await dailySummaryText(ana, T(12)); // atendente: só os dela, igual ao sino dela
+    expect(sa.links.find((l) => l.href.includes("atrasados"))!.label).toBe(`Ver atrasados (${await countLateLeads(ana)})`);
+    expect(await countLateLeads(ana)).toBe(1);
+    await db.update(alerts).set({ resolvedAt: new Date() });
+    expect((await dailySummaryText(g, T(12))).links.some((l) => l.href.includes("atrasados"))).toBe(false);
   });
 
   it("amanhã perto da meia-noite de Salvador (23:30 local = 02:30 UTC)", async () => {
@@ -421,5 +446,22 @@ describe("relatórios: correções da T13a (T13b)", () => {
     await db.update(deals).set({ scheduledAt: T(23, 0, 13) }).where(eq(deals.id, c)); // hoje 23h: fora
     const s = await dailySummaryText(await gestor(), now);
     expect(s.text).toMatch(/Amanhã: 1 agendado(?!s)/);
+  });
+});
+
+describe("qualidade dos dados respeita o escopo (T13b fix)", () => {
+  beforeEach(async () => { await resetDb(); });
+  it("atendente não vê a contagem de outra pessoa; origem filtra", async () => {
+    const ana = await mkUser("Ana"), bia = await mkUser("Bia");
+    const a = await lead(70, T(9)); const b = await lead(71, T(9, 5)); const c = await lead(72, T(9, 10));
+    await db.update(deals).set({ ownerId: ana.id }).where(eq(deals.id, a));
+    await db.update(deals).set({ ownerId: bia.id }).where(eq(deals.id, b)); await db.update(deals).set({ ownerId: null }).where(eq(deals.id, c)); // c: sem responsável
+    const all = await dataQuality();
+    expect(all.checks.find((x) => x.key === "abertosSemResponsavel")).toMatchObject({ n: 1, of: 3 });
+    const mine = await dataQuality({ ownerId: ana.id });
+    expect(mine.checks.find((x) => x.key === "abertosSemResponsavel")).toMatchObject({ n: 0, of: 1 });
+    expect(mine.checks.find((x) => x.key === "semOrigem")!.of).toBe(1);
+    expect((await dataQuality({ source: "Não identificada" })).checks.find((x) => x.key === "semOrigem")!.of).toBe(3);
+    expect((await dataQuality({ source: "Instagram" })).checks.find((x) => x.key === "semOrigem")!.of).toBe(0);
   });
 });

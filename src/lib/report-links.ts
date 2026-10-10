@@ -7,9 +7,17 @@ export type FunilFilter = (typeof SUPPORTED_FILTERS)[number];
 
 export const parseFunilFilter = (v: unknown): FunilFilter | null => ((SUPPORTED_FILTERS as readonly unknown[]).includes(v) ? (v as FunilFilter) : null);
 
-export const lateHref = () => "/funil?filtro=atrasados";
-export const waitingHref = () => "/funil?filtro=esperando";
-export const staleHref = (stageKey?: string) => `/funil?filtro=parados${stageKey ? `&etapa=${encodeURIComponent(stageKey)}` : ""}`;
+/** Escopo da tela que o drill-down leva junto: pessoa (`dono`) e origem real (`fonte`). */
+export type LinkScope = { dono?: string | null; fonte?: string | null };
+const href = (params: Record<string, string | undefined>, scope?: LinkScope) => {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries({ ...params, dono: scope?.dono ?? undefined, fonte: scope?.fonte ?? undefined })) if (v) q.set(k, v);
+  return `/funil?${q}`;
+};
+
+export const lateHref = (scope?: LinkScope) => href({ filtro: "atrasados" }, scope);
+export const waitingHref = (scope?: LinkScope) => href({ filtro: "esperando" }, scope);
+export const staleHref = (stageKey?: string, scope?: LinkScope) => href({ filtro: "parados", etapa: stageKey }, scope);
 
 /** Converte um link devolvido por `dailySummaryText` no destino que existe hoje; null quando a lista filtrada ainda não existe. */
 export function summaryLinkHref(href: string): string | null {

@@ -8,6 +8,12 @@ describe("destinos de drill-down dos relatórios", () => {
     expect(staleHref()).toBe("/funil?filtro=parados");
     expect(staleHref("lead")).toBe("/funil?filtro=parados&etapa=lead");
   });
+  it("leva junto a pessoa e a origem escolhidas na tela", () => {
+    const scope = { dono: "u-1", fonte: "Não identificada" };
+    expect(lateHref(scope)).toBe("/funil?filtro=atrasados&dono=u-1&fonte=N%C3%A3o+identificada");
+    expect(staleHref("lead", scope)).toBe("/funil?filtro=parados&etapa=lead&dono=u-1&fonte=N%C3%A3o+identificada");
+    expect(waitingHref({ dono: null, fonte: null })).toBe("/funil?filtro=esperando");
+  });
   it("links do resumo: /atendimento vira /funil enquanto a Fila não existe", () => {
     expect(summaryLinkHref("/atendimento?filtro=atrasados")).toBe("/funil?filtro=atrasados");
     expect(summaryLinkHref("/atendimento?filtro=esperando")).toBe("/funil?filtro=esperando");

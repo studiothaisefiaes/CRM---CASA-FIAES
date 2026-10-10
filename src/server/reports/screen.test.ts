@@ -35,6 +35,7 @@ describe("dados da tela de relatórios", () => {
     expect(o.numbers.ticketMedio).toBeNull();
     expect(o.sources.every((s) => s.receitaCents === null)).toBe(true);
     expect(JSON.stringify(o)).not.toMatch(/R\$|50000|100000/);
+    expect(o.quality.checks.find((c) => c.key === "semOrigem")!.of).toBe(1); // a qualidade dos dados também é só dos leads dela
     const a = await loadAnalysis(u, { period: "hoje", now: T(18) });
     expect(a.people).toBeNull(); expect(a.finance).toBeNull();
   });

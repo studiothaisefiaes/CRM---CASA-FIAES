@@ -20,7 +20,7 @@ export function PeriodTabs({ people, origins }: { people: { id: string; name: st
           </button>
         ))}
       </div>
-      <select aria-label="Pessoa" value={sp.get("dono") ?? ""} onChange={(e) => set("dono", e.target.value)} className={sel}><option value="">Toda a equipe</option>{people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+      {people.length > 0 && <select aria-label="Pessoa" value={sp.get("dono") ?? ""} onChange={(e) => set("dono", e.target.value)} className={sel}><option value="">Toda a equipe</option>{people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>}
       <select aria-label="Origem" value={sp.get("origem") ?? ""} onChange={(e) => set("origem", e.target.value)} className={sel}><option value="">Todas as origens</option>{origins.map((o) => <option key={o} value={o}>{o}</option>)}</select>
     </div>
   );

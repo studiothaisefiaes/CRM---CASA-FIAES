@@ -16,7 +16,7 @@ export function ExecutiveNumbers({ numbers: x, slaHit, slaN, previousLabel }: { 
     { key: "leads", label: "Leads novos", value: <>{x.leadsNovos.atual}</>, sub: "criados no período",
       cmp: compareMetric(x.leadsNovos.atual, x.leadsNovos.anterior, { kind: "count", n: x.leadsNovos.n, nPrev: x.leadsNovos.nAnterior }), prevText: `antes: ${x.leadsNovos.anterior}` },
     { key: "sla", label: "Primeira resposta no prazo",
-      value: x.pctPrimeiraRespostaNoSla.n === 0 ? <span className="text-[16px] font-sans font-normal text-graphite">{insufficientText(0)}</span> : pctSmall ? <>{slaHit} <span className="text-[18px] font-sans font-normal text-graphite">de {slaN}</span></> : <>{x.pctPrimeiraRespostaNoSla.atual}%</>,
+      value: x.pctPrimeiraRespostaNoSla.n === 0 ? <span className="block whitespace-normal text-[16px] leading-snug font-sans font-normal text-graphite">{insufficientText(0)}</span> : pctSmall ? <>{slaHit} <span className="text-[18px] font-sans font-normal text-graphite">de {slaN}</span></> : <>{x.pctPrimeiraRespostaNoSla.atual}%</>,
       sub: `n = ${x.pctPrimeiraRespostaNoSla.n}${pctSmall && x.pctPrimeiraRespostaNoSla.n > 0 ? " · poucos casos para uma %" : ""}`,
       cmp: compareMetric(x.pctPrimeiraRespostaNoSla.atual, x.pctPrimeiraRespostaNoSla.anterior, { kind: "pct", n: x.pctPrimeiraRespostaNoSla.n, nPrev: x.pctPrimeiraRespostaNoSla.nAnterior }),
       prevText: x.pctPrimeiraRespostaNoSla.anterior == null ? undefined : `antes: ${x.pctPrimeiraRespostaNoSla.anterior}% (n = ${x.pctPrimeiraRespostaNoSla.nAnterior})` },
@@ -34,11 +34,11 @@ export function ExecutiveNumbers({ numbers: x, slaHit, slaN, previousLabel }: { 
     <div>
       <dl className={`grid grid-cols-2 gap-px bg-line border-y border-ink/80 ${cells.length === 5 ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}>
         {cells.map((c, i) => (
-          <motion.div key={c.key} className={`bg-paper px-4 py-5 lg:py-6 ${cells.length % 2 === 1 && i === cells.length - 1 ? "col-span-2 lg:col-span-1" : ""}`}
+          <motion.div key={c.key} className={`@container bg-paper px-4 py-5 lg:py-6 ${cells.length % 2 === 1 && i === cells.length - 1 ? "col-span-2 lg:col-span-1" : ""}`}
             initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 + i * 0.06, duration: 0.5, ease: EASE }}>
             <dt className="text-[13px] text-graphite leading-snug min-h-[2.5em]">{c.label}</dt>
             <dd className="mt-1">
-              <p className="font-serif text-[28px] sm:text-[40px] leading-none font-light tabular break-words">{c.value}</p>
+              <p className="font-serif text-[clamp(24px,18cqw,40px)] leading-none font-light tabular whitespace-nowrap">{c.value}</p>
               <p className="text-[13px] text-muted mt-2 tabular">{c.sub}</p>
               {c.cmp && <div className="mt-1.5"><Delta c={c.cmp} prevText={c.prevText} /></div>}
             </dd>

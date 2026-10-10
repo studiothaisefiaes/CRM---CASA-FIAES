@@ -45,7 +45,7 @@ export function FunnelMilestones({ m }: { m: Milestones & { previous?: Milestone
       </ol>
       <div className="mt-5 pt-4 border-t border-dashed border-line-strong flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <span className="text-[16px] font-medium text-graphite">Perdidos <span className="text-[13px] font-normal text-muted">(à parte)</span></span>
-        <span className="tabular"><b className="text-[22px] font-semibold text-alert">{m.perdidos}</b><span className="text-[13px] text-graphite"> · {shareText(m.perdidos, m.leads)} dos leads novos</span></span>
+        <span className="tabular"><b className={`text-[22px] font-semibold ${m.perdidos > 0 ? "text-alert" : ""}`}>{m.perdidos}</b><span className="text-[13px] text-graphite"> · {shareText(m.perdidos, m.leads)} dos leads novos</span></span>
       </div>
       {m.emAberto > 0 && (
         <p className="mt-3 text-[13px] text-graphite bg-paper-2 rounded-[var(--radius-control)] px-3 py-2.5" role="note">

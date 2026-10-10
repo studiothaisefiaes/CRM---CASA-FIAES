@@ -62,7 +62,9 @@ test("celular: relatórios cabem em 390 px, alvos de 44 px e mapa de calor rola 
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   for (const name of ["Visão geral", "Análise"]) expect((await page.getByRole("tab", { name }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
   expect((await page.getByRole("button", { name: "Exportar" }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await page.addStyleTag({ content: 'nav[aria-label="Principal"], nextjs-portal { display: none !important }' }); // só para o print de página inteira: barra fixa e selo do dev não repetem no meio
   await shot(page, "03-visao-geral-celular", { fullPage: true });
+  for (const c of await page.locator("dl > div > dd > p.font-serif").evaluateAll((els) => els.map((el) => ({ sw: el.scrollWidth, cw: el.clientWidth })))) expect(c.sw).toBeLessThanOrEqual(c.cw);
   await page.getByRole("tab", { name: "Análise" }).click();
   await expect(page).toHaveURL(/aba=analise/);
   const region = page.getByRole("region", { name: /Mapa de calor/ });
@@ -71,4 +73,15 @@ test("celular: relatórios cabem em 390 px, alvos de 44 px e mapa de calor rola 
   const { sw, cw } = await region.evaluate((el) => ({ sw: el.scrollWidth, cw: el.clientWidth }));
   expect(sw).toBeGreaterThan(cw); // rola dentro do bloco
   expect(cw).toBeLessThanOrEqual(390);
+});
+
+test.describe("celular: topo dos relatórios em 2x", () => {
+  test.use({ deviceScaleFactor: 2 });
+  test("resumo e números legíveis, sem estourar a célula", async ({ page }) => {
+    await login(page);
+    await page.goto("/relatorios?periodo=mes");
+    await expect(page.getByRole("heading", { name: "Os números do período" })).toBeVisible();
+    await page.addStyleTag({ content: 'nav[aria-label="Principal"], nextjs-portal { display: none !important }' }); // só para o print de página inteira: barra fixa e selo do dev não repetem no meio
+    await shot(page, "04-topo-celular-390x1200", { fullPage: true, clip: { x: 0, y: 0, width: 390, height: 1200 } });
+  });
 });

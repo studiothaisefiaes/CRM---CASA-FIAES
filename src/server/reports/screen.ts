@@ -28,8 +28,8 @@ export async function loadOverview(user: ScreenUser, filter: ReportFilter) {
   const gestor = user.role === "gestor";
   const f = scopedFilter(user, filter);
   const [summary, numbers, response, funnel, stale, sources, losses, channel, quality] = await Promise.all([
-    dailySummaryText(user, f.now), executiveNumbers(f), firstResponse(f), funnelMilestones(f), staleNow({ now: f.now, ownerId: f.ownerId }),
-    sourceToSale(f), lossesByReasonAndStage(f), crmVsPhone(f), dataQuality(),
+    dailySummaryText(user, f.now), executiveNumbers(f), firstResponse(f), funnelMilestones(f), staleNow({ now: f.now, ownerId: f.ownerId, source: f.source }),
+    sourceToSale(f), lossesByReasonAndStage(f), crmVsPhone(f), dataQuality(f),
   ]);
   return {
     summary: {

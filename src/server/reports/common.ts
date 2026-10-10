@@ -89,8 +89,23 @@ export function dealScope(f: ReportFilter, alias = "d", opts: { novos?: boolean 
 export const cohort = (f: ReportFilter, w: Window, alias = "d"): SQL =>
   sql`${sql.raw(alias)}.created_at >= ${iso(w.from)}::timestamptz and ${upTo(`${alias}.created_at`, w)} and ${dealScope(f, alias, { novos: true })}`;
 
-/** CSV com BOM e ; (abre direto no Excel em português). */
+/**
+ * CSV com BOM e ; (abre direto no Excel em português). Texto que começa com = + - @ tab ou CR vira texto puro (prefixo ')
+ * para o Excel não executar como fórmula; número fica intacto (inclusive negativo).
+ */
 export function toCsv(header: string[], data: (string | number | null | undefined)[][]) {
-  const esc = (v: string | number | null | undefined) => { const s = v == null ? "" : String(v); return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
-  return "﻿" + [header, ...data].map((r) => r.map(esc).join(";")).join("\r\n");
+  const esc = (v: string | number | null | undefined) => {
+    if (v == null) return "";
+    let s = String(v);
+    if (typeof v === "string" && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+    return /[;"\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  return "\ufeff" + [header, ...data].map((r) => r.map(esc).join(";")).join("\r\n");
+}
+
+/** Cabeçalho Content-Disposition do CSV: nome em ASCII (`filename`) e o nome com acento em `filename*` (RFC 5987). */
+export function csvDisposition(tipo: string, periodLabel: string): string {
+  const full = `casa-fiaes-${tipo}-${periodLabel.toLowerCase().replace(/\s+/g, "-")}.csv`;
+  const ascii = full.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9._-]/gi, "_");
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(full)}`;
 }

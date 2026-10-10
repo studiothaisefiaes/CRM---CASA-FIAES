@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, gte, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { SOURCE_EXPR } from "../reports/common";
 import type { FunilFilter } from "../../lib/report-links";
 import { db } from "../db";
 import { contacts, deals, messages, stages, users } from "../db/schema";
@@ -11,7 +12,8 @@ export type BoardCard = {
 export type BoardStage = { id: string; key: string; name: string; kind: string; slaMinutes: number | null; color: string; cards: BoardCard[] };
 
 /** Filtros vindos dos relatórios (drill-down): lista só os leads daquele número. */
-export type BoardFilter = { ownerId?: string | null; origin?: string | null; q?: string | null; filtro?: FunilFilter | null; etapa?: string | null };
+export type BoardFilter = { ownerId?: string | null; origin?: string | null; q?: string | null; filtro?: FunilFilter | null; etapa?: string | null;
+  /** Origem real (a mesma dos relatórios, com "Não identificada"). */ source?: string | null };
 
 export async function getBoard(filter: BoardFilter = {}): Promise<BoardStage[]> {
   const st = await db.select().from(stages).where(eq(stages.active, true)).orderBy(asc(stages.position));
@@ -33,6 +35,7 @@ export async function getBoard(filter: BoardFilter = {}): Promise<BoardStage[]> 
     conds.push(isNull(deals.closedAt), eq(contacts.ignored, false),
       sql`exists (select 1 from stages ps where ps.id = ${deals.stageId} and ps.stale_days is not null and ${deals.stageEnteredAt} <= now() - make_interval(days => ps.stale_days))`);
   }
+  if (filter.source) conds.push(sql`${SOURCE_EXPR("deals")} = ${filter.source}`);
   if (filter.etapa && /^[a-z0-9_]{1,40}$/i.test(filter.etapa)) conds.push(sql`exists (select 1 from stages es where es.id = ${deals.stageId} and es.key = ${filter.etapa})`);
   const rows = await db.select({
     id: deals.id, contactId: contacts.id, hasAvatar: sql<boolean>`(${contacts.avatarPath} is not null)`, contactName: contacts.name, phone: contacts.phoneE164, origin: deals.origin, ownerId: deals.ownerId, ownerName: users.name,

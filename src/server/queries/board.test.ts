@@ -37,4 +37,11 @@ describe("getBoard: filtros de drill-down dos relatórios", () => {
     expect(ids(await getBoard({ filtro: "parados", etapa: "lead" }))).toEqual([calm]);
     expect(ids(await getBoard({ filtro: "parados", etapa: "atendimento" }))).toEqual([]);
   });
+
+  it("origem real: 'Não identificada' filtra os leads sem origem", async () => {
+    await db.update(deals).set({ origin: "Instagram", sourceLabel: "Instagram" }).where(eq(deals.id, late));
+    await db.update(deals).set({ origin: "WhatsApp", sourceLabel: null }).where(eq(deals.id, calm));
+    expect(ids(await getBoard({ filtro: "esperando", source: "Instagram" }))).toEqual([late]);
+    expect(ids(await getBoard({ filtro: "esperando", source: "Não identificada" }))).toEqual([calm]);
+  });
 });

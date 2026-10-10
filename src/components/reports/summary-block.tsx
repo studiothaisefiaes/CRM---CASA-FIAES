@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
+import { LEGEND } from "@/lib/report-legend";
 import { Reveal } from "./bars";
 
 /** R1: resumo do dia em texto (dá para copiar e colar no WhatsApp) com os links para as listas. Fica mais quente a partir das 19h. */
@@ -28,6 +29,12 @@ export function SummaryBlock({ text, links, highlight }: { text: string; links: 
           ))}
         </nav>
       )}
+      <details className="group mt-1">
+        <summary className="inline-flex items-center gap-1.5 min-h-11 cursor-pointer list-none text-[13px] text-gold-ink hover:text-ink [&::-webkit-details-marker]:hidden">
+          <span className="inline-block transition-transform group-open:rotate-90" aria-hidden>›</span>Como é calculado
+        </summary>
+        <p className="text-[13px] leading-relaxed text-graphite max-w-[68ch] pb-2">{LEGEND.resumo}</p>
+      </details>
     </Reveal>
   );
 }

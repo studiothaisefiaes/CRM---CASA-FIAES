@@ -104,9 +104,9 @@ function Finance({ d, csv, cobrancas }: { d: Analysis; csv: { href: string; labe
 
 function Fig({ label, value, sub, big }: { label: string; value: string; sub?: string; big?: boolean }) {
   return (
-    <div>
+    <div className="@container">
       <dt className="text-[13px] text-graphite">{label}</dt>
-      <dd><p className={`font-serif font-light leading-none tabular mt-1 ${big ? "text-[28px] sm:text-[40px]" : "text-[28px]"}`}>{value}</p>{sub && <p className="text-[13px] text-muted mt-1.5 tabular">{sub}</p>}</dd>
+      <dd><p className={`font-serif font-light leading-none tabular mt-1 whitespace-nowrap ${big ? "text-[clamp(24px,18cqw,40px)]" : "text-[28px]"}`}>{value}</p>{sub && <p className="text-[13px] text-muted mt-1.5 tabular">{sub}</p>}</dd>
     </div>
   );
 }

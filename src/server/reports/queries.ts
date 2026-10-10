@@ -115,13 +115,13 @@ export async function funnelMilestones(f: ReportFilter): Promise<Milestones & { 
 export type StaleRow = { stageKey: string; stage: string; total: number; parados: number; maisAntigoSeg: number | null };
 
 /** Leads abertos por etapa e quantos estão parados além do limite de dias da etapa (mesma regra do motor). */
-export async function staleNow(opts: { now?: Date; ownerId?: string | null } = {}): Promise<StaleRow[]> {
+export async function staleNow(opts: { now?: Date; ownerId?: string | null; source?: string | null } = {}): Promise<StaleRow[]> {
   const now = iso(opts.now ?? new Date());
   const stale = sql`s.stale_days is not null and d.stage_entered_at <= ${now}::timestamptz - make_interval(days => s.stale_days)`;
   const r = await rows<{ stageKey: string; stage: string; total: number; parados: number; mais: number | null }>(sql`
     select s.key as "stageKey", s.name as stage, count(d.id)::int as total, count(d.id) filter (where ${stale})::int as parados,
       floor(max(extract(epoch from (${now}::timestamptz - d.stage_entered_at))) filter (where ${stale}))::int as mais
-    from stages s left join deals d on d.stage_id = s.id and d.closed_at is null and ${dealScope({ period: "hoje", ownerId: opts.ownerId })}
+    from stages s left join deals d on d.stage_id = s.id and d.closed_at is null and ${dealScope({ period: "hoje", ownerId: opts.ownerId, source: opts.source })}
     where s.active and s.kind not in ('fechado', 'perdido') group by s.id order by s.position`);
   return r.map((x) => ({ stageKey: x.stageKey, stage: x.stage, total: x.total, parados: x.parados, maisAntigoSeg: x.mais }));
 }
@@ -244,8 +244,11 @@ export async function financeWithPaid(f: ReportFilter): Promise<FinanceWithPaid>
 // ------------------------------------------------------------------------------------------------
 export type QualityCheck = { key: string; label: string; n: number; of: number };
 
-/** O que falta nos leads ativos (agora, sem filtro de período): cada item diz quantos de quantos. */
-export async function dataQuality(): Promise<{ checks: QualityCheck[]; overallPct: number | null }> {
+/**
+ * O que falta nos leads ativos de agora (não depende do período): cada item diz quantos de quantos.
+ * Respeita a pessoa e a origem escolhidas; a atendente só enxerga os leads dela (quem chama passa `ownerId`).
+ */
+export async function dataQuality(f: Pick<ReportFilter, "ownerId" | "source" | "origin"> = {}): Promise<{ checks: QualityCheck[]; overallPct: number | null }> {
   const [r] = await rows<Record<string, number>>(sql`
     select count(*)::int as total,
       count(*) filter (where s.kind = 'fechado')::int as fechados,
@@ -259,7 +262,7 @@ export async function dataQuality(): Promise<{ checks: QualityCheck[]; overallPc
       count(*) filter (where s.kind = 'agendado')::int as agendados,
       count(*) filter (where s.kind = 'agendado' and d.scheduled_at is null)::int as "agendadosSemData",
       count(*) filter (where ${SOURCE_EXPR()} = ${NOT_IDENTIFIED})::int as "semOrigem"
-    from deals d join stages s on s.id = d.stage_id where ${dealScope({ period: "hoje" })}`);
+    from deals d join stages s on s.id = d.stage_id where ${dealScope({ period: "hoje", ownerId: f.ownerId, source: f.source, origin: f.origin })}`);
   const checks: QualityCheck[] = [
     { key: "fechadosSemValor", label: "Vendas sem valor", n: r.fechadosSemValor, of: r.fechados },
     { key: "fechadosSemServico", label: "Vendas sem serviço", n: r.fechadosSemServico, of: r.fechados },
@@ -400,9 +403,9 @@ export async function executiveNumbers(f: ReportFilter): Promise<ExecutiveNumber
 // ------------------------------------------------------------------------------------------------
 // Filtro de origem da tela
 // ------------------------------------------------------------------------------------------------
-/** Origens reais que existem nos leads ativos, para o seletor da tela ("Não identificada" sempre presente, por último). */
-export async function reportSources(): Promise<string[]> {
-  const r = await rows<{ s: string }>(sql`select distinct ${SOURCE_EXPR()} as s from deals d where ${dealScope({ period: "hoje" })}`);
+/** Origens reais que existem nos leads ativos (da pessoa, se `ownerId`), para o seletor da tela ("Não identificada" sempre presente, por último). */
+export async function reportSources(ownerId?: string | null): Promise<string[]> {
+  const r = await rows<{ s: string }>(sql`select distinct ${SOURCE_EXPR()} as s from deals d where ${dealScope({ period: "hoje", ownerId })}`);
   const out = r.map((x) => x.s).filter((x) => x !== NOT_IDENTIFIED).sort((a, b) => a.localeCompare(b, "pt-BR"));
   return [...out, NOT_IDENTIFIED];
 }

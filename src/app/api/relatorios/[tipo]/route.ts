@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { findSessionUser } from "@/server/auth/sessions-store";
-import { PERIOD_LABEL, toCsv, type Period, type ReportFilter } from "@/server/reports/common";
+import { csvDisposition, PERIOD_LABEL, toCsv, type Period, type ReportFilter } from "@/server/reports/common";
 import {
   crmVsPhone, dataQuality, demandHeatmap, executiveNumbers, financeWithPaid, firstResponse, followupEfficacy, funnelMilestones,
   lossesByReasonAndStage, personVsGoal, sourceToSale, staleNow, type ChargeItem,
@@ -66,7 +66,7 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/relatorios/[
       break;
     }
     case "parados": {
-      const r = await staleNow({ ownerId: f.ownerId });
+      const r = await staleNow({ ownerId: f.ownerId, source: f.source });
       csv = toCsv(["Etapa", "Leads abertos", "Leads parados", "Mais antigo parado (dias)"], r.map((s) => [s.stage, s.total, s.parados, s.maisAntigoSeg == null ? "" : Math.floor(s.maisAntigoSeg / 86_400)]));
       break;
     }
@@ -90,7 +90,7 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/relatorios/[
       break;
     }
     case "qualidade": {
-      const q = await dataQuality();
+      const q = await dataQuality(f);
       csv = toCsv(["Checagem", "Com problema", "Base (de)"], [...q.checks.map((c) => [c.label, c.n, c.of]), ["Índice composto (0 a 100)", q.overallPct ?? "", ""]]);
       break;
     }
@@ -128,6 +128,5 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/relatorios/[
     }
     default: return new Response("relatório desconhecido", { status: 404 });
   }
-  const name = `casa-fiaes-${tipo}-${PERIOD_LABEL[period].toLowerCase().replace(/\s+/g, "-")}.csv`;
-  return new Response(csv, { headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="${name}"`, "cache-control": "no-store" } });
+  return new Response(csv, { headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": csvDisposition(tipo, PERIOD_LABEL[period]), "cache-control": "no-store" } });
 }
