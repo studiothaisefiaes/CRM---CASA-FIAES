@@ -10,6 +10,7 @@ import { Empty } from "@/components/ui/empty";
 import { useToast } from "@/components/ui/toast";
 import { IconWhatsApp, IconPlus, IconCheck, IconRefresh } from "@/components/icons";
 import { createChannelAction, channelQrAction, channelStateAction, disconnectChannelAction } from "@/app/(app)/config/actions";
+import { useLiveRefresh } from "@/components/shell/live";
 import { SPRING, EASE } from "@/lib/motion";
 import { relTime } from "@/lib/format";
 import { formatPhoneClient } from "@/lib/phone-client";
@@ -21,6 +22,7 @@ export function WhatsAppChannels({ channels }: { channels: Ch[] }) {
   const [naming, setNaming] = useState(false); const [name, setName] = useState(""); const [err, setErr] = useState<string | null>(null);
   const [qrFor, setQrFor] = useState<Ch | null>(null); const [confirm, setConfirm] = useState<{ ch: Ch; remove: boolean } | null>(null);
   const [pending, start] = useTransition(); const toast = useToast(); const router = useRouter();
+  useLiveRefresh(["channels"]);
   const create = () => start(async () => {
     const r = await createChannelAction(name);
     if (!r.ok) return setErr(r.error);

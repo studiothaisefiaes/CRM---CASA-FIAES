@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireUser } from "@/server/auth/session";
 import { listContacts } from "@/server/queries/contacts";
+import { LiveRefresh } from "@/components/shell/live";
 import { PageHeader } from "@/components/page-header";
 import { ImportButton } from "./import-button";
 import { SearchBox } from "./search-box";
@@ -21,6 +22,7 @@ export default async function ContatosPage({ searchParams }: PageProps<"/contato
   const qs = (p: number) => { const s = new URLSearchParams(); if (q) s.set("q", q); if (clientes) s.set("clientes", "1"); if (p > 1) s.set("p", String(p)); return s.size ? `?${s}` : ""; };
   return (
     <main className="pb-12">
+      <LiveRefresh scopes={["queue"]} />
       <PageHeader title="Contatos" subtitle={`${data.total.toLocaleString("pt-BR")} contato${data.total === 1 ? "" : "s"}`}
         actions={<><SearchBox initial={q ?? ""} /><Link href={clientes ? "/contatos" : "/contatos?clientes=1"} className={`h-9 px-3 inline-flex items-center rounded-[var(--radius-control)] border text-sm ${clientes ? "bg-ink text-paper border-ink" : "border-line-strong"}`}>Só clientes</Link>{user.role === "gestor" && <ImportButton />}</>} />
       <div className="px-5 lg:px-8">

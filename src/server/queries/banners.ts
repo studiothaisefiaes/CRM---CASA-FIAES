@@ -10,7 +10,7 @@ export type ShellBanners = {
   quiet: { id: string; name: string; until: string }[];
 };
 
-/** Estado de conexão para os banners do app. A tela se atualiza pelo evento SSE `canal_atualizado` (router.refresh). */
+/** Estado de conexão para os banners do app. A tela se atualiza pelo evento SSE `canal_atualizado` (escopo `channels`). */
 export async function getShellBanners(now = new Date()): Promise<ShellBanners> {
   const [down, quiet] = await Promise.all([
     db.select({ id: channels.id, name: channels.name }).from(channels)

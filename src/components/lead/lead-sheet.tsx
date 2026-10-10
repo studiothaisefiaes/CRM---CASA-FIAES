@@ -12,6 +12,7 @@ import { markConversationReadAction, moveDealAction } from "@/app/(app)/funil/ac
 import { useToast } from "@/components/ui/toast";
 import { attendanceLabel } from "@/lib/field-labels";
 import { IconClose, IconPhone, IconMail, IconInstagram, IconWhatsApp, IconCake, IconClock, IconArrowRight } from "@/components/icons";
+import { useLiveRefresh } from "@/components/shell/live";
 import { useUrgency } from "@/components/pipeline/timer";
 import { Badge } from "@/components/ui/badge";
 import { formatPhoneClient } from "@/lib/phone-client";
@@ -47,6 +48,7 @@ export function LeadSheet({ d, nextId }: { d: DealDetail; nextId?: string | null
   const router = useRouter();
   const sp = useSearchParams();
   const toast = useToast();
+  useLiveRefresh([`deal:${d.deal.id}`]); // o card aberto só se atualiza com avisos do próprio lead
   const [, start] = useTransition();
   const [tab, setTab] = useState<"conversa" | "dados" | "historico">("conversa");
   const [sideTab, setSideTab] = useState<"dados" | "historico">("dados");

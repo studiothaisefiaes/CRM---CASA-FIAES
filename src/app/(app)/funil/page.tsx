@@ -8,6 +8,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { PageHeader } from "@/components/page-header";
 import { Board } from "@/components/pipeline/board";
 import { Toolbar } from "@/components/pipeline/toolbar";
+import { LiveRefresh } from "@/components/shell/live";
 import { LeadSheetPresence } from "@/components/lead/lead-sheet";
 import { parseFunilFilter } from "@/lib/report-links";
 import Link from "next/link";
@@ -44,6 +45,7 @@ export default async function FunilPage({ searchParams }: PageProps<"/funil">) {
           <Link href="/funil" className="inline-flex items-center min-h-11 text-graphite underline underline-offset-2 hover:text-ink">Mostrar todos</Link>
         </p>
       )}
+      <LiveRefresh scopes={["queue"]} />
       <Board stages={board} lostReasons={lostReasons} />
       <LeadSheetPresence d={detail} nextId={nextId} />
     </main>

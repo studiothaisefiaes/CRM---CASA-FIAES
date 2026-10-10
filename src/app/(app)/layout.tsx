@@ -3,7 +3,7 @@ import { getMyAlerts } from "@/server/queries/alerts";
 import { getShellBanners } from "@/server/queries/banners";
 import { countLateLeads } from "@/server/queries/late-count";
 import { Sidebar } from "@/components/shell/sidebar";
-import { LiveProvider } from "@/components/shell/live";
+import { LiveProvider, LiveRefresh } from "@/components/shell/live";
 import { LateWatch } from "@/components/shell/late-watch";
 import { ShellBannersView } from "@/components/shell/connection-banner";
 import { ToastProvider } from "@/components/ui/toast";
@@ -19,6 +19,8 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
         <HoursProvider hours={hours}>
           <Sidebar user={user} alerts={alerts} />
           <LateWatch initial={late} />
+          {/* O que o shell mostra: sino (alerts) e banners de conexão (channels). */}
+          <LiveRefresh scopes={["alerts", "channels"]} />
           <div className="lg:pl-[232px] min-h-dvh pb-20 lg:pb-0">
             <ShellBannersView banners={banners} role={user.role} />
             {children}

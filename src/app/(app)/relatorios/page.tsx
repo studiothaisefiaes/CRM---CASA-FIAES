@@ -3,6 +3,7 @@ import { PERIOD_LABEL, type Period } from "@/server/reports/common";
 import { reportSources } from "@/server/reports/queries";
 import { loadAnalysis, loadOverview } from "@/server/reports/screen";
 import { activeUsers } from "@/server/domain/deals";
+import { LiveRefresh } from "@/components/shell/live";
 import { PageHeader } from "@/components/page-header";
 import { PeriodTabs } from "@/components/reports/period-tabs";
 import { ExportMenu } from "@/components/reports/export-menu";
@@ -30,6 +31,8 @@ export default async function RelatoriosPage({ searchParams }: PageProps<"/relat
   ]);
   return (
     <main className="pb-16">
+      {/* Relatórios não assinam a Fila: só vendas/fechamentos, a cada 60 s e ao voltar para a aba. */}
+      <LiveRefresh scopes={["reports"]} pollMs={60_000} />
       <PageHeader title="Relatórios" subtitle={`${PERIOD_LABEL[period]} · números reais do CRM`}
         actions={<><PeriodTabs people={people} origins={sources} /><ExportMenu qs={qs} gestor={gestor} /></>} />
       <div className="px-5 lg:px-8 flex flex-col gap-8 max-w-[1280px]">

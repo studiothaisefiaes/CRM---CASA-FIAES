@@ -5,6 +5,7 @@ import { getToday, type TodayItem } from "@/server/queries/today";
 import { WaitingList } from "@/components/today/waiting-list";
 import { Stagger } from "@/components/today/stagger";
 import { IconCalendar, IconCake, IconMoney, IconRefresh, IconArrowRight } from "@/components/icons";
+import { LiveRefresh } from "@/components/shell/live";
 import { PushOptIn } from "@/components/shell/push-optin";
 import { vapidConfig } from "@/server/env";
 import { formatPhoneClient } from "@/lib/phone-client";
@@ -30,6 +31,7 @@ export default async function HojePage({ searchParams }: PageProps<"/">) {
       {sp.aviso === "sem-permissao" && <p className="mb-5 text-sm bg-gold-soft text-gold-ink rounded-[var(--radius-control)] px-3 py-2">Só a gestão tem acesso às configurações.</p>}
       <p className="text-sm text-muted first-letter:uppercase">{date}</p>
       <h1 className="font-serif text-[40px] lg:text-[48px] leading-none font-light mt-1">{greeting()}, {user.name.split(" ")[0]}.</h1>
+      <LiveRefresh scopes={["queue"]} />
       {vapid && <PushOptIn publicKey={vapid.publicKey} />}
       <Stagger className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-8" itemClassNames={["col-span-2", "", ""]}>
         <div className={`h-full rounded-[var(--radius-panel)] p-5 lg:p-6 flex flex-wrap items-end justify-between gap-x-4 gap-y-4 ${late ? "bg-alert-soft border border-alert/40" : "bg-ink text-paper"}`}>
