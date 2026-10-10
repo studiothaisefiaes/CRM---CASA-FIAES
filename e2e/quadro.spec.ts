@@ -1,29 +1,12 @@
 import { test, expect, type Page } from "@playwright/test";
-import { login, simulate, ageLead, e2eSql, shot } from "./helpers";
+import { login, simulate, ageLead, e2eSql, shot, usaQuadroIsolado } from "./helpers";
 
 const PREFIXO = "+5571997361";
 const phone = (n: number) => `${PREFIXO}${String(n).padStart(3, "0")}`;
 const entra = (page: Page, n: number, name: string, text = "Oi, tudo bem?") => simulate(page, { phone: `71 99736-1${String(n).padStart(3, "0")}`, name, text });
 const etapaDe = async (n: number) => (await e2eSql("select s.key from deals d join stages s on s.id = d.stage_id join contacts c on c.id = d.contact_id where c.phone_e164 = $1", [phone(n)]))[0]?.key;
 
-/** Isola o cenário do que os outros specs deixaram no banco de e2e: avisos antigos resolvidos e leads de fora arquivados. */
-async function isola() {
-  await e2eSql("update alerts set resolved_at = now() where resolved_at is null");
-  await e2eSql("update deals set archived_at = now() where archived_at is null"); // todo teste começa de um quadro limpo
-}
-/**
- * Estes testes precisam de um quadro só deles, mas o banco de e2e é compartilhado com os outros arquivos (os relatórios somam as vendas do dia, por exemplo):
- * antes de tudo os leads que já existiam saem de cena (arquivados) e, no fim, os dos testes saem e os de antes voltam.
- */
-let existentes: string[] = [];
-test.beforeAll(async () => {
-  existentes = (await e2eSql("select id from deals where archived_at is null")).map((r) => r.id as string);
-  await e2eSql("update deals set archived_at = now() where id = any($1)", [existentes]);
-});
-test.afterAll(async () => {
-  await e2eSql("update deals set archived_at = now() where archived_at is null");
-  await e2eSql("update deals set archived_at = null where id = any($1)", [existentes]);
-});
+const isola = usaQuadroIsolado();
 
 const coluna = (page: Page, nome: RegExp) => page.getByRole("region", { name: nome });
 

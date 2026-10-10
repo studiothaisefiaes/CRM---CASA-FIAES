@@ -1,5 +1,8 @@
 import { NEAR_SLA_RATIO, slaProgress } from "./queue";
 
+/** Fechados e perdidos aparecem no Quadro (e na Jornada) por tantos dias depois de fechar: a query e o rótulo "últimos N dias" usam esta constante. */
+export const BOARD_CLOSED_DAYS = 30;
+
 /** Ordem de urgência do Quadro, a mesma ideia da Fila: atrasado, perto do prazo, aguardando resposta, o resto (a bola está com a cliente). */
 export type BoardUrgency = "late" | "near" | "waiting" | "idle";
 const RANK: Record<BoardUrgency, number> = { late: 0, near: 1, waiting: 2, idle: 3 };

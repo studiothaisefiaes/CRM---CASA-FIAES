@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   closestCenter, DndContext, DragOverlay, KeyboardSensor, PointerSensor, pointerWithin, TouchSensor, useDraggable, useDroppable, useSensor, useSensors,
@@ -72,6 +72,9 @@ export function Board({ stages, viewer }: { stages: BoardStage[]; viewer: Viewer
   // Soltou em Agendado/Fechado/Perdido: a folha da Fila abre; `n` renova a folha a cada soltura.
   const [sheet, setSheet] = useState<{ n: number; cardId: string; name: string; to: { id: string; key: string } } | null>(null);
   const [focusId, setFocusId] = useState<string | null>(null);
+  // O card que está esperando a folha abrir (a busca do lead leva um instante): mostra "Abrindo…".
+  const [openingId, setOpeningId] = useState<string | null>(null);
+  const sheetReady = useCallback(() => setOpeningId(null), []);
   const [, start] = useTransition();
   const toast = useToast();
   const router = useRouter();
@@ -127,7 +130,7 @@ export function Board({ stages, viewer }: { stages: BoardStage[]; viewer: Viewer
     if (!to) return;
     const name = cardName(from.card);
     if (e.activatorEvent instanceof KeyboardEvent) setFocusId(cardId);
-    if (OWN_ACTION_KINDS.includes(to.kind)) setSheet((s) => ({ n: (s?.n ?? 0) + 1, cardId, name, to: { id: to.id, key: to.key } }));
+    if (OWN_ACTION_KINDS.includes(to.kind)) { setOpeningId(cardId); setSheet((s) => ({ n: (s?.n ?? 0) + 1, cardId, name, to: { id: to.id, key: to.key } })); }
     else commit(cardId, name, to);
   }
 
@@ -158,7 +161,7 @@ export function Board({ stages, viewer }: { stages: BoardStage[]; viewer: Viewer
           <div className="flex gap-3 overflow-x-auto scroll-thin px-5 lg:px-8 pb-6 snap-x snap-mandatory lg:snap-none" style={{ height: "calc(100dvh - 190px)" }}>
             {columns.map((s) => (s.kind === "fechado" || s.kind === "perdido") && !openClosed[s.id]
               ? <CollapsedColumn key={s.id} stage={s} onOpen={() => setOpenClosed((o) => ({ ...o, [s.id]: true }))} />
-              : <ColumnView key={s.id} stage={s} activeId={activeId} focusId={focusId} filtersQs={filtersQs} onCollapse={s.kind === "fechado" || s.kind === "perdido" ? () => setOpenClosed((o) => ({ ...o, [s.id]: false })) : undefined} />)}
+              : <ColumnView key={s.id} stage={s} activeId={activeId} focusId={focusId} openingId={openingId} filtersQs={filtersQs} onCollapse={s.kind === "fechado" || s.kind === "perdido" ? () => setOpenClosed((o) => ({ ...o, [s.id]: false })) : undefined} />)}
           </div>
         </LayoutGroup>
         {/* "Reduzir movimento": o card solta e pronto, sem o voo de volta. */}
@@ -166,7 +169,7 @@ export function Board({ stages, viewer }: { stages: BoardStage[]; viewer: Viewer
           {active && <div className="w-[272px]"><DealCard card={active.card} slaMinutes={active.stage.slaMinutes} stageKind={active.stage.kind} stageName={active.stage.name} dragging filtersQs={filtersQs} /></div>}
         </DragOverlay>
       </DndContext>
-      {sheet && <StageSheets key={sheet.n} dealId={sheet.cardId} name={sheet.name} toKey={sheet.to.key} viewer={viewer} onMoved={() => { applyMove(sheet.cardId, sheet.to.id); router.refresh(); }} />}
+      {sheet && <StageSheets key={sheet.n} dealId={sheet.cardId} name={sheet.name} toKey={sheet.to.key} viewer={viewer} onMoved={() => { applyMove(sheet.cardId, sheet.to.id); router.refresh(); }} onReady={sheetReady} />}
     </>
   );
 }
@@ -183,7 +186,7 @@ function CollapsedColumn({ stage, onOpen }: { stage: Column; onOpen: () => void 
   );
 }
 
-function ColumnView({ stage, activeId, focusId, filtersQs, onCollapse }: { stage: Column; activeId: string | null; focusId: string | null; filtersQs: string; onCollapse?: () => void }) {
+function ColumnView({ stage, activeId, focusId, openingId, filtersQs, onCollapse }: { stage: Column; activeId: string | null; focusId: string | null; openingId: string | null; filtersQs: string; onCollapse?: () => void }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage.id });
   // Atrasado = alerta de espera aberto (a regra da Fila e da Jornada), não o relógio da tela.
   const late = stage.cards.filter((c) => c.urgency === "late").length;
@@ -205,7 +208,7 @@ function ColumnView({ stage, activeId, focusId, filtersQs, onCollapse }: { stage
             <motion.div key={c.id} layout layoutId={c.id} transition={SPRING}
               initial={{ opacity: 0, y: -8, scale: 0.98 }} animate={{ opacity: c.id === activeId ? 0.35 : 1, y: 0, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }}>
               <Draggable id={c.id} refocus={c.id === focusId}>
-                {(a11y) => <DealCard card={c} slaMinutes={stage.slaMinutes} stageKind={stage.kind} stageName={stage.stageNames?.[c.stageId]} filtersQs={filtersQs} a11y={a11y} />}
+                {(a11y) => <DealCard card={c} slaMinutes={stage.slaMinutes} stageKind={stage.kind} stageName={stage.stageNames?.[c.stageId]} filtersQs={filtersQs} a11y={a11y} opening={c.id === openingId} />}
               </Draggable>
             </motion.div>
           ))}

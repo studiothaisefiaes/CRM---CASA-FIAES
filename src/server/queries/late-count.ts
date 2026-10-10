@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, isNull, notLike, or, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, notLike, or, sql, type AnyColumn, type SQL } from "drizzle-orm";
 import { db } from "../db";
 import { alerts, contacts, deals } from "../db/schema";
 import type { SessionUser } from "../auth/sessions-store";
@@ -18,6 +18,10 @@ const lateWhere = (user: Who, scope: Scope = {}) => and(
   isNull(deals.archivedAt), eq(contacts.ignored, false),
   user.role === "gestor" ? undefined : scope.onlyOwn ? eq(deals.ownerId, user.id) : or(eq(deals.ownerId, user.id), isNull(deals.ownerId)),
 );
+
+/** O mesmo "atrasado" em SQL, para contar e filtrar sem trazer os ids: alerta de espera aberto (que não é de tarefa) do lead. */
+export const lateExists = (dealId: SQL | AnyColumn): SQL =>
+  sql`exists (select 1 from alerts al where al.deal_id = ${dealId} and al.wait_key is not null and al.wait_key not like 'task:%' and al.resolved_at is null)`;
 
 /** Quantos leads estão com a espera vencida. */
 export async function countLateLeads(user: Who, scope: Scope = {}): Promise<number> {

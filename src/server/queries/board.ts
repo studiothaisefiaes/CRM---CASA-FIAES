@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
 import { SOURCE_EXPR } from "../reports/common";
 import type { FunilFilter } from "../../lib/report-links";
 import { isUuid } from "../../lib/uuid";
@@ -7,8 +7,8 @@ import { contacts, deals, messages, stages, users } from "../db/schema";
 import type { SessionUser } from "../auth/sessions-store";
 import { getBusinessHours } from "../domain/hours";
 import { businessSecondsBetween } from "../../lib/business-hours";
-import { boardUrgency, orderByUrgency, type BoardUrgency } from "../../lib/board-order";
-import { lateDealIds } from "./late-count";
+import { BOARD_CLOSED_DAYS, boardUrgency, orderByUrgency, type BoardUrgency } from "../../lib/board-order";
+import { lateDealIds, lateExists } from "./late-count";
 
 export type BoardCard = {
   id: string; contactId: string; hasAvatar: boolean; contactName: string | null; phone: string; origin: string; ownerId: string | null; ownerName: string | null;
@@ -26,14 +26,14 @@ export type BoardFilter = { ownerId?: string | null; origin?: string | null; q?:
 type Who = Pick<SessionUser, "id" | "role">;
 
 /**
- * O Quadro: os leads abertos e os fechados/perdidos dos últimos 30 dias, por etapa, cada coluna em ordem de urgência (ver `orderByUrgency`).
- * Fora: arquivados e contatos ignorados. `viewer` define o escopo, como na Fila: a atendente vê os leads dela e os sem dono (com `filtro` de relatório,
- * só os dela); a gestão vê todos. Sem `viewer` não há escopo (jobs e testes).
+ * As condições do Quadro, num lugar só: o `getBoard` e a contagem da Jornada (`journey.ts`) usam as mesmas, então os números não divergem.
+ * Leads abertos e os fechados/perdidos dos últimos `BOARD_CLOSED_DAYS` dias; sem arquivados e sem contato ignorado; escopo de quem pediu
+ * (atendente vê os dela e os sem dono, e só os dela com `filtro` de relatório; gestão e `viewer` ausente veem todos); mais os filtros de drill-down.
+ * `onlyOwn` diz se valeu o "só os dela" (o atraso se conta no mesmo escopo).
  */
-export async function getBoard(filter: BoardFilter = {}, viewer?: Who, now = new Date()): Promise<BoardStage[]> {
-  const st = await db.select().from(stages).where(eq(stages.active, true)).orderBy(asc(stages.position));
-  const since30 = new Date(Date.now() - 30 * 86_400_000);
-  const conds = [or(isNull(deals.closedAt), gte(deals.closedAt, since30))!, isNull(deals.archivedAt), eq(contacts.ignored, false)];
+export function boardConds(filter: BoardFilter = {}, viewer?: Who): { conds: SQL[]; onlyOwn: boolean } {
+  const since = new Date(Date.now() - BOARD_CLOSED_DAYS * 86_400_000);
+  const conds: SQL[] = [or(isNull(deals.closedAt), gte(deals.closedAt, since))!, isNull(deals.archivedAt), eq(contacts.ignored, false)];
   const attendant = !!viewer && viewer.role !== "gestor";
   const onlyOwn = attendant && !!filter.filtro;
   if (attendant) conds.push(onlyOwn ? eq(deals.ownerId, viewer.id) : or(eq(deals.ownerId, viewer.id), isNull(deals.ownerId))!);
@@ -47,7 +47,7 @@ export async function getBoard(filter: BoardFilter = {}, viewer?: Who, now = new
   }
   if (filter.filtro === "atrasados") {
     // Mesma regra do contador de atrasados: alerta de espera aberto (que não é de tarefa), sem contato ignorado.
-    conds.push(sql`exists (select 1 from alerts al where al.deal_id = ${deals.id} and al.wait_key is not null and al.wait_key not like 'task:%' and al.resolved_at is null)`, eq(contacts.ignored, false));
+    conds.push(lateExists(deals.id), eq(contacts.ignored, false));
   } else if (filter.filtro === "esperando") {
     conds.push(isNotNull(deals.awaitingReplySince), isNull(deals.closedAt), eq(contacts.ignored, false));
   } else if (filter.filtro === "parados") {
@@ -56,6 +56,16 @@ export async function getBoard(filter: BoardFilter = {}, viewer?: Who, now = new
   }
   if (filter.source) conds.push(sql`${SOURCE_EXPR("deals")} = ${filter.source}`);
   if (filter.etapa && /^[a-z0-9_]{1,40}$/i.test(filter.etapa)) conds.push(sql`exists (select 1 from stages es where es.id = ${deals.stageId} and es.key = ${filter.etapa})`);
+  return { conds, onlyOwn };
+}
+
+/**
+ * O Quadro: os leads abertos e os fechados/perdidos dos últimos 30 dias, por etapa, cada coluna em ordem de urgência (ver `orderByUrgency`).
+ * Condições e escopo em `boardConds`. Mostra no máximo 600 leads; a Jornada conta todos por conta própria.
+ */
+export async function getBoard(filter: BoardFilter = {}, viewer?: Who, now = new Date()): Promise<BoardStage[]> {
+  const st = await db.select().from(stages).where(eq(stages.active, true)).orderBy(asc(stages.position));
+  const { conds, onlyOwn } = boardConds(filter, viewer);
   const [hours, lateIds] = await Promise.all([getBusinessHours(), lateDealIds(viewer ?? { id: "", role: "gestor" }, { onlyOwn })]);
   const rows = await db.select({
     id: deals.id, contactId: contacts.id, hasAvatar: sql<boolean>`(${contacts.avatarPath} is not null)`, contactName: contacts.name, phone: contacts.phoneE164, origin: sql<string>`${SOURCE_EXPR("deals")}`, ownerId: deals.ownerId, ownerName: users.name,

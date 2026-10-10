@@ -8,10 +8,12 @@ import { elapsed, initials, money } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { ContactAvatar } from "@/components/ui/contact-avatar";
 
-export function DealCard({ card, slaMinutes, stageKind, stageName, dragging, filtersQs, a11y }: {
+export function DealCard({ card, slaMinutes, stageKind, stageName, dragging, filtersQs, a11y, opening }: {
   card: BoardCard; slaMinutes: number | null; stageKind: string; stageName?: string; dragging?: boolean; filtersQs: string;
   /** Atributos de acessibilidade do arrastar (instruções para leitor de tela), no link, que é quem recebe o foco. */
   a11y?: { "aria-describedby"?: string; "aria-roledescription"?: string };
+  /** A folha de agendar, fechar venda ou perdido está abrindo para este card. */
+  opening?: boolean;
 }) {
   const { urgency, label } = useUrgency(card.awaitingReplySince, slaMinutes);
   const now = useNow();
@@ -26,6 +28,7 @@ export function DealCard({ card, slaMinutes, stageKind, stageName, dragging, fil
         urgency === "late" ? "border-alert bg-alert-soft shadow-[0_0_0_1px_var(--color-alert)]" : urgency === "warn" ? "border-gold/70" : "border-line hover:border-line-strong",
         dragging ? "shadow-[var(--shadow-pop)] rotate-[1.5deg] scale-[1.02]" : "shadow-[var(--shadow-card)] hover:shadow-[0_6px_18px_-10px_rgb(40_30_15/0.25)] hover:-translate-y-px",
       )}>
+      {opening && <span role="status" className="absolute inset-0 z-10 grid place-items-center rounded-[var(--radius-control)] bg-paper/75 text-sm font-medium text-graphite">Abrindo…</span>}
       <div className="flex items-start justify-between gap-2">
         <p className="font-medium text-base leading-tight min-w-0 flex items-center gap-2">
           <ContactAvatar contactId={card.contactId} hasAvatar={card.hasAvatar} name={name} size={28}

@@ -17,7 +17,7 @@ export default async function JornadaPage() {
   const total = open.reduce((n, s) => n + s.count, 0), late = open.reduce((n, s) => n + s.late, 0);
   return (
     <main>
-      <PageHeader title="Jornada" subtitle={`${total} lead${total === 1 ? "" : "s"} em andamento${late ? ` · ${late} atrasado${late === 1 ? "" : "s"}` : ""} · toque numa etapa para ver a Fila`}
+      <PageHeader title="Jornada" subtitle={`${total} lead${total === 1 ? "" : "s"} em andamento${late ? ` · ${late} atrasado${late === 1 ? "" : "s"}` : ""} · abra uma etapa para ver a Fila`}
         actions={<ViewSwitch current="jornada" journey />} />
       <LiveRefresh scopes={["queue"]} />
       <Journey journey={journey} />

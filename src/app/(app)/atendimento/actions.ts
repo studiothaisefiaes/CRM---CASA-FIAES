@@ -1,7 +1,7 @@
 "use server";
 import { z } from "zod";
 import { assertUser } from "@/server/auth/session";
-import { getDealDetail, type DealDetail } from "@/server/queries/deal";
+import { getDealDetail, getDealSheetData, type DealDetail, type SheetDeal } from "@/server/queries/deal";
 import { getQueueItem, nextWaitingId } from "@/server/queries/queue";
 import { formatPhoneClient } from "@/lib/phone-client";
 
@@ -21,6 +21,18 @@ export async function getConversationAction(dealId: string): Promise<Conversatio
     if (!detail) return { ok: false, error: "Esse lead não existe mais." };
     return { ok: true, data: detail, viewer: { id: user.id, role: user.role } };
   } catch (e) { return { ok: false, error: failure(e, "Não foi possível abrir a conversa. Tente de novo.") }; }
+}
+
+export type SheetResult = { ok: true; data: SheetDeal; viewer: Viewer } | { ok: false; error: string };
+
+/** Só o que as folhas de agendar, fechar venda e perdido pedem (Quadro: soltar um card nessas colunas). Sem conversa: abre bem mais rápido que `getConversationAction`. */
+export async function getDealForSheet(dealId: string): Promise<SheetResult> {
+  try {
+    const user = await assertUser();
+    const data = await getDealSheetData(z.string().uuid().parse(dealId));
+    if (!data) return { ok: false, error: "Esse lead não existe mais." };
+    return { ok: true, data, viewer: { id: user.id, role: user.role } };
+  } catch (e) { return { ok: false, error: failure(e, "Não foi possível abrir o lead. Tente de novo.") }; }
 }
 
 /** Quem espera há mais tempo, sem o lead atual: destino do "Próximo da fila" (com o nome, para o botão dizer quem é). `id: null` = a fila está em dia. */

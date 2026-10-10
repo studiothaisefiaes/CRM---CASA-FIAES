@@ -1,5 +1,5 @@
 import { alias } from "drizzle-orm/pg-core";
-import { and, asc, desc, eq, getTableColumns, isNull, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, getTableColumns, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import { contacts, dealEvents, deals, leadSources, lists, messages, stages, tasks, users, channels } from "../db/schema";
 import { SOURCE_EXPR } from "../reports/common";
@@ -56,3 +56,16 @@ export async function getDealDetail(id: string) {
   };
 }
 export type DealDetail = NonNullable<Awaited<ReturnType<typeof getDealDetail>>>;
+
+/** O que as folhas de agendar, fechar venda e perdido precisam do lead (usado ao soltar um card do Quadro): sem a conversa, o histórico nem os dados do contato. */
+export type SheetDeal = Pick<DealDetail, "deal" | "stage" | "stages" | "services" | "lostReasons" | "people"> & { nextAction: DealDetail["nextAction"] | null };
+export async function getDealSheetData(id: string): Promise<SheetDeal | null> {
+  const [row] = await db.select({ deal: deals, stage: stages }).from(deals).innerJoin(stages, eq(stages.id, deals.stageId)).where(eq(deals.id, id)).limit(1);
+  if (!row) return null;
+  const [listRows, people, stageList] = await Promise.all([
+    db.select().from(lists).where(and(eq(lists.active, true), inArray(lists.kind, ["service", "lost_reason"]))).orderBy(asc(lists.position)),
+    db.select({ id: users.id, name: users.name }).from(users).where(eq(users.active, true)).orderBy(asc(users.name)),
+    db.select().from(stages).where(eq(stages.active, true)).orderBy(asc(stages.position)),
+  ]);
+  return { ...row, services: listRows.filter((l) => l.kind === "service"), lostReasons: listRows.filter((l) => l.kind === "lost_reason"), people, stages: stageList, nextAction: null };
+}

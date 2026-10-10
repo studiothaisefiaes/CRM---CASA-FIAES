@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useState, useTransition, type ReactNode } from "react";
-import type { DealDetail } from "@/server/queries/deal";
+import type { SheetDeal } from "@/server/queries/deal";
 import type { Viewer } from "@/app/(app)/atendimento/actions";
 import { archiveAction, claimAction, completeTaskAction, moveDealAction, restoreAction, setAttendanceAction, setOriginAction, transferAction } from "@/app/(app)/funil/actions";
 import { useToast } from "@/components/ui/toast";
@@ -43,7 +43,7 @@ export type LeadActions = {
  * O cabeçalho (⋯ no celular) e o painel do cliente usam o mesmo conjunto, então a regra mora num lugar só.
  * `reload` busca o lead de novo (o dono, a etapa e o resto da tela acompanham); a Fila se atualiza pelo tempo real.
  */
-export function useLeadActions({ d, name, viewer, reload }: { d: DealDetail | null; name: string; viewer: Viewer | null; reload: () => Promise<unknown> }): LeadActions {
+export function useLeadActions({ d, name, viewer, reload }: { d: SheetDeal | null; name: string; viewer: Viewer | null; reload: () => Promise<unknown> }): LeadActions {
   const toast = useToast();
   const openLead = useOpenLead();
   const closeLead = useCloseLead();

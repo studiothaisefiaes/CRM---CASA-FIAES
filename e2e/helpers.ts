@@ -1,6 +1,6 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { execSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 
 /** Estado de sessão salvo pelo projeto `setup` (e2e/auth.setup.ts), um por papel. */
 export const AUTH_FILE: Record<string, string> = { "gestao@e2e.local": "e2e/.auth/gestao.json", "ana@e2e.local": "e2e/.auth/ana.json" };
@@ -64,4 +64,32 @@ export async function shot(page: Page, name: string, opts: { fullPage?: boolean;
   if (!dir) return;
   await page.waitForTimeout(700); // fim das animações de entrada
   await page.screenshot({ path: `${dir}/${name}.png`, fullPage: opts.fullPage, clip: opts.clip });
+}
+
+const ISOLADOS = "e2e/.auth/isolados.json";
+const ids = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+
+/**
+ * Para os specs que precisam de um quadro só deles (Quadro, Jornada), num banco de e2e compartilhado (os relatórios somam as vendas do dia, por exemplo).
+ * Chame no topo do arquivo: antes de tudo os leads que já existiam saem de cena (arquivados) e, no fim, os do spec saem e os de antes voltam.
+ * Autorrecuperável: os ids guardados ficam em disco (`e2e/.auth/isolados.json`), então se uma execução cair no meio, a próxima devolve os leads
+ * antes de guardar de novo. Devolve `isola()`, para cada teste começar de um quadro limpo (avisos resolvidos e leads dos testes anteriores arquivados).
+ */
+export function usaQuadroIsolado() {
+  const devolve = async (lista: string[]) => { if (lista.length) await e2eSql("update deals set archived_at = null where id = any($1)", [lista]); };
+  test.beforeAll(async () => {
+    if (existsSync(ISOLADOS)) await devolve(ids(JSON.parse(readFileSync(ISOLADOS, "utf8")))); // sobra de uma execução interrompida
+    const existentes = (await e2eSql("select id from deals where archived_at is null")).map((r) => r.id as string);
+    writeFileSync(ISOLADOS, JSON.stringify(existentes));
+    await e2eSql("update deals set archived_at = now() where id = any($1)", [existentes]);
+  });
+  test.afterAll(async () => {
+    await e2eSql("update deals set archived_at = now() where archived_at is null");
+    await devolve(ids(JSON.parse(readFileSync(ISOLADOS, "utf8"))));
+    rmSync(ISOLADOS, { force: true });
+  });
+  return async function isola() {
+    await e2eSql("update alerts set resolved_at = now() where resolved_at is null");
+    await e2eSql("update deals set archived_at = now() where archived_at is null");
+  };
 }

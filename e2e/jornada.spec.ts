@@ -1,29 +1,12 @@
 import { test, expect, type Page } from "@playwright/test";
-import { login, simulate, ageLead, e2eSql, shot } from "./helpers";
+import { login, simulate, ageLead, e2eSql, shot, usaQuadroIsolado } from "./helpers";
 
 const PREFIXO = "+5571997350";
 const phone = (n: number) => `${PREFIXO}${String(n).padStart(3, "0")}`;
 const entra = (page: Page, n: number, name: string, text = "Oi, tudo bem?", fromMe = false) => simulate(page, { phone: `71 99735-0${String(n).padStart(3, "0")}`, name, text, fromMe });
 const noEstagio = (n: number, key: string, extra = "") => e2eSql(`update deals set stage_id = (select id from stages where key = $2) ${extra} where contact_id = (select id from contacts where phone_e164 = $1)`, [phone(n), key]);
 
-async function isola() {
-  await e2eSql("update alerts set resolved_at = now() where resolved_at is null");
-  await e2eSql("update deals set archived_at = now() where archived_at is null"); // todo teste começa de um quadro limpo (inclusive dos leads dos testes anteriores deste arquivo)
-}
-
-/**
- * Estes testes precisam de um quadro só deles, mas o banco de e2e é compartilhado com os outros arquivos (os relatórios somam as vendas do dia, por exemplo):
- * antes de tudo os leads que já existiam saem de cena (arquivados) e, no fim, os dos testes saem e os de antes voltam.
- */
-let existentes: string[] = [];
-test.beforeAll(async () => {
-  existentes = (await e2eSql("select id from deals where archived_at is null")).map((r) => r.id as string);
-  await e2eSql("update deals set archived_at = now() where id = any($1)", [existentes]);
-});
-test.afterAll(async () => {
-  await e2eSql("update deals set archived_at = now() where archived_at is null");
-  await e2eSql("update deals set archived_at = null where id = any($1)", [existentes]);
-});
+const isola = usaQuadroIsolado();
 
 /** Um pouco de cada estação, com um lead atrasado e um perto do prazo. */
 async function cenario(page: Page) {
@@ -44,7 +27,7 @@ async function cenario(page: Page) {
   await noEstagio(6, "agendado", ", awaiting_reply_since = null, scheduled_at = now() + interval '1 day'");
   await noEstagio(7, "followup_1", ", awaiting_reply_since = null");
   await noEstagio(8, "followup_2", ", awaiting_reply_since = null");
-  await noEstagio(9, "fechado", ", awaiting_reply_since = null, closed_at = now(), value_cents = 25000");
+  await noEstagio(9, "fechado", ", awaiting_reply_since = null, closed_at = now() - interval '3 days', value_cents = 25000");
 }
 const contagem = async (page: Page, nome: string) => Number((await page.locator(`[data-station="${nome}"]`).getByRole("link").first().innerText()).match(/(\d+)/)![1]);
 
@@ -65,9 +48,22 @@ test.describe("Jornada (desktop)", () => {
     expect(estacoes).toEqual(["lead", "atendimento", "agendado", "followup", "fechado", "perdido"]);
     const lead = page.locator('[data-station="lead"]');
     await expect(lead.getByRole("link", { name: /^Lead: 3 leads, 1 atrasado/ })).toBeVisible();
-    await expect(lead.getByRole("link", { name: /Valéria Nogueira, atrasado/ })).toBeVisible();
+    // O nome acessível começa pelo texto que está na tela ("Valéria N.") e traz o nome inteiro depois
+    await expect(lead.getByRole("link", { name: /^Valéria N\. \(Valéria Nogueira\), atrasado · \d+ min$/ })).toBeVisible();
+    await expect(lead.getByText("Valéria N.", { exact: true })).toBeVisible();
     await expect(page.locator('[data-station="followup"]').getByRole("link", { name: /^Follow-up: 2 leads/ })).toBeVisible();
     await expect(page.locator('[data-station="perdido"]')).toContainText("Ninguém aqui ainda");
+
+    // Cada estação diz o que importa nela: quando fechou, o horário marcado, ou com quem está a bola
+    const fechado = page.locator('[data-station="fechado"]');
+    await expect(fechado.getByRole("link", { name: /^Fechado: 1 lead nos últimos 30 dias\. Ver no Quadro$/ })).toBeVisible();
+    await expect(fechado).toContainText("últimos 30 dias");
+    await expect(fechado.getByRole("link", { name: /^Daniela R\. \(Daniela Rocha\), fechou há 3 dias$/ })).toBeVisible();
+    await expect(fechado.getByText("fechou há 3 dias", { exact: true })).toBeVisible();
+    const agendado = page.locator('[data-station="agendado"]');
+    await expect(agendado.getByRole("link", { name: /^Priscila A\. \(Priscila Andrade\), agendado para (hoje|amanhã|[a-zç]{3}) \d{1,2}h(\d{2})?$/ })).toBeVisible();
+    await expect(page.locator('[data-station="atendimento"]').getByText("com a cliente")).toHaveCount(2);
+    await expect(page.getByText("abra uma etapa para ver a Fila")).toBeVisible();
 
     // Os números batem com o Quadro
     const jornada = { lead: await contagem(page, "lead"), atendimento: await contagem(page, "atendimento"), agendado: await contagem(page, "agendado"), followup: await contagem(page, "followup"), fechado: await contagem(page, "fechado") };
