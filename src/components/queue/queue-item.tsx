@@ -8,7 +8,7 @@ import { useHours, useNow } from "@/components/pipeline/timer";
 import { businessSecondsBetween } from "@/lib/business-hours";
 import { seconds } from "@/lib/format";
 import { formatPhoneClient } from "@/lib/phone-client";
-import { ringState, slaProgress, type QueueSectionKey, type RingState } from "@/lib/queue";
+import { ringState, slaProgress, slaStatus, type QueueSectionKey, type RingState } from "@/lib/queue";
 import { cn } from "@/lib/cn";
 
 const KIND: Record<string, string> = { audio: "Áudio", image: "Foto", sticker: "Figurinha", video: "Vídeo", document: "Documento", location: "Localização", contact: "Contato", poll: "Enquete", event: "Evento", other: "Mensagem" };
@@ -40,16 +40,9 @@ const WEIGHT: Record<QueueSectionKey, { row: string; avatar: number; name: strin
   reengajar: { row: "border-l-[3px] border-l-transparent py-2.5", avatar: 36, name: "text-base font-medium", time: "text-sm text-graphite" },
 };
 
-function statusOf(section: QueueSectionKey, ring: RingState, waitSec: number, sla: number | null, item: QueueItem, now: number): { text: string; tone: string } | null {
-  if (ring === "late") {
-    const over = sla ? waitSec - sla * 60 : 0;
-    return { text: over >= 60 ? `atrasado ${seconds(over)}` : "atrasado", tone: "text-alert font-semibold" };
-  }
-  if (ring === "near") {
-    const left = sla ? sla * 60 - waitSec : 0;
-    return { text: left > 0 ? `perto do prazo · faltam ${seconds(left)}` : "no limite do prazo", tone: "text-gold-ink font-semibold" };
-  }
-  if (ring === "ok") return { text: "dentro do prazo", tone: "text-graphite" };
+function statusOf(section: QueueSectionKey, ring: RingState, waitSec: number, slaMin: number | null, item: QueueItem, now: number): { text: string; tone: string } | null {
+  const sla = slaStatus({ ring, alert: section === "atrasados", waitSeconds: waitSec, slaMinutes: slaMin });
+  if (sla) return { text: sla.text, tone: sla.tone === "late" ? "text-alert font-semibold" : sla.tone === "near" ? "text-gold-ink font-semibold" : "text-graphite" };
   if (section === "acoes-hoje" && item.nextAction) {
     const due = new Date(item.nextAction.dueAt);
     const hora = due.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Bahia" });

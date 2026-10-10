@@ -2,14 +2,15 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { and, eq, inArray, isNull, or } from "drizzle-orm";
+import { SALE_VALUE_REQUIRED } from "@/lib/money";
 import { assertUser } from "@/server/auth/session";
 import { moveDeal, ReopenConflict } from "@/server/domain/deals";
 import { claimDeal } from "@/server/domain/assign";
 import { archiveDeals, restoreDeals } from "@/server/domain/archive";
-import { updateDeal, createManualLead, closeSale, type DealPatch } from "@/server/domain/updates";
+import { updateDeal, createManualLead, closeSale, scheduleDeal, loseDeal, UserFacingError, type DealPatch } from "@/server/domain/updates";
 import { MAX_MEDIA_BYTES, markConversationRead, sendFromCrm, sendMediaFromCrm } from "@/server/domain/send";
 import { db } from "@/server/db";
-import { alerts, deals, lists, users } from "@/server/db/schema";
+import { alerts, deals, users } from "@/server/db/schema";
 
 export type ActionResult<T = undefined> = { ok: true; data?: T } | { ok: false; error: string };
 const fail = (e: unknown): { ok: false; error: string } => ({ ok: false, error: e instanceof z.ZodError ? e.issues[0]?.message ?? "Dados inválidos" : e instanceof Error ? e.message : "Algo deu errado. Tente de novo." });
@@ -18,7 +19,7 @@ const fail = (e: unknown): { ok: false; error: string } => ({ ok: false, error: 
 const KNOWN_ERRORS = new Set(["Sua sessão expirou. Entre de novo.", "Só a gestão pode fazer isso.", "Lead não encontrado", "Lead arquivado não pode fechar venda", "Serviço não encontrado"]);
 /** Erro para a tela: texto fixo. Nunca o `message` cru de um erro qualquer (SQL, rede) nem o JSON do zod. */
 const safe = (e: unknown, fallback: string): { ok: false; error: string } =>
-  ({ ok: false, error: e instanceof ReopenConflict || (e instanceof Error && KNOWN_ERRORS.has(e.message)) ? (e as Error).message : fallback });
+  ({ ok: false, error: e instanceof ReopenConflict || e instanceof UserFacingError || (e instanceof Error && KNOWN_ERRORS.has(e.message)) ? (e as Error).message : fallback });
 const revalidateLead = () => { revalidatePath("/funil"); revalidatePath("/atendimento"); revalidatePath("/"); };
 
 export async function moveDealAction(dealId: string, stageKey: string, extra?: DealPatch): Promise<ActionResult> {
@@ -132,32 +133,26 @@ export async function transferAction(dealId: string, toUserId: string): Promise<
 }
 
 const scheduleSchema = z.object({ dealId: uuid, scheduledAt: z.string().datetime({ offset: true }) });
-/** Agendar (ou remarcar): o horário tem de ser futuro. Fora do expediente a tela avisa, mas a Casa decide. */
+/** Agendar (ou remarcar): o horário tem de ser futuro (erro). Fora do expediente a tela avisa, mas a Casa decide. Dado e etapa numa transação só. */
 export async function scheduleAction(dealId: string, scheduledAt: string): Promise<ActionResult> {
   try {
     const user = await assertUser();
     const input = scheduleSchema.safeParse({ dealId, scheduledAt });
     if (!input.success) return { ok: false, error: "Escolha a data e o horário." };
-    if (new Date(input.data.scheduledAt).getTime() <= Date.now()) return { ok: false, error: "Escolha um horário que ainda não passou." };
-    await updateDeal(input.data.dealId, { scheduledAt: input.data.scheduledAt }, user.id);
-    await moveDeal(input.data.dealId, "agendado", user.id, "manual");
+    await scheduleDeal(input.data.dealId, input.data.scheduledAt, user.id);
     revalidateLead();
     return { ok: true };
   } catch (e) { return safe(e, "Não foi possível agendar. Tente de novo."); }
 }
 
 const loseSchema = z.object({ dealId: uuid, reasonId: uuid, recontactAt: z.string().datetime({ offset: true }).nullable() });
-/** Perdido: o motivo é obrigatório e tem de ser da lista de motivos de perda. "Retomar contato em" é opcional. */
+/** Perdido: o motivo é obrigatório e tem de ser da lista de motivos de perda. "Retomar contato em" é opcional. Dado e etapa numa transação só. */
 export async function loseAction(dealId: string, reasonId: string, recontactAt: string | null): Promise<ActionResult> {
   try {
     const user = await assertUser();
     const input = loseSchema.safeParse({ dealId, reasonId, recontactAt });
     if (!input.success) return { ok: false, error: "Escolha o motivo da perda." };
-    if (input.data.recontactAt && new Date(input.data.recontactAt).getTime() <= Date.now()) return { ok: false, error: "A data para retomar o contato precisa ser futura." };
-    const [reason] = await db.select({ kind: lists.kind }).from(lists).where(eq(lists.id, input.data.reasonId));
-    if (reason?.kind !== "lost_reason") return { ok: false, error: "Esse motivo não existe mais. Escolha outro." };
-    await updateDeal(input.data.dealId, { lostReasonId: input.data.reasonId, recontactAt: input.data.recontactAt }, user.id);
-    await moveDeal(input.data.dealId, "perdido", user.id, "manual");
+    await loseDeal(input.data.dealId, input.data.reasonId, input.data.recontactAt, user.id);
     revalidateLead();
     return { ok: true };
   } catch (e) { return safe(e, "Não foi possível marcar como perdido. Tente de novo."); }
@@ -165,7 +160,7 @@ export async function loseAction(dealId: string, reasonId: string, recontactAt: 
 
 const closeSaleInput = z.object({
   serviceId: uuid,
-  valueCents: z.number().int().min(0).max(1_000_000_000),
+  valueCents: z.number().int().min(1).max(1_000_000_000),
   paymentMethod: z.enum(["pix", "cartao", "boleto", "dinheiro"]),
   paidNow: z.boolean(),
 });
@@ -174,7 +169,7 @@ export async function closeSaleAction(dealId: string, input: z.input<typeof clos
   try {
     const user = await assertUser();
     const parsed = closeSaleInput.safeParse(input);
-    if (!parsed.success) return { ok: false, error: "Confira o serviço, o valor e a forma de pagamento." };
+    if (!parsed.success) return { ok: false, error: !(Number(input?.valueCents) >= 1) ? SALE_VALUE_REQUIRED : "Confira o serviço, o valor e a forma de pagamento." };
     const { alreadyClosed } = await closeSale(uuid.parse(dealId), parsed.data, user.id);
     revalidateLead();
     return { ok: true, data: { alreadyClosed } };

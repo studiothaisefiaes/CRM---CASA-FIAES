@@ -86,6 +86,7 @@ export function useLeadActions({ d, name, viewer, reload }: { d: DealDetail | nu
         onClick: () => {
           void restoreAction([id]).then((u) => {
             if (!u.ok) { toast(u.error, "error"); return; }
+            if (u.data?.restored === 0 && !u.data.conflicts.length) { toast("Esse lead já tinha voltado", "info"); return; }
             if (u.data?.conflicts.length) { toast("Essa cliente já tem outro atendimento aberto. Não dá para desfazer.", "error"); return; }
             toast(`${name} voltou para a fila`);
             openLead(id);

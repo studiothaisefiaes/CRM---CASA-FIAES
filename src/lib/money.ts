@@ -26,3 +26,13 @@ export function parseBRL(input: string): ParsedBRL {
 /** "R$ 1.158,50" com espaço normal (o Intl usa U+00A0). */
 export const formatBRL = (cents: number) =>
   (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }).replace(/ /g, " ");
+
+export const SALE_VALUE_REQUIRED = "Informe o valor da venda";
+
+/** O valor de uma venda: obrigatório e maior que zero (cortesia não é venda). Mesma regra na folha de fechar venda e no servidor. */
+export function parseSaleValue(input: string): ParsedBRL {
+  if (!input.trim()) return { ok: false, error: SALE_VALUE_REQUIRED };
+  const r = parseBRL(input);
+  if (r.ok && r.cents <= 0) return { ok: false, error: SALE_VALUE_REQUIRED };
+  return r;
+}

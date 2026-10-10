@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
 import { Segmented } from "@/components/ui/segmented";
 import { closeSaleAction } from "@/app/(app)/funil/actions";
-import { formatBRL, parseBRL } from "@/lib/money";
+import { formatBRL, parseSaleValue } from "@/lib/money";
 import { PAYMENT_LABEL } from "@/lib/format";
 import { ActionSheet, FieldError, SheetLabel } from "./action-sheet";
 
@@ -33,23 +33,27 @@ export function CloseSaleSheet({ open, onClose, dealId, name, services, initial,
   const [errors, setErrors] = useState<{ value?: string; pay?: string; service?: string; form?: string }>({});
   const [pending, start] = useTransition();
   const valueRef = useRef<HTMLInputElement>(null);
+  // Enter duplo ou o "ok" do teclado: o 2º disparo chega antes de o React repintar, então o estado `pending` sozinho não segura.
+  const sending = useRef(false);
 
-  const parsed = value.trim() ? parseBRL(value) : null;
+  const parsed = value.trim() ? parseSaleValue(value) : null;
   const live = parsed?.ok ? formatBRL(parsed.cents) : null;
 
   const confirm = () => {
+    if (pending || sending.current) return;
     const next: typeof errors = {};
     let cents = 0;
-    if (!value.trim()) next.value = "Digite o valor da venda, ex.: 1.158,50.";
-    else if (!parsed?.ok) next.value = parsed?.error ?? "Valor inválido";
-    else cents = parsed.cents;
+    const v = parseSaleValue(value);
+    if (!v.ok) next.value = v.error;
+    else cents = v.cents;
     if (!pay) next.pay = "Escolha a forma de pagamento.";
     if (!service) next.service = services.length ? "Escolha o serviço." : "Cadastre ao menos um serviço para fechar a venda.";
     setErrors(next);
     if (Object.keys(next).length) { if (next.value) valueRef.current?.focus(); return; }
+    sending.current = true;
     start(async () => {
       const r = await closeSaleAction(dealId, { serviceId: service!, valueCents: cents, paymentMethod: pay!, paidNow: paidNow === "sim" });
-      if (!r.ok) { setErrors({ form: r.error }); return; }
+      if (!r.ok) { sending.current = false; setErrors({ form: r.error }); return; }
       onDone({ alreadyClosed: !!r.data?.alreadyClosed, valueCents: cents });
     });
   };

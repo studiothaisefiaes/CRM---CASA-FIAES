@@ -44,9 +44,13 @@ async function assertService(tx: Tx, serviceId: string) {
   if (svc?.kind !== "service") throw new Error("Serviço não encontrado");
 }
 
-export async function updateDeal(dealId: string, raw: DealPatch, userId: string) {
+/** Erro com texto pronto para a tela (pt-BR, fixo): as Server Actions o mostram como está. */
+export class UserFacingError extends Error {}
+
+/** A alteração de campos dentro de uma transação que já existe (quem chama emite o aviso depois do commit). */
+export async function updateDealTx(tx: Tx, dealId: string, raw: DealPatch, userId: string) {
   const patch = dealPatchSchema.parse(raw);
-  await db.transaction(async (tx) => {
+  {
     const [deal] = await tx.select().from(deals).where(eq(deals.id, dealId));
     if (!deal) throw new Error("Lead não encontrado");
     const [contact] = await tx.select().from(contacts).where(eq(contacts.id, deal.contactId));
@@ -111,8 +115,39 @@ export async function updateDeal(dealId: string, raw: DealPatch, userId: string)
       await logEvent(tx, dealId, patch.ownerId !== undefined && campos.some((c) => c.campo === "ownerId") ? "responsavel_alterado" : "campo_alterado", { campos }, userId);
       await tx.insert(auditLog).values({ userId, action: "atualizou", entity: "deal", entityId: dealId, data: { campos: campos.map((c) => c.campo) } });
     }
+  }
+}
+
+export async function updateDeal(dealId: string, raw: DealPatch, userId: string) {
+  await db.transaction((tx) => updateDealTx(tx, dealId, raw, userId));
+  await emit("lead_atualizado", { dealId });
+}
+
+/** Agendar (ou remarcar): o horário e a etapa Agendado numa transação só; se a mudança de etapa falhar, o horário não fica gravado. */
+export async function scheduleDeal(dealId: string, scheduledAt: Date | string, userId: string, now = new Date()) {
+  const at = new Date(scheduledAt);
+  if (Number.isNaN(at.getTime())) throw new UserFacingError("Escolha a data e o horário.");
+  if (at.getTime() <= now.getTime()) throw new UserFacingError("Escolha um horário que ainda não passou.");
+  await db.transaction(async (tx) => {
+    await updateDealTx(tx, dealId, { scheduledAt: at.toISOString() }, userId);
+    await moveDealTx(tx, dealId, "agendado", userId, "manual");
   });
   await emit("lead_atualizado", { dealId });
+  await emit("etapa_alterada", { dealId });
+}
+
+/** Perdido: motivo (da lista de motivos de perda), retomada opcional e a etapa Perdido numa transação só. */
+export async function loseDeal(dealId: string, reasonId: string, recontactAt: Date | string | null, userId: string, now = new Date()) {
+  const recontact = recontactAt ? new Date(recontactAt) : null;
+  if (recontact && (Number.isNaN(recontact.getTime()) || recontact.getTime() <= now.getTime())) throw new UserFacingError("A data para retomar o contato precisa ser futura.");
+  await db.transaction(async (tx) => {
+    const [reason] = await tx.select({ kind: lists.kind }).from(lists).where(eq(lists.id, reasonId));
+    if (reason?.kind !== "lost_reason") throw new UserFacingError("Esse motivo não existe mais. Escolha outro.");
+    await updateDealTx(tx, dealId, { lostReasonId: reasonId, recontactAt: recontact ? recontact.toISOString() : null }, userId);
+    await moveDealTx(tx, dealId, "perdido", userId, "manual");
+  });
+  await emit("lead_atualizado", { dealId });
+  await emit("etapa_alterada", { dealId });
 }
 
 /** Lead criado na mão (ex.: cliente que ligou ou chegou na recepção). */
@@ -136,7 +171,7 @@ export async function createManualLead(input: { phone: string; name?: string; or
 
 const closeSaleSchema = z.object({
   serviceId: z.string().uuid(),
-  valueCents: z.number().int().min(0).max(1_000_000_000),
+  valueCents: z.number().int().min(1, "Informe o valor da venda").max(1_000_000_000),
   paymentMethod: z.enum(["pix", "cartao", "boleto", "dinheiro"]),
   paidNow: z.boolean(),
 });

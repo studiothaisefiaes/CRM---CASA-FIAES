@@ -1,8 +1,8 @@
 import { it, expect, beforeEach } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "../db"; import { dealEvents, deals, users, lists, contacts } from "../db/schema";
-import { moveDeal } from "./deals";
-import { recordInbound, recordOutbound } from "./deals"; import { updateDeal, closeSale, setAttendance } from "./updates";
+import { moveDeal, ReopenConflict } from "./deals";
+import { recordInbound, recordOutbound } from "./deals"; import { updateDeal, closeSale, setAttendance, scheduleDeal, loseDeal, UserFacingError } from "./updates";
 import { claimDeal } from "./assign"; import { resetDb } from "../../../test/db";
 let ana = "", bia = "";
 beforeEach(async () => { await resetDb(); [{ id: ana }, { id: bia }] = await db.insert(users).values([{ name: "Ana", email: "a@c.com", role: "atendente", passwordHash: "x" }, { name: "Bia", email: "b@c.com", role: "atendente", passwordHash: "x" }]).returning(); });
@@ -83,4 +83,49 @@ it("aniversário com zero à esquerda não gera alteração falsa", async () => 
   const [c] = await db.select().from(contacts);
   expect(c).toMatchObject({ birthDay: 5, birthMonth: 3 });
   expect((await db.select().from(dealEvents).where(eq(dealEvents.type, "campo_alterado"))).length).toBe(1);
+});
+
+it("fechar venda recusa valor zero (cortesia não é venda)", async () => {
+  const id = await lead();
+  const [svc] = await db.select().from(lists).where(eq(lists.kind, "service"));
+  await expect(closeSale(id, { serviceId: svc.id, valueCents: 0, paymentMethod: "pix", paidNow: true }, ana)).rejects.toThrow();
+  const [d] = await db.select().from(deals).where(eq(deals.id, id));
+  expect(d.closedAt).toBeNull(); expect(d.valueCents).toBeNull();
+});
+const stageKey = async (id: string) => String((await db.execute(sql`select s.key from deals d join stages s on s.id = d.stage_id where d.id = ${id}`)).rows[0].key);
+const futuro = () => new Date(Date.now() + 86_400_000);
+it("agendar grava o horário e a etapa juntos; horário passado não grava nada", async () => {
+  const id = await lead();
+  await expect(scheduleDeal(id, new Date(Date.now() - 60_000), ana)).rejects.toBeInstanceOf(UserFacingError);
+  expect(await stageKey(id)).toBe("lead");
+  const at = futuro();
+  await scheduleDeal(id, at, ana);
+  const [d] = await db.select().from(deals).where(eq(deals.id, id));
+  expect(d.scheduledAt?.getTime()).toBe(at.getTime());
+  expect(await stageKey(id)).toBe("agendado");
+});
+it("agendar numa transação só: se a etapa falha (outro lead aberto do contato), o horário não fica gravado", async () => {
+  const id = await lead();
+  const [svc] = await db.select().from(lists).where(eq(lists.kind, "service"));
+  await closeSale(id, { serviceId: svc.id, valueCents: 5000, paymentMethod: "pix", paidNow: true }, ana);
+  await lead(); // o mesmo contato volta e abre outro lead
+  await expect(scheduleDeal(id, futuro(), ana)).rejects.toBeInstanceOf(ReopenConflict);
+  const [d] = await db.select().from(deals).where(eq(deals.id, id));
+  expect(d.scheduledAt).toBeNull();
+  expect(await stageKey(id)).toBe("fechado");
+  expect((await db.select().from(dealEvents).where(eq(dealEvents.dealId, id))).filter((e) => e.type === "campo_alterado")).toHaveLength(0);
+});
+it("perdido: o motivo tem de ser da lista de motivos de perda e dado e etapa vão juntos", async () => {
+  const id = await lead();
+  const [objection] = await db.select().from(lists).where(eq(lists.kind, "objection"));
+  const [reason] = await db.select().from(lists).where(eq(lists.kind, "lost_reason"));
+  await expect(loseDeal(id, objection.id, null, ana)).rejects.toBeInstanceOf(UserFacingError);
+  await expect(loseDeal(id, reason.id, new Date(Date.now() - 1000), ana)).rejects.toBeInstanceOf(UserFacingError);
+  expect(await stageKey(id)).toBe("lead");
+  await loseDeal(id, reason.id, futuro(), ana);
+  const [d] = await db.select().from(deals).where(eq(deals.id, id));
+  expect(d.lostReasonId).toBe(reason.id); expect(d.recontactAt).not.toBeNull();
+  expect(await stageKey(id)).toBe("perdido");
+  const campos = (await db.select().from(dealEvents).where(eq(dealEvents.dealId, id))).filter((e) => e.type === "campo_alterado").flatMap((e) => (e.payload as { campos: { campo: string; de: unknown; para: unknown }[] }).campos);
+  expect(campos).toContainEqual({ campo: "lostReasonId", de: null, para: reason.id });
 });

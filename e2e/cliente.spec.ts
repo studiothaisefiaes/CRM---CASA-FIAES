@@ -47,6 +47,14 @@ test("painel do cliente (desktop): identidade, situação, por que está esperan
   await expect(page.getByRole("combobox", { name: "Origem" }).locator("option", { hasText: "WhatsApp" })).toHaveCount(0);
   await expect(page.getByRole("region", { name: /Lead Bianca Teles/ }).locator("p", { hasText: "Não identificada" }).first()).toBeVisible(); // o cabeçalho diz o mesmo
   await expect(page.getByRole("option", { name: /Bianca Teles/ })).toContainText("Não identificada"); // e a Fila também
+  // Assumir e Transferir empilhados, em largura total (o painel tem 300 px)
+  const assumir = await p.getByRole("button", { name: "Assumir" }).boundingBox();
+  const transferir = await p.getByRole("button", { name: "Transferir para…" }).boundingBox();
+  expect(assumir!.width).toBeGreaterThan(200);
+  expect(transferir!.width).toBeGreaterThan(200);
+  expect(transferir!.y).toBeGreaterThanOrEqual(assumir!.y + assumir!.height);
+  // O texto da Fila reflete o tempo real: 6 min de espera com prazo de 2 min
+  await expect(page.getByRole("option", { name: /Bianca Teles/ })).toContainText(/prazo estourado há [345] min/);
   // Etapas: Follow-up agrupado, tocável
   const etapas = p.getByRole("list", { name: "Etapas" });
   await expect(etapas.getByRole("listitem")).toHaveText(["Lead (etapa atual)", "Atendimento", "Agendado", "Follow-up", "Fechado", "Perdido"]);
@@ -104,9 +112,14 @@ test("fechar venda em 4 toques: pagamento, serviço e valor em reais, sem duplic
 
   // Sem nada preenchido, explica o que falta e não fecha
   await dlg.getByRole("button", { name: "Fechar venda" }).click();
-  await expect(dlg.getByRole("alert").filter({ hasText: "Digite o valor da venda" })).toBeVisible();
+  await expect(dlg.getByRole("alert").filter({ hasText: "Informe o valor da venda" })).toBeVisible();
   await expect(dlg.getByRole("alert").filter({ hasText: "Escolha a forma de pagamento." })).toBeVisible();
   await expect(dlg.getByRole("alert").filter({ hasText: "Escolha o serviço." })).toBeVisible();
+  expect((await deal(id)).stage_key).toBe("agendado");
+
+  await dlg.getByLabel("Valor").fill("0,00"); // cortesia não é venda
+  await dlg.getByRole("button", { name: "Fechar venda" }).click();
+  await expect(dlg.getByRole("alert").filter({ hasText: "Informe o valor da venda" })).toBeVisible();
   expect((await deal(id)).stage_key).toBe("agendado");
 
   await dlg.getByLabel("Valor").fill("1158.50"); // digitar não é toque: o campo já estava com o cursor
@@ -114,11 +127,16 @@ test("fechar venda em 4 toques: pagamento, serviço e valor em reais, sem duplic
   await toca(dlg.getByRole("radio", { name: "Pix" })); // 2
   await toca(dlg.getByRole("radio", { name: "Coloração" })); // 3
   await shot(page, "02-fechar-venda-sheet-desktop");
-  await toca(dlg.getByRole("button", { name: "Fechar venda" })); // 4
+  // Enter duplo no campo (ou o "ok" do teclado) não confirma duas vezes
+  await dlg.getByLabel("Valor").focus();
+  await Promise.all([page.keyboard.press("Enter"), page.keyboard.press("Enter")]);
+  toques++; // o Enter faz as vezes do 4º toque (Confirmar)
   expect(toques).toBe(4);
 
   await expect(page.getByRole("status").filter({ hasText: "Venda fechada · R$ 1.158,50" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "já estava fechada" })).toHaveCount(0); // a 2ª tecla não reenviou
   await expect(dlg).toHaveCount(0);
+  await expect(painel(page).getByRole("button", { name: "Não é cliente" })).toHaveCount(0); // lead com venda não vira "não é cliente"
   const d = await deal(id);
   expect(d.stage_key).toBe("fechado");
   expect(d.value_cents).toBe(115850);
@@ -173,6 +191,15 @@ test("Não é cliente arquiva e o Desfazer devolve o lead", async ({ page, isMob
   expect(d.stage_key).toBe("lead");
   expect((await e2eSql("select ignored from contacts where phone_e164 = '+5571997405001'"))[0].ignored).toBe(false);
   expect((await eventos(id, "restaurado"))).toHaveLength(1);
+
+  // Alguém já devolveu o lead antes do Desfazer: avisa e não tenta abrir
+  await painel(page).getByRole("button", { name: "Não é cliente" }).click();
+  await expect(page.getByRole("button", { name: "Desfazer" })).toBeVisible();
+  await e2eSql("update deals set archived_at = null, archived_by = null, archived_stage_id = null where id = $1", [id]);
+  await e2eSql("update contacts set ignored = false where phone_e164 = '+5571997405001'");
+  await page.getByRole("button", { name: "Desfazer" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Esse lead já tinha voltado" })).toBeVisible();
+  await expect(page).not.toHaveURL(/lead=/);
 });
 
 test("Assumir troca o dono exibido; a gestão transfere; a atendente não vê Transferir", async ({ page, browser, isMobile }) => {
@@ -331,7 +358,7 @@ test.describe("celular: painel do cliente em 390 px", () => {
     await page.goto(`/atendimento/${id}`);
     const lead = page.getByRole("region", { name: /Lead Bianca Teles/ });
     await lead.getByRole("button", { name: "Mais ações" }).click();
-    for (const item of ["Assumir", "Agendar", "Perdido", "Não é cliente"]) await expect(page.getByRole("menuitem", { name: item })).toBeVisible();
+    for (const item of ["Assumir", "Agendar", "Fechar venda", "Perdido", "Não é cliente"]) await expect(page.getByRole("menuitem", { name: item })).toBeVisible();
     await page.getByRole("menuitem", { name: "Assumir" }).click();
     await expect(page.getByRole("status").filter({ hasText: "Agora o lead é seu" })).toBeVisible();
     await expect.poll(async () => (await deal(id)).owner_email).toBe("gestao@e2e.local");

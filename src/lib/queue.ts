@@ -1,3 +1,5 @@
+import { seconds } from "./format";
+
 /** Vocabulário da Fila (/atendimento): módulo puro, usado pelo servidor e pelo navegador. */
 
 export const QUEUE_VIEWS = ["todos", "meus", "sem-dono", "parados", "agendados-hoje", "clientes-ativos", "sem-contato-90d"] as const;
@@ -33,13 +35,31 @@ export function slaProgress(waitSeconds: number, slaMinutes: number | null): num
 export type RingState = "none" | "ok" | "near" | "late";
 
 /**
- * Estado do anel. `late` vem do alerta de espera aberto (a mesma regra do sino); `near` é acima de NEAR_SLA_RATIO do prazo.
- * Passou do prazo sem alerta ainda (o motor roda de tempos em tempos) segue como `near`, nunca como "atrasado".
+ * Estado do anel. `late` vem do alerta de espera aberto (a mesma regra do sino) OU de já ter passado do prazo da etapa (o alerta só nasce no
+ * próximo ciclo do motor; o anel e o texto não esperam por ele). A SEÇÃO da Fila segue o alerta (decisão da T15): isto só muda a cor e o texto.
+ * `near` é acima de NEAR_SLA_RATIO do prazo.
  */
 export function ringState(opts: { awaiting: boolean; late: boolean; waitSeconds: number; slaMinutes: number | null }): RingState {
   if (opts.late) return "late";
   if (!opts.awaiting) return "none";
-  return slaProgress(opts.waitSeconds, opts.slaMinutes) >= NEAR_SLA_RATIO ? "near" : "ok";
+  const p = slaProgress(opts.waitSeconds, opts.slaMinutes);
+  return p >= 1 ? "late" : p >= NEAR_SLA_RATIO ? "near" : "ok";
+}
+
+/**
+ * O texto de prazo da linha da Fila. Com alerta aberto: "atrasado 4 min". Passou do prazo sem alerta ainda: "prazo estourado há 4 min".
+ * Perto: "perto do prazo · faltam 30 s". Dentro: "dentro do prazo". Sem espera: null (quem chama escolhe outro texto).
+ */
+export function slaStatus(opts: { ring: RingState; alert: boolean; waitSeconds: number; slaMinutes: number | null }): { text: string; tone: "late" | "near" | "ok" } | null {
+  const sla = opts.slaMinutes ? opts.slaMinutes * 60 : 0;
+  const over = sla ? opts.waitSeconds - sla : 0;
+  if (opts.ring === "late") {
+    if (opts.alert) return { text: over >= 60 ? `atrasado ${seconds(over)}` : "atrasado", tone: "late" };
+    return { text: over > 0 ? `prazo estourado há ${seconds(over)}` : "prazo estourado agora", tone: "late" };
+  }
+  if (opts.ring === "near") return { text: sla - opts.waitSeconds > 0 ? `perto do prazo · faltam ${seconds(sla - opts.waitSeconds)}` : "no limite do prazo", tone: "near" };
+  if (opts.ring === "ok") return { text: "dentro do prazo", tone: "ok" };
+  return null;
 }
 
 export type QueueParams = { view?: string | null; foco?: string | null; filtro?: string | null; etapa?: string | null; dono?: string | null; fonte?: string | null; q?: string | null; lead?: string | null };

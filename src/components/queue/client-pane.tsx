@@ -38,10 +38,10 @@ function Owner({ d, viewer, actions }: { d: DealDetail; viewer: Viewer | null; a
         <p data-testid="responsavel" className={cn("truncate text-md font-medium lg:text-base", d.ownerName ? "text-ink" : "text-gold-ink")}>{d.ownerName ?? "Sem dono"}</p>
       </div>
       {viewer && (!mine || gestor) && (
-        <div className="flex items-center gap-2">
-          {!mine && <Button variant="secondary" size="sm" className="flex-1 pointer-coarse:min-h-11" disabled={actions.busy} onClick={actions.claim}>Assumir</Button>}
+        <div className="flex flex-col gap-2">
+          {!mine && <Button variant="secondary" size="sm" className="w-full pointer-coarse:min-h-11" disabled={actions.busy} onClick={actions.claim}>Assumir</Button>}
           {gestor && others.length > 0 && (
-            <Menu label="Transferir para…" trigger={<span className="whitespace-nowrap px-1 text-sm font-medium">Transferir para…</span>} items={others} className="flex-1"
+            <Menu label="Transferir para…" trigger={<span className="whitespace-nowrap px-1 text-sm font-medium">Transferir para…</span>} items={others} className="w-full"
               triggerClassName="w-full border border-line-strong bg-paper h-8 pointer-coarse:min-h-11 text-ink" />
           )}
         </div>
@@ -136,10 +136,13 @@ export function ClientPane({ d, tab, viewer, actions }: { d: DealDetail; tab: Pa
               </div>
             </>
           )}
-          <button type="button" disabled={actions.busy} onClick={actions.notClient}
-            className="min-h-11 self-start rounded-[var(--radius-control)] text-sm font-medium text-graphite underline-offset-4 hover:text-ink hover:underline disabled:opacity-60 lg:min-h-9">
-            Não é cliente
-          </button>
+          {/* Lead com venda fechada não vira "não é cliente". */}
+          {k !== "fechado" && (
+            <button type="button" disabled={actions.busy} onClick={actions.notClient}
+              className="min-h-11 self-start rounded-[var(--radius-control)] text-sm font-medium text-graphite underline-offset-4 hover:text-ink hover:underline disabled:opacity-60 lg:min-h-9">
+              Não é cliente
+            </button>
+          )}
         </section>
 
         <section aria-label="Etapa">

@@ -69,19 +69,21 @@ export function PaneHeader({ item, d, name, answered, back, tab, onTab, actions,
   const kind = d?.stage.kind;
   const canSchedule = !!kind && ["lead", "atendimento", "followup"].includes(kind);
   const canClose = kind === "agendado";
+  const canSell = !!kind && !["fechado", "perdido"].includes(kind);
   const canLose = !!kind && !["fechado", "perdido"].includes(kind);
   const notMine = !!d && !!viewer && d.deal.ownerId !== viewer.id;
 
   const items: MenuItem[] = [
     ...(notMine ? [{ label: "Assumir", onSelect: actions.claim }] : []),
     ...(canSchedule ? [{ label: "Agendar", onSelect: () => actions.open("schedule") }] : []),
-    ...(canClose ? [{ label: "Fechar venda", onSelect: () => actions.open("close") }, { label: "Remarcar", onSelect: () => actions.open("schedule") }] : []),
+    ...(canSell ? [{ label: "Fechar venda", onSelect: () => actions.open("close") }] : []),
+    ...(canClose ? [{ label: "Remarcar", onSelect: () => actions.open("schedule") }] : []),
     ...(canLose ? [{ label: "Perdido", danger: true, onSelect: () => actions.open("lose") }] : []),
     ...(phone ? [{ label: "Ligar", onSelect: () => { window.location.href = `tel:${phone}`; } }, { label: "WhatsApp", onSelect: () => { window.open(waHref, "_blank", "noopener,noreferrer"); } }] : []),
     ...(d?.contact.email ? [{ label: "E-mail", onSelect: () => { window.location.href = `mailto:${d.contact.email}`; } }] : []),
     ...(d?.contact.instagram ? [{ label: `@${d.contact.instagram}`, onSelect: () => { window.open(`https://instagram.com/${d.contact.instagram}`, "_blank", "noopener,noreferrer"); } }] : []),
     // As etapas que já têm botão próprio (agendar, fechar, perdido) não se repetem na lista.
-    ...(d ? d.stages.filter((s) => s.key !== d.stage.key && !(canSchedule && s.key === "agendado") && !(canClose && s.key === "fechado") && !(canLose && s.key === "perdido")).map((s) => ({ label: `Mover para ${s.name}`, onSelect: () => actions.moveTo(s.key) })) : []),
+    ...(d ? d.stages.filter((s) => s.key !== d.stage.key && !(canSchedule && s.key === "agendado") && !(canSell && s.key === "fechado") && !(canLose && s.key === "perdido")).map((s) => ({ label: `Mover para ${s.name}`, onSelect: () => actions.moveTo(s.key) })) : []),
     ...(d && canLose ? [{ label: "Não é cliente", danger: true, onSelect: actions.notClient }] : []),
   ];
 
@@ -109,7 +111,7 @@ export function PaneHeader({ item, d, name, answered, back, tab, onTab, actions,
           {/* A etapa e as ações moram no painel do cliente (≥ 1280 px); abaixo disso ficam aqui. */}
           <span className="h-9 px-3 inline-flex items-center rounded-full border border-line text-sm font-medium text-graphite">{d?.stage.name ?? item?.stageName ?? ""}</span>
           {canSchedule && <button type="button" onClick={() => actions.open("schedule")} className={`${ACTION} xl:hidden bg-ink text-paper font-medium hover:bg-ink-2`}>Agendar</button>}
-          {canClose && <button type="button" onClick={() => actions.open("close")} className={`${ACTION} xl:hidden bg-ok text-white font-medium hover:brightness-110`}>Fechar venda</button>}
+          {canSell && <button type="button" onClick={() => actions.open("close")} className={`${ACTION} xl:hidden bg-ok text-white font-medium hover:brightness-110`}>Fechar venda</button>}
           {canLose && <button type="button" onClick={() => actions.open("lose")} className={`${ACTION} xl:hidden text-alert hover:bg-alert-soft`}>Perdido</button>}
           {phone && (
             <>

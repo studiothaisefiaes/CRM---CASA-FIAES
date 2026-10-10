@@ -2,6 +2,7 @@
 import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { SPRING } from "@/lib/motion";
+import { pushToast } from "./toast-queue";
 
 type Action = { label: string; onClick: () => void };
 type Toast = { id: number; tone: "ok" | "error" | "info"; text: string; action?: Action };
@@ -15,7 +16,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const dismiss = useCallback((id: number) => setItems((l) => l.filter((t) => t.id !== id)), []);
   const push = useCallback<Push>((text, tone = "ok", action) => {
     const id = Date.now() + Math.random();
-    setItems((l) => [...l.slice(-2), { id, tone, text, action }]);
+    setItems((l) => pushToast(l, { id, tone, text, action }));
     setTimeout(() => dismiss(id), action ? 8000 : tone === "error" ? 7000 : 2800);
   }, [dismiss]);
   return (
