@@ -4,7 +4,7 @@ import { db } from "../db";
 import { alerts, contacts, deals, messages, stages, tasks, users } from "../db/schema";
 import { resetDb } from "../../../test/db";
 import { countLateLeads } from "./late-count";
-import { getQueue, getQueueItem, nextWaitingId, type QueueResult } from "./queue";
+import { getQueue, getQueueItem, nextWaitingId, queueStageLabel, type QueueResult } from "./queue";
 import type { QueueView } from "../../lib/queue";
 
 beforeEach(async () => { await resetDb(); });
@@ -226,6 +226,34 @@ describe("getQueue: escopo, views e filtros", () => {
     expect(await f("agendados-amanha")).toEqual([amanha.id]);
     expect(await f("novos")).not.toContain(velho.id);
     expect((await f("novos")).length).toBe(5 - 1);
+  });
+
+  it("etapa (link da Jornada): só os leads daquela etapa; 'followup' junta os Follow-ups 1 a 4; etapa fechada não entra na Fila", async () => {
+    const { gestora, ana, lead } = await setup();
+    const novo = await lead({ awaitingReplySince: ago(5) });
+    const atend = await lead({ stage: "atendimento", last: { direction: "out" } });
+    const f1 = await lead({ stage: "followup_1", last: { direction: "out" } });
+    const f3 = await lead({ stage: "followup_3", last: { direction: "out" } });
+    const fechado = await lead({ stage: "fechado", closedAt: ago(10) });
+    const etapa = async (e: string, user = gestora) => all(await getQueue(asUser(user), { now: NOW, etapa: e })).sort();
+    expect(await etapa("lead")).toEqual([novo.id]);
+    expect(await etapa("atendimento")).toEqual([atend.id]);
+    expect(await etapa("followup_3")).toEqual([f3.id]);
+    expect(await etapa("followup")).toEqual([f1.id, f3.id].sort());
+    expect(await etapa("fechado")).toEqual([]);
+    expect(fechado.id).toBeTruthy();
+    // os números do resumo seguem a etapa; a atendente continua só no escopo dela (sem dono + os dela)
+    expect((await getQueue(asUser(gestora), { now: NOW, etapa: "followup" })).counts.total).toBe(2);
+    expect(await etapa("lead", ana as never)).toEqual([novo.id]);
+    // chave estranha não vira erro: ignora o filtro
+    expect((await etapa("x'; drop table deals;--")).length).toBe(4);
+  });
+
+  it("queueStageLabel dá o nome da etapa para o aviso da Fila; chave desconhecida vira null", async () => {
+    expect(await queueStageLabel("lead")).toBe("Lead");
+    expect(await queueStageLabel("followup")).toBe("Follow-up");
+    expect(await queueStageLabel("nao_existe")).toBeNull();
+    expect(await queueStageLabel(null)).toBeNull();
   });
 
   it("chips do resumo (foco): mesmo escopo e mesmo número dos counts, inclusive para a atendente", async () => {

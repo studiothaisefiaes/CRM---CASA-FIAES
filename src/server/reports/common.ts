@@ -1,6 +1,7 @@
 import { sql, type SQL } from "drizzle-orm";
 import { db } from "../db";
 import { NOT_IDENTIFIED } from "../../lib/source-kinds";
+import { isUuid } from "../../lib/uuid";
 
 export type Period = "hoje" | "7d" | "mes" | "ano";
 export const PERIOD_LABEL: Record<Period, string> = { hoje: "Hoje", "7d": "7 dias", mes: "Este mês", ano: "Este ano" };
@@ -80,7 +81,7 @@ export function dealScope(f: ReportFilter, alias = "d", opts: { novos?: boolean 
     sql`not exists (select 1 from contacts ic where ic.id = ${a}.contact_id and ic.ignored)`,
   ];
   if (opts.novos) parts.push(sql`not exists (select 1 from deal_events he where he.deal_id = ${a}.id and he.type = 'lead_criado' and he.payload->>'historico' = 'true')`);
-  if (f.ownerId && /^[0-9a-f-]{36}$/i.test(f.ownerId)) parts.push(sql`${a}.owner_id = ${f.ownerId}`);
+  if (isUuid(f.ownerId)) parts.push(sql`${a}.owner_id = ${f.ownerId}`);
   if (f.origin) parts.push(sql`${a}.origin = ${f.origin}`);
   if (f.source) parts.push(sql`${SOURCE_EXPR(alias)} = ${f.source}`);
   return sql.join(parts, sql` and `);

@@ -13,5 +13,6 @@ it("reconhece a conversa em tela cheia, e só ela", () => {
   expect(isConversationPath("/atendimento")).toBe(false);
   expect(isConversationPath("/atendimento/abc")).toBe(false);
   expect(isConversationPath("/funil")).toBe(false);
+  expect(isConversationPath(`/atendimento/${"-".repeat(36)}`)).toBe(false); // só parece UUID
   expect(isConversationPath(null)).toBe(false);
 });

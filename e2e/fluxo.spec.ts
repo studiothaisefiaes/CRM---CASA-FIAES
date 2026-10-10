@@ -69,8 +69,8 @@ test("agendar pede data e move para Agendado", async ({ page }) => {
   await page.getByRole("region", { name: /^Atendimento,/ }).getByText("Mariana Couto").click();
   const sheet = page.getByRole("dialog", { name: /Lead Mariana Couto/ });
   await sheet.getByRole("combobox", { name: "Etapa" }).selectOption("agendado");
-  const dlg = page.getByRole("dialog", { name: "Agendar" });
-  await expect(dlg.getByLabel("Data e horário da avaliação")).not.toHaveValue("");
+  const dlg = page.getByRole("dialog", { name: "Agendar avaliação" }); // a mesma folha da Fila
+  await expect(dlg.getByLabel("Dia")).not.toHaveValue("");
   await dlg.getByRole("button", { name: "Agendar" }).click();
   await expect(sheet.getByRole("combobox", { name: "Etapa" })).toHaveValue("agendado");
 });
@@ -82,10 +82,12 @@ test("fechar venda aceita 1158.50 e salva R$ 1.158,50", async ({ page }) => {
   const sheet = page.getByRole("dialog", { name: /Lead Mariana Couto/ });
   await sheet.getByRole("combobox", { name: "Etapa" }).selectOption("fechado");
   const dlg = page.getByRole("dialog", { name: "Fechar venda" });
-  await dlg.getByLabel("Valor fechado (R$)").fill("abc");
+  await dlg.getByLabel("Valor").fill("abc");
   await dlg.getByRole("button", { name: "Fechar venda" }).click();
-  await expect(dlg.getByRole("alert")).toBeVisible();
-  await dlg.getByLabel("Valor fechado (R$)").fill("1158.50");
+  await expect(dlg.getByRole("alert").first()).toBeVisible();
+  await dlg.getByLabel("Valor").fill("1158.50");
+  await dlg.getByRole("radio", { name: "Pix" }).click();
+  await dlg.getByRole("radio", { name: "Coloração" }).click();
   await dlg.getByRole("button", { name: "Fechar venda" }).click();
   await expect(sheet.getByRole("combobox", { name: "Etapa" })).toHaveValue("fechado");
   await page.reload();

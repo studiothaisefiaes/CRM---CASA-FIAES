@@ -1,15 +1,15 @@
 "use client";
 import { ContactAvatar } from "@/components/ui/contact-avatar";
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import type { DealDetail } from "@/server/queries/deal";
 import { Conversation, quotePreview, type Msg } from "./conversation";
 import { Composer, type QuoteTarget } from "./composer";
 import { AutoField } from "./fields";
-import { StageDialogs, type PendingMove } from "@/components/pipeline/stage-dialogs";
-import { markConversationReadAction, moveDealAction } from "@/app/(app)/funil/actions";
-import { useToast } from "@/components/ui/toast";
+import { markConversationReadAction } from "@/app/(app)/funil/actions";
+import type { Viewer } from "@/app/(app)/atendimento/actions";
+import { useLeadActions } from "@/components/queue/use-lead-actions";
 import { IconClose, IconPhone, IconMail, IconInstagram, IconWhatsApp, IconCake, IconClock, IconArrowRight } from "@/components/icons";
 import { useLiveRefresh } from "@/components/shell/live";
 import { useUrgency } from "@/components/pipeline/timer";
@@ -135,31 +135,12 @@ export function LeadSide({ d, tab, bp, cols }: { d: DealDetail; tab: "conversa" 
   );
 }
 
-/** Mover de etapa: etapas que pedem dados (agendar, perdido, fechar) abrem o diálogo; as outras movem direto. */
-export function useStageMove(d: DealDetail | null, name: string) {
-  const toast = useToast();
-  const [, start] = useTransition();
-  const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
-  const moveTo = (key: string) => {
-    if (!d) return;
-    const to = d.stages.find((s) => s.key === key); if (!to || to.id === d.deal.stageId) return;
-    const m: PendingMove = { cardId: d.deal.id, name, to: { id: to.id, key: to.key, name: to.name, kind: to.kind } };
-    if (["agendado", "perdido", "fechado"].includes(to.kind)) setPendingMove(m);
-    else start(async () => { const r = await moveDealAction(d.deal.id, key); toast(r.ok ? `Movido para ${to.name}` : r.error, r.ok ? "ok" : "error"); });
-  };
-  const dialogs = d ? (
-    <StageDialogs pending={pendingMove} lostReasons={d.lostReasons.map((l) => ({ id: l.id, label: l.label }))} onCancel={() => setPendingMove(null)}
-      onConfirm={(extra) => { const m = pendingMove!; setPendingMove(null); start(async () => { const r = await moveDealAction(m.cardId, m.to.key, extra); toast(r.ok ? `Movido para ${m.to.name}` : r.error, r.ok ? "ok" : "error"); }); }} />
-  ) : null;
-  return { moveTo, dialogs };
-}
-
 /**
  * O lead aberto por cima do Quadro (/funil?lead=ID): folha lateral com cabeçalho, conversa e dados.
  * Em ≥ 1024 px a conversa fica à esquerda e os dados à direita; abaixo disso, abas Conversa | Dados | Histórico.
  * Na Fila (/atendimento) quem faz isso é o `ConversationPane`.
  */
-export function LeadSheet({ d, nextId }: { d: DealDetail; nextId?: string | null }) {
+export function LeadSheet({ d, nextId, viewer }: { d: DealDetail; nextId?: string | null; viewer: Viewer | null }) {
   const router = useRouter();
   const sp = useSearchParams();
   useLiveRefresh([`deal:${d.deal.id}`]); // o card aberto só se atualiza com avisos do próprio lead
@@ -198,7 +179,8 @@ export function LeadSheet({ d, nextId }: { d: DealDetail; nextId?: string | null
     return optimistic ? [...base, { id: "optimistic", direction: "out" as const, kind: "text", body: optimistic, status: "pending", createdAt: new Date().toISOString(), sender: null, fromPhone: false }] : base;
   }, [d.messages, optimistic]);
 
-  const { moveTo, dialogs } = useStageMove(d, name);
+  // Agendar, fechar venda e perdido abrem as mesmas folhas da Fila; o servidor não move para essas etapas sem os dados.
+  const { moveTo, sheets } = useLeadActions({ d, name, viewer, reload: async () => router.refresh() });
   const onReply = useCallback((m: Msg) => setReplyTo({ id: m.id, text: quotePreview(m) }), []);
   const wa = `https://wa.me/${d.contact.phoneE164.replace(/\D/g, "")}`;
 
@@ -277,11 +259,11 @@ export function LeadSheet({ d, nextId }: { d: DealDetail; nextId?: string | null
           </section>
         </div>
       </motion.aside>
-      {dialogs}
+      {sheets}
     </>
   );
 }
 
-export function LeadSheetPresence({ d, nextId }: { d: DealDetail | null; nextId?: string | null }) {
-  return <AnimatePresence>{d && <LeadSheet key={d.deal.id} d={d} nextId={nextId} />}</AnimatePresence>;
+export function LeadSheetPresence({ d, nextId, viewer }: { d: DealDetail | null; nextId?: string | null; viewer: Viewer | null }) {
+  return <AnimatePresence>{d && <LeadSheet key={d.deal.id} d={d} nextId={nextId} viewer={viewer} />}</AnimatePresence>;
 }

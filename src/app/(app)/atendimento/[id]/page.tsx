@@ -31,7 +31,7 @@ export default async function ConversaPage({ params, searchParams }: PageProps<"
   return (
     <main className={`h-dvh overflow-hidden grid grid-cols-1 grid-rows-[minmax(0,1fr)] ${cols}`}>
       <LiveRefresh scopes={["queue"]} />
-      {queue && bulk && <QueueColumn queue={queue} query="" view="todos" foco={null} filtro={null} q={null} fonte={null} onlyOwnLabel={false} selectedId={id} className="hidden lg:flex" bulk={bulk} />}
+      {queue && bulk && <QueueColumn queue={queue} query="" view="todos" foco={null} filtro={null} q={null} fonte={null} journey={user.role === "gestor"} onlyOwnLabel={false} selectedId={id} className="hidden lg:flex" bulk={bulk} />}
       <ConversationPane key={id} dealId={id} initial={queue?.sections.flatMap((s) => s.items).find((i) => i.dealId === id) ?? item} back={withList ? "below-lg" : "always"} focusComposer={compose}
         wa={{ down: banners.disconnected, href: user.role === "gestor" ? "/config/whatsapp" : "/atendimento" }} />
     </main>

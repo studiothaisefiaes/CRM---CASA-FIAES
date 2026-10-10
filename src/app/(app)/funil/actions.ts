@@ -6,6 +6,7 @@ import { SALE_VALUE_REQUIRED } from "@/lib/money";
 import { assertUser } from "@/server/auth/session";
 import { moveDeal, ReopenConflict } from "@/server/domain/deals";
 import { claimDeal } from "@/server/domain/assign";
+import { assertDirectMove } from "@/server/domain/stage-move";
 import { BULK_MAX, bulkArchive, bulkAssign, bulkMove, bulkRestore } from "@/server/domain/bulk";
 import { completeTask, setNextAction } from "@/server/domain/tasks";
 import { updateDeal, createManualLead, closeSale, scheduleDeal, loseDeal, markAttendance, UserFacingError, type DealPatch } from "@/server/domain/updates";
@@ -23,12 +24,17 @@ const safe = (e: unknown, fallback: string): { ok: false; error: string } =>
   ({ ok: false, error: e instanceof ReopenConflict || e instanceof UserFacingError || (e instanceof Error && KNOWN_ERRORS.has(e.message)) ? (e as Error).message : fallback });
 const revalidateLead = () => { revalidatePath("/funil"); revalidatePath("/atendimento"); revalidatePath("/"); };
 
-export async function moveDealAction(dealId: string, stageKey: string, extra?: DealPatch): Promise<ActionResult> {
+/**
+ * Mover de etapa (Quadro e painel). Agendado, Fechado e Perdido não passam por aqui: pedem data, valor e pagamento ou motivo, então
+ * têm a ação própria (`scheduleAction`, `closeSaleAction`, `loseAction`). Recusa com "Use a ação própria".
+ */
+export async function moveDealAction(dealId: string, stageKey: string): Promise<ActionResult> {
   try {
     const user = await assertUser();
     z.string().uuid().parse(dealId);
-    if (extra && Object.keys(extra).length) await updateDeal(dealId, extra, user.id);
-    await moveDeal(dealId, z.string().min(1).max(40).parse(stageKey), user.id, "manual");
+    const key = z.string().min(1).max(40).parse(stageKey);
+    await assertDirectMove(key);
+    await moveDeal(dealId, key, user.id, "manual");
     revalidateLead();
     return { ok: true };
   } catch (e) { return safe(e, "Não foi possível mudar a etapa. Tente de novo."); }

@@ -2,10 +2,10 @@
 import { useCallback, useEffect, useLayoutEffect } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { QueueItem, QueueSection } from "@/server/queries/queue";
+import { isUuid } from "@/lib/uuid";
 import { readQueueState, rememberLead } from "./use-queue-state";
 
 export const DESKTOP = "(min-width: 1024px)";
-const UUID = /^[0-9a-f-]{36}$/i;
 
 /**
  * Os itens da Fila que o navegador já conhece, por id. O painel da conversa abre na hora com o item (nome, foto, espera, última mensagem)
@@ -30,7 +30,7 @@ export function useCurrentLead(routeLead: string | null): string | null {
   const sp = useSearchParams();
   if (pathname !== "/atendimento") return routeLead;
   const l = sp.get("lead");
-  return l && UUID.test(l) ? l : null;
+  return isUuid(l) ? l : null;
 }
 
 const withLead = (search: string, id: string | null) => {

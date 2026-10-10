@@ -8,8 +8,10 @@ import { elapsed, initials, money } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { ContactAvatar } from "@/components/ui/contact-avatar";
 
-export function DealCard({ card, slaMinutes, stageKind, stageName, dragging, filtersQs }: {
+export function DealCard({ card, slaMinutes, stageKind, stageName, dragging, filtersQs, a11y }: {
   card: BoardCard; slaMinutes: number | null; stageKind: string; stageName?: string; dragging?: boolean; filtersQs: string;
+  /** Atributos de acessibilidade do arrastar (instruções para leitor de tela), no link, que é quem recebe o foco. */
+  a11y?: { "aria-describedby"?: string; "aria-roledescription"?: string };
 }) {
   const { urgency, label } = useUrgency(card.awaitingReplySince, slaMinutes);
   const now = useNow();
@@ -18,7 +20,7 @@ export function DealCard({ card, slaMinutes, stageKind, stageName, dragging, fil
   const snippet = card.lastMessage || (card.lastMessageKind ? KIND[card.lastMessageKind] ?? null : null);
   const waitingClient = !card.awaitingReplySince && card.lastDirection === "out" && card.lastMessageAt;
   return (
-    <Link href={`/funil?${filtersQs}${filtersQs ? "&" : ""}lead=${card.id}`} scroll={false} draggable={false}
+    <Link href={`/funil?${filtersQs}${filtersQs ? "&" : ""}lead=${card.id}`} scroll={false} draggable={false} {...a11y}
       className={cn(
         "group relative block rounded-[var(--radius-control)] border bg-paper px-3.5 py-3 text-left transition-[border-color,box-shadow,background,transform] duration-200",
         urgency === "late" ? "border-alert bg-alert-soft shadow-[0_0_0_1px_var(--color-alert)]" : urgency === "warn" ? "border-gold/70" : "border-line hover:border-line-strong",

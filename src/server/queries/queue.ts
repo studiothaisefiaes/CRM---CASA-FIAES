@@ -49,6 +49,17 @@ export type QueueOptions = {
 };
 
 export const QUEUE_LIMIT = 1000;
+const ETAPA_KEY = /^[a-z0-9_]{1,40}$/i;
+/** `etapa=followup` (a estação "Follow-up" da Jornada) é Follow-up 1 a 4 juntos, como na coluna do Quadro. */
+export const FOLLOWUP_STATION = "followup";
+
+/** O nome da etapa do `?etapa=`, para o aviso "Mostrando: etapa Lead" da Fila. Chave que não existe: null (o filtro não acha ninguém, o aviso não mente). */
+export async function queueStageLabel(etapa: string | null | undefined): Promise<string | null> {
+  if (!etapa || !ETAPA_KEY.test(etapa)) return null;
+  if (etapa === FOLLOWUP_STATION) return "Follow-up";
+  const [s] = await db.select({ name: stages.name }).from(stages).where(eq(stages.key, etapa)).limit(1);
+  return s?.name ?? null;
+}
 const BAHIA_OFFSET_MS = 3 * 3_600_000; // America/Bahia, UTC-3, sem horário de verão
 const DAY_MS = 86_400_000;
 
@@ -167,7 +178,7 @@ export async function getQueue(user: Who, opts: QueueOptions = {}): Promise<Queu
   const sc = scopeCond(user, onlyOwn);
   if (sc) conds.push(sc);
   if (gestor && opts.filtro && opts.dono && isUuid(opts.dono)) conds.push(eq(deals.ownerId, opts.dono));
-  if (opts.etapa && /^[a-z0-9_]{1,40}$/i.test(opts.etapa)) conds.push(eq(stages.key, opts.etapa));
+  if (opts.etapa && ETAPA_KEY.test(opts.etapa)) conds.push(opts.etapa === FOLLOWUP_STATION ? eq(stages.kind, "followup") : eq(stages.key, opts.etapa));
   if (opts.fonte) conds.push(sql`${SOURCE_EXPR("deals")} = ${opts.fonte}`);
 
   const reengage = opts.view === "sem-contato-90d";
