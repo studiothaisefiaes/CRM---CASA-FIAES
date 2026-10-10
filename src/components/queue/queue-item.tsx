@@ -1,0 +1,111 @@
+"use client";
+import Link from "next/link";
+import { useSyncExternalStore, type MouseEvent } from "react";
+import type { QueueItem } from "@/server/queries/queue";
+import { ContactAvatar } from "@/components/ui/contact-avatar";
+import { IconMic } from "@/components/icons";
+import { useHours, useNow } from "@/components/pipeline/timer";
+import { businessSecondsBetween } from "@/lib/business-hours";
+import { seconds } from "@/lib/format";
+import { formatPhoneClient } from "@/lib/phone-client";
+import { ringState, slaProgress, type QueueSectionKey, type RingState } from "@/lib/queue";
+import { cn } from "@/lib/cn";
+
+const KIND: Record<string, string> = { audio: "Áudio", image: "Foto", sticker: "Figurinha", video: "Vídeo", document: "Documento", location: "Localização", contact: "Contato", poll: "Enquete", event: "Evento", other: "Mensagem" };
+const noopSubscribe = () => () => {};
+const RING_COLOR: Record<Exclude<RingState, "none">, string> = { ok: "var(--color-graphite)", near: "var(--color-gold)", late: "var(--color-alert)" };
+
+/** Anel de SLA em volta do avatar: quanto do prazo da etapa já passou. A cor nunca vem sozinha; o texto ao lado diz o estado. */
+function Ring({ state, progress, size, children }: { state: RingState; progress: number; size: number; children: React.ReactNode }) {
+  if (state === "none") return <span className="shrink-0 grid place-items-center" style={{ width: size + 8, height: size + 8 }}>{children}</span>;
+  const stroke = state === "late" ? 3.5 : 3, r = (size + 8) / 2 - stroke / 2, c = 2 * Math.PI * r;
+  return (
+    <span className="relative shrink-0 grid place-items-center" style={{ width: size + 8, height: size + 8 }}>
+      <svg aria-hidden className="absolute inset-0 -rotate-90" width={size + 8} height={size + 8} viewBox={`0 0 ${size + 8} ${size + 8}`}>
+        <circle cx={(size + 8) / 2} cy={(size + 8) / 2} r={r} fill="none" stroke="var(--color-line)" strokeWidth={stroke} />
+        <circle cx={(size + 8) / 2} cy={(size + 8) / 2} r={r} fill="none" stroke={RING_COLOR[state]} strokeWidth={stroke} strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c * (1 - progress)} />
+      </svg>
+      {children}
+    </span>
+  );
+}
+
+const WEIGHT: Record<QueueSectionKey, { row: string; avatar: number; name: string; time: string }> = {
+  atrasados: { row: "bg-alert-soft border-l-[5px] border-l-alert py-3.5", avatar: 44, name: "text-base font-semibold", time: "text-[18px] font-semibold text-alert" },
+  perto: { row: "border-l-[4px] border-l-gold py-3", avatar: 40, name: "text-base font-semibold", time: "text-base font-semibold text-gold-ink" },
+  aguardando: { row: "border-l-[3px] border-l-transparent py-3", avatar: 40, name: "text-base font-medium", time: "text-base font-medium text-ink" },
+  "acoes-hoje": { row: "border-l-[3px] border-l-transparent py-2.5", avatar: 36, name: "text-base font-medium", time: "text-sm text-graphite" },
+  parados: { row: "border-l-[3px] border-l-transparent py-2.5", avatar: 36, name: "text-base font-medium text-graphite", time: "text-sm text-graphite" },
+  "aguardando-cliente": { row: "border-l-[3px] border-l-transparent py-2", avatar: 32, name: "text-sm font-medium text-graphite", time: "text-sm text-graphite" },
+};
+
+function statusOf(section: QueueSectionKey, ring: RingState, waitSec: number, sla: number | null, item: QueueItem, now: number): { text: string; tone: string } | null {
+  if (ring === "late") {
+    const over = sla ? waitSec - sla * 60 : 0;
+    return { text: over >= 60 ? `atrasado ${seconds(over)}` : "atrasado", tone: "text-alert font-semibold" };
+  }
+  if (ring === "near") {
+    const left = sla ? sla * 60 - waitSec : 0;
+    return { text: left > 0 ? `perto do prazo · faltam ${seconds(left)}` : "no limite do prazo", tone: "text-gold-ink font-semibold" };
+  }
+  if (ring === "ok") return { text: "dentro do prazo", tone: "text-graphite" };
+  if (section === "acoes-hoje" && item.nextAction) {
+    const due = new Date(item.nextAction.dueAt);
+    const hora = due.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Bahia" });
+    return { text: `${item.nextAction.title} · ${due.getTime() < now ? "venceu" : "hoje"} ${hora}`, tone: "text-gold-ink font-medium" };
+  }
+  if (section === "parados") return { text: "parado, sem próxima ação", tone: "text-graphite" };
+  if (section === "aguardando-cliente") return { text: item.nextAction ? `próxima ação: ${item.nextAction.title}` : "esperando a cliente", tone: "text-muted" };
+  return null;
+}
+
+export function QueueRow({ item, section, selected, href, tabIndex, onOpen }: {
+  item: QueueItem; section: QueueSectionKey; selected: boolean; href: string; tabIndex: number; onOpen?: (item: QueueItem, e: MouseEvent<HTMLAnchorElement>) => void;
+}) {
+  const clock = useNow();
+  const hours = useHours();
+  // Servidor e primeira pintura do navegador usam a mesma conta (espera zero); o relógio real entra logo depois, sem divergência de hidratação.
+  const ready = useSyncExternalStore(noopSubscribe, () => true, () => false);
+  const w = WEIGHT[section];
+  const since = item.awaitingSince ? new Date(item.awaitingSince).getTime() : null;
+  const now = ready ? clock : since ?? 0;
+  const waitSec = since != null ? businessSecondsBetween(since, now, hours) : 0;
+  const ring = ringState({ awaiting: since != null, late: section === "atrasados", waitSeconds: waitSec, slaMinutes: item.slaMinutes });
+  const progress = ring === "late" ? 1 : slaProgress(waitSec, item.slaMinutes);
+  const status = statusOf(section, ring, waitSec, item.slaMinutes, item, ready ? clock : 0);
+  const name = item.name === item.phone ? formatPhoneClient(item.phone) : item.name;
+  const snippet = item.lastMessage || (item.lastKind ? KIND[item.lastKind] ?? null : null);
+  const pills = item.signals.filter((s) => s !== "Sem dono");
+  return (
+    <Link href={href} prefetch={false} scroll={false} role="option" aria-selected={selected} tabIndex={tabIndex} data-deal-id={item.dealId}
+      onClick={(e) => onOpen?.(item, e)}
+      className={cn(
+        "group relative flex items-start gap-3 pl-3 pr-4 min-h-[72px] border-b border-line/80 outline-offset-[-2px] scroll-mt-12 scroll-mb-2 transition-colors aria-selected:ring-2 aria-selected:ring-inset aria-selected:ring-gold",
+        w.row, selected ? "bg-gold-soft/70 hover:bg-gold-soft" : section === "atrasados" ? "hover:bg-alert-soft/70" : "hover:bg-paper-2",
+      )}>
+      <Ring state={ring} progress={progress} size={w.avatar}>
+        <ContactAvatar contactId={item.contactId} hasAvatar={item.hasAvatar} name={name} size={w.avatar} />
+      </Ring>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-baseline justify-between gap-3">
+          <span className={cn("truncate", w.name)}>{name}</span>
+          {since != null && <span className={cn("shrink-0 tabular", w.time)}>{ready ? seconds(waitSec) : ""}</span>}
+        </span>
+        {snippet && (
+          <span className={cn("mt-0.5 block truncate text-sm", item.lastDirection === "in" ? "text-ink-2" : "text-graphite")}>
+            {item.lastKind === "audio" && <IconMic size={13} className="inline -mt-0.5 mr-1" />}
+            {item.lastDirection === "out" && <span className="text-muted">Você: </span>}{snippet}
+          </span>
+        )}
+        {status && <span className={cn("mt-1 block text-[13px] tabular", status.tone)}>{status.text}</span>}
+        <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+          <span>{item.stageName}</span><span aria-hidden>·</span><span className="truncate max-w-[16ch]">{item.sourceLabel}</span><span aria-hidden>·</span>
+          <span className={item.ownerName ? "" : "text-gold-ink font-medium"}>{item.ownerName ? item.ownerName.split(/\s+/)[0] : "Sem dono"}</span>
+          {pills.map((s) => (
+            <span key={s} className={cn("rounded-full px-1.5 py-px font-medium", s === "Tarefa atrasada" ? "bg-alert-soft text-alert" : s === "Cliente" ? "bg-ok-soft text-ok" : "bg-paper-2 text-graphite")}>{s}</span>
+          ))}
+        </span>
+      </span>
+    </Link>
+  );
+}

@@ -1,31 +1,41 @@
 "use client";
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "motion/react";
-import { IconChart, IconContacts, IconFunnel, IconLogout, IconSettings, IconToday } from "@/components/icons";
+import { IconChart, IconChat, IconContacts, IconFunnel, IconLogout, IconMore, IconSettings, IconToday } from "@/components/icons";
+import { Sheet } from "@/components/ui/sheet";
 import { AlertsBell } from "./alerts-bell";
+import { useLiveAlerts } from "./use-live-alerts";
 import { logoutAction } from "./push-cleanup";
 import { initials } from "@/lib/format";
 import { SPRING } from "@/lib/motion";
 import type { AlertItem } from "@/server/queries/alerts";
 
+/** O Quadro (/funil) fica dentro de Atendimento: acende o mesmo item da barra. */
+const MATCH: Record<string, string[]> = { "/atendimento": ["/atendimento", "/funil"] };
+
 const NAV = [
   { href: "/", label: "Hoje", icon: IconToday },
-  { href: "/funil", label: "Funil", icon: IconFunnel },
+  { href: "/atendimento", label: "Atendimento", icon: IconChat },
   { href: "/contatos", label: "Contatos", icon: IconContacts },
   { href: "/relatorios", label: "Relatórios", icon: IconChart },
 ];
 
-export function Sidebar({ user, alerts }: { user: { name: string; role: string }; alerts: AlertItem[] }) {
+export function Sidebar({ user, alerts: initialAlerts }: { user: { name: string; role: string }; alerts: AlertItem[] }) {
   const path = usePathname();
-  const items = user.role === "gestor" ? [...NAV, { href: "/config", label: "Configurações", icon: IconSettings }] : NAV;
-  const isActive = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
+  const { alerts, reload } = useLiveAlerts(initialAlerts);
+  const [more, setMore] = useState(false);
+  const gestor = user.role === "gestor";
+  const items = gestor ? [...NAV, { href: "/config", label: "Configurações", icon: IconSettings }] : NAV;
+  const isActive = (href: string) => (href === "/" ? path === "/" : (MATCH[href] ?? [href]).some((p) => path.startsWith(p)));
+  const moreActive = path.startsWith("/funil") || path.startsWith("/config");
   return (
     <>
       <aside className="hidden lg:flex fixed inset-y-0 left-0 w-[232px] flex-col bg-paper-2 border-r border-line z-30">
         <div className="flex items-center justify-between px-5 pt-5 pb-6">
           <Link href="/" className="font-serif text-[21px] leading-none">Casa <em className="text-gold">Fiaes</em></Link>
-          <AlertsBell alerts={alerts} />
+          <AlertsBell alerts={alerts} reload={reload} />
         </div>
         <nav className="flex-1 px-3 flex flex-col gap-0.5" aria-label="Principal">
           {items.map((it) => {
@@ -53,21 +63,33 @@ export function Sidebar({ user, alerts }: { user: { name: string; role: string }
       <header className="lg:hidden sticky top-0 z-30 flex items-center justify-between h-14 px-4 bg-paper/90 backdrop-blur border-b border-line">
         <Link href="/" className="font-serif text-[19px]">Casa <em className="text-gold">Fiaes</em></Link>
         <div className="flex items-center gap-1">
-          <AlertsBell alerts={alerts} />
+          <AlertsBell alerts={alerts} reload={reload} />
           <form action={logoutAction}><button className="size-11 grid place-items-center rounded-[var(--radius-control)] text-muted" aria-label="Sair"><IconLogout size={17} /></button></form>
         </div>
       </header>
-      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 grid bg-paper/95 backdrop-blur border-t border-line pb-[env(safe-area-inset-bottom)]" style={{ gridTemplateColumns: `repeat(${items.length}, 1fr)` }} aria-label="Principal">
-        {items.map((it) => {
+      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 grid grid-cols-5 bg-paper/95 backdrop-blur border-t border-line pb-[env(safe-area-inset-bottom)]" aria-label="Principal">
+        {NAV.map((it) => {
           const active = isActive(it.href);
           return (
-            <Link key={it.href} href={it.href} aria-current={active ? "page" : undefined} className={`relative flex flex-col items-center gap-0.5 py-2 text-[10.5px] ${active ? "text-ink" : "text-muted"}`}>
+            <Link key={it.href} href={it.href} aria-current={active ? "page" : undefined} className={`relative flex flex-col items-center justify-center gap-0.5 min-h-14 text-[11px] ${active ? "text-ink font-medium" : "text-muted"}`}>
               {active && <motion.span layoutId="tab-dot" transition={SPRING} className="absolute top-0 h-0.5 w-8 rounded-full bg-gold" />}
-              <it.icon size={20} />{it.label.split(" ")[0]}
+              <it.icon size={20} />{it.label}
             </Link>
           );
         })}
+        <button type="button" onClick={() => setMore(true)} aria-haspopup="dialog" className={`relative flex flex-col items-center justify-center gap-0.5 min-h-14 text-[11px] ${moreActive ? "text-ink font-medium" : "text-muted"}`}>
+          {moreActive && <span className="absolute top-0 h-0.5 w-8 rounded-full bg-gold" />}
+          <IconMore size={20} />Mais
+        </button>
       </nav>
+      <Sheet open={more} onClose={() => setMore(false)} title="Mais" side="bottom">
+        <ul className="flex flex-col -my-1">
+          <li><Link href="/funil" onClick={() => setMore(false)} className="flex items-center gap-3 min-h-12 text-base"><IconFunnel size={19} className="text-graphite" />Quadro de leads</Link></li>
+          {gestor && <li><Link href="/config" onClick={() => setMore(false)} className="flex items-center gap-3 min-h-12 text-base"><IconSettings size={19} className="text-graphite" />Configurações</Link></li>}
+          <li><form action={logoutAction}><button className="flex w-full items-center gap-3 min-h-12 text-base text-left"><IconLogout size={19} className="text-graphite" />Sair</button></form></li>
+        </ul>
+        <p className="text-xs text-muted mt-3">{user.name} · {gestor ? "Gestão" : "Atendimento"}</p>
+      </Sheet>
     </>
   );
 }

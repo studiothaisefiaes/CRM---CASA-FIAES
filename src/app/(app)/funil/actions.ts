@@ -18,7 +18,7 @@ export async function moveDealAction(dealId: string, stageKey: string, extra?: D
     z.string().uuid().parse(dealId);
     if (extra && Object.keys(extra).length) await updateDeal(dealId, extra, user.id);
     await moveDeal(dealId, z.string().min(1).max(40).parse(stageKey), user.id, "manual");
-    revalidatePath("/funil"); revalidatePath("/");
+    revalidatePath("/funil"); revalidatePath("/atendimento"); revalidatePath("/");
     return { ok: true };
   } catch (e) { return fail(e); }
 }
@@ -28,7 +28,7 @@ export async function updateDealAction(dealId: string, patch: DealPatch): Promis
     const user = await assertUser();
     if (patch.ownerId !== undefined && user.role !== "gestor") throw new Error("Só a gestão troca o responsável pelo lead.");
     await updateDeal(z.string().uuid().parse(dealId), patch, user.id);
-    revalidatePath("/funil");
+    revalidatePath("/funil"); revalidatePath("/atendimento");
     return { ok: true };
   } catch (e) { return fail(e); }
 }
@@ -45,7 +45,7 @@ export async function sendMessageAction(dealId: string, text: string, quoteMessa
     const quote = z.string().uuid().nullish().parse(quoteMessageId);
     const waitedSeconds = await waited(id);
     await sendFromCrm(id, text, user.id, { quoteMessageId: quote });
-    revalidatePath("/funil"); revalidatePath("/");
+    revalidatePath("/funil"); revalidatePath("/atendimento"); revalidatePath("/");
     return { ok: true, data: { waitedSeconds } };
   } catch (e) { return fail(e); }
 }
@@ -62,7 +62,7 @@ export async function sendMediaAction(form: FormData): Promise<ActionResult<{ wa
     const quote = z.string().uuid().nullish().parse(form.get("quoteMessageId") || null);
     const waitedSeconds = await waited(id);
     await sendMediaFromCrm(id, { name: file.name, mime: file.type, data: Buffer.from(await file.arrayBuffer()) }, caption ?? null, user.id, { quoteMessageId: quote });
-    revalidatePath("/funil"); revalidatePath("/");
+    revalidatePath("/funil"); revalidatePath("/atendimento"); revalidatePath("/");
     return { ok: true, data: { waitedSeconds } };
   } catch (e) { return fail(e); }
 }
@@ -80,7 +80,7 @@ export async function createLeadAction(form: { phone: string; name?: string }): 
   try {
     const user = await assertUser();
     const dealId = await createManualLead(form, user.id);
-    revalidatePath("/funil");
+    revalidatePath("/funil"); revalidatePath("/atendimento");
     return { ok: true, data: { dealId } };
   } catch (e) { return fail(e); }
 }

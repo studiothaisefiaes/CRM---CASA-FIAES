@@ -8,6 +8,7 @@ import { SearchBox } from "./search-box";
 import { Badge } from "@/components/ui/badge";
 import { Empty } from "@/components/ui/empty";
 import { formatPhoneClient } from "@/lib/phone-client";
+import { leadHref } from "@/lib/lead-href";
 
 export const metadata = { title: "Contatos" };
 
@@ -33,7 +34,7 @@ export default async function ContatosPage({ searchParams }: PageProps<"/contato
           <ul className="sm:hidden rounded-[var(--radius-panel)] border border-line bg-paper divide-y divide-line/70">
             {data.rows.map((c) => (
               <li key={c.id}>
-                <Link href={c.lastDealId ? `/funil?lead=${c.lastDealId}` : `/contatos?q=${encodeURIComponent(c.phone)}`} className="flex items-center justify-between gap-3 px-4 py-3 active:bg-paper-2">
+                <Link href={c.lastDealId ? leadHref(c.lastDealId) : `/contatos?q=${encodeURIComponent(c.phone)}`} className="flex items-center justify-between gap-3 px-4 py-3 active:bg-paper-2">
                   <span className="min-w-0"><span className="block font-medium truncate">{c.name ?? "Sem nome"}</span><span className="block text-sm text-muted tabular">{formatPhoneClient(c.phone)}</span></span>
                   {c.isClient ? <Badge tone="ok">Cliente</Badge> : <Badge>Lead</Badge>}
                 </Link>
@@ -48,7 +49,7 @@ export default async function ContatosPage({ searchParams }: PageProps<"/contato
               <tbody>
                 {data.rows.map((c) => (
                   <tr key={c.id} className="relative border-b border-line/70 last:border-0 hover:bg-paper-2/60 transition-colors">
-                    <td className="px-5 py-2.5 font-medium">{c.lastDealId ? <Link href={`/funil?lead=${c.lastDealId}`} className="hover:text-gold-ink after:absolute after:inset-0">{c.name ?? "Sem nome"}</Link> : (c.name ?? "Sem nome")}</td>
+                    <td className="px-5 py-2.5 font-medium">{c.lastDealId ? <Link href={leadHref(c.lastDealId)} className="hover:text-gold-ink after:absolute after:inset-0">{c.name ?? "Sem nome"}</Link> : (c.name ?? "Sem nome")}</td>
                     <td className="px-3 tabular text-graphite whitespace-nowrap">{formatPhoneClient(c.phone)}</td>
                     <td className="px-3 text-graphite truncate max-w-[220px]">{c.email ?? "—"}</td>
                     <td className="px-3">{c.isClient ? <Badge tone="ok">Cliente{c.clientSince ? ` desde ${new Date(c.clientSince).getFullYear()}` : ""}</Badge> : <Badge>Lead</Badge>}</td>

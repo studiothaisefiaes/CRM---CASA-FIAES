@@ -4,13 +4,13 @@ import { AnimatePresence, motion } from "motion/react";
 import { DUR, EASE } from "@/lib/motion";
 import { cn } from "@/lib/cn";
 
-export type MenuItem = { label: string; onSelect: () => void; danger?: boolean };
+export type MenuItem = { label: string; onSelect: () => void; danger?: boolean; /** Opção em uso (aria-current): destaca em negrito. */ current?: boolean };
 
 /** Menu de ações: abre pelo botão, setas/Home/End navegam, Esc fecha e devolve o foco ao botão. */
-export function Menu({ trigger, items, label, align = "right", className }: {
+export function Menu({ trigger, items, label, align = "right", className, triggerClassName }: {
   trigger: ReactNode; items: MenuItem[];
   /** Nome acessível do botão quando `trigger` é só um ícone. */
-  label?: string; align?: "left" | "right"; className?: string;
+  label?: string; align?: "left" | "right"; className?: string; triggerClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
@@ -51,7 +51,7 @@ export function Menu({ trigger, items, label, align = "right", className }: {
       <button
         ref={btn} type="button" aria-haspopup="menu" aria-expanded={open} aria-controls={open ? id : undefined} aria-label={label}
         onClick={() => setOpen((o) => !o)} onKeyDown={onBtnKey}
-        className="inline-flex items-center justify-center gap-1.5 rounded-[var(--radius-control)] text-graphite hover:text-ink hover:bg-paper-2 transition-colors min-h-8 min-w-8 pointer-coarse:min-h-11 pointer-coarse:min-w-11"
+        className={cn("inline-flex items-center justify-center gap-1.5 rounded-[var(--radius-control)] text-graphite hover:text-ink hover:bg-paper-2 transition-colors min-h-8 min-w-8 pointer-coarse:min-h-11 pointer-coarse:min-w-11", triggerClassName)}
       >
         {trigger}
       </button>
@@ -64,9 +64,9 @@ export function Menu({ trigger, items, label, align = "right", className }: {
           >
             {items.map((it) => (
               <button
-                key={it.label} type="button" role="menuitem" tabIndex={-1}
+                key={it.label} type="button" role="menuitem" tabIndex={-1} aria-current={it.current ? "true" : undefined}
                 onClick={() => { setOpen(false); btn.current?.focus(); it.onSelect(); }}
-                className={cn("w-full text-left px-3 h-9 pointer-coarse:h-11 rounded-[8px] text-base focus:outline-none transition-colors", it.danger ? "text-alert hover:bg-alert-soft focus:bg-alert-soft" : "text-ink hover:bg-paper-2 focus:bg-paper-2")}
+                className={cn("w-full text-left px-3 h-9 pointer-coarse:h-11 rounded-[8px] text-base focus:outline-none transition-colors", it.current && "font-semibold", it.danger ? "text-alert hover:bg-alert-soft focus:bg-alert-soft" : "text-ink hover:bg-paper-2 focus:bg-paper-2")}
               >
                 {it.label}
               </button>

@@ -29,8 +29,8 @@ test("título e som: lead que estoura o prazo muda a aba uma vez só", async ({ 
   await expect.poll(() => page.evaluate(() => (window as unknown as { __beeps: number }).__beeps)).toBe(2);
 
   // Navegar mantém o título; recarregar não toca de novo (primeiro render não conta).
-  await page.getByRole("navigation", { name: "Principal" }).first().getByRole("link", { name: "Funil" }).click();
-  await expect(page).toHaveURL(/\/funil/);
+  await page.getByRole("navigation", { name: "Principal" }).first().getByRole("link", { name: "Atendimento" }).click();
+  await expect(page).toHaveURL(/\/atendimento/);
   await expect(page).toHaveTitle("(1) atrasados · Casa Fiaes");
   await page.reload();
   await expect(page).toHaveTitle("(1) atrasados · Casa Fiaes");

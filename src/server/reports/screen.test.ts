@@ -51,10 +51,10 @@ describe("dados da tela de relatórios", () => {
     expect(a.finance!.totalCents).toBe(150_000);
   });
 
-  it("links do resumo apontam só para listas que existem", async () => {
+  it("links do resumo apontam só para filtros que a Fila entende", async () => {
     const u = { id: gestor.id, role: "gestor" as const, name: "G", email: "g@c.com" };
     const o = await loadOverview(u, { period: "hoje", now: T(18) });
-    expect(o.summary.links.every((l) => l.href.startsWith("/funil?filtro=") && !/amanha|tarefas/.test(l.href))).toBe(true);
+    expect(o.summary.links.every((l) => l.href.startsWith("/atendimento?filtro=") && !/cobrancas/.test(l.href))).toBe(true);
   });
 
   it("scopedFilter: gestão filtra por pessoa, atendente é travada nela mesma", () => {

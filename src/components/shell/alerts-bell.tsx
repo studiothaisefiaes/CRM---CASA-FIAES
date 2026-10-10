@@ -16,7 +16,7 @@ import { isTop, popModal, pushModal } from "@/components/ui/modal-stack";
 const FOCUSABLE = "a[href],button:not([disabled]),[tabindex]:not([tabindex='-1'])";
 const noopSubscribe = () => () => {};
 
-export function AlertsBell({ alerts }: { alerts: AlertItem[] }) {
+export function AlertsBell({ alerts, reload }: { alerts: AlertItem[]; reload?: () => Promise<void> }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [desktop, setDesktop] = useState(false);
@@ -52,7 +52,7 @@ export function AlertsBell({ alerts }: { alerts: AlertItem[] }) {
     const href = leadHref(a.dealId);
     if (a.read) { router.push(href); return; }
     start(async () => {
-      try { await markAlertsReadAction([a.id]); } catch { /* abrir o lead importa mais que marcar */ }
+      try { await markAlertsReadAction([a.id]); void reload?.(); } catch { /* abrir o lead importa mais que marcar */ }
       router.push(href);
     });
   };
@@ -104,7 +104,7 @@ export function AlertsBell({ alerts }: { alerts: AlertItem[] }) {
                 <button className="min-h-11 lg:min-h-9 px-2 text-sm text-graphite hover:text-ink" onClick={() => { if (muted || isMuted()) { unmute(); setMuted(false); } else { muteFor(30); setMuted(true); } }}>
                   {muted ? "Som silenciado · ligar" : "Silenciar 30 min"}
                 </button>
-                {unread.length > 0 && <button className="min-h-11 lg:min-h-9 px-2 text-sm text-gold-ink hover:underline" onClick={() => start(async () => { await markAlertsReadAction(unread.map((a) => a.id)); })}>Marcar como lidos</button>}
+                {unread.length > 0 && <button className="min-h-11 lg:min-h-9 px-2 text-sm text-gold-ink hover:underline" onClick={() => start(async () => { await markAlertsReadAction(unread.map((a) => a.id)); await reload?.(); })}>Marcar como lidos</button>}
                 <button data-close type="button" aria-label="Fechar alertas" onClick={() => setOpen(false)} className="lg:hidden size-11 grid place-items-center text-muted hover:text-ink"><IconClose size={16} /></button>
               </div>
             </div>

@@ -3,6 +3,7 @@ import webpush from "web-push";
 import { db } from "./db";
 import { alerts, pushSubscriptions, users } from "./db/schema";
 import { vapidConfig } from "./env";
+import { leadHref } from "../lib/lead-href";
 
 export type PushTarget = { endpoint: string; p256dh: string; auth: string };
 /** Envia um payload (JSON em texto) e devolve o status HTTP do serviço de push. Pode lançar em erro de rede. */
@@ -52,7 +53,7 @@ export async function sendPushForPendingAlerts(sender: PushSender = webPushSende
     const toManagers = a.level >= 2 || (a.audience === "gestao" && !a.userId);
     const targets = toManagers ? managers : a.userId ? [a.userId] : [];
     const title = a.level >= 2 ? "Atraso escalado para a gestão" : "Lead esperando";
-    const payload = JSON.stringify({ title, body: a.message, url: a.dealId ? `/funil?lead=${a.dealId}` : "/funil" });
+    const payload = JSON.stringify({ title, body: a.message, url: leadHref(a.dealId) });
     const subsOf = targets.flatMap((uid) => byUser.get(uid) ?? []).filter((s) => !gone.has(s.endpoint));
     // Em paralelo: um endpoint lento ou fora do ar não segura os outros aparelhos.
     const results = await Promise.allSettled(subsOf.map((s) => sender(s, payload)));

@@ -22,11 +22,12 @@ test("clicar em 'Ver atrasados' abre a lista filtrada", async ({ page }) => {
   const link = page.getByRole("navigation", { name: "Atalhos do resumo" }).getByRole("link", { name: /Ver atrasados/ });
   await expect(link).toBeVisible();
   await link.click();
-  await expect(page).toHaveURL(/\/funil\?filtro=atrasados/);
+  await expect(page).toHaveURL(/\/atendimento\?filtro=atrasados/);
   await expect(page.getByRole("status").filter({ hasText: "Mostrando: leads atrasados" })).toBeVisible();
   await expect(page.getByText("Larissa Prado").first()).toBeVisible();
   await expect(page.getByText("Helena Duarte")).toHaveCount(0); // respondida: não está atrasada
   await page.getByRole("link", { name: "Mostrar todos" }).click();
+  await page.getByRole("button", { name: "Mostrar" }).click(); // a Casa já respondeu: fica em "Aguardando a cliente", seção recolhida
   await expect(page.getByText("Helena Duarte").first()).toBeVisible();
 });
 
@@ -121,11 +122,11 @@ test("atendente que clica em 'Ver atrasados' só vê os leads dela", async ({ pa
   await login(page, "ana@e2e.local");
   await page.goto("/relatorios?periodo=hoje");
   await page.getByRole("navigation", { name: "Atalhos do resumo" }).getByRole("link", { name: /Ver atrasados/ }).click();
-  await expect(page).toHaveURL(/\/funil\?filtro=atrasados/);
+  await expect(page).toHaveURL(/\/atendimento\?filtro=atrasados/);
   await expect(page.getByText("Marta Alves").first()).toBeVisible();
   await expect(page.getByText("Nilza Rocha")).toHaveCount(0);
   // Mesmo com a URL mexida na mão, a atendente não vê o que é de outra pessoa.
-  await page.goto("/funil?filtro=atrasados");
+  await page.goto("/atendimento?filtro=atrasados");
   await expect(page.getByText("Marta Alves").first()).toBeVisible();
   await expect(page.getByText("Nilza Rocha")).toHaveCount(0);
   await page.goto("/relatorios?periodo=hoje");

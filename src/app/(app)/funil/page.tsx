@@ -12,10 +12,11 @@ import { LiveRefresh } from "@/components/shell/live";
 import { LeadSheetPresence } from "@/components/lead/lead-sheet";
 import { parseFunilFilter } from "@/lib/report-links";
 import Link from "next/link";
+import { ViewSwitch } from "@/components/queue/view-switch";
 
 const FILTER_LABEL = { atrasados: "Leads atrasados", esperando: "Leads esperando resposta", parados: "Leads parados" } as const;
 
-export const metadata = { title: "Funil" };
+export const metadata = { title: "Quadro" };
 
 export default async function FunilPage({ searchParams }: PageProps<"/funil">) {
   const user = await requireUser();
@@ -38,7 +39,7 @@ export default async function FunilPage({ searchParams }: PageProps<"/funil">) {
   const nextId = waiting[0]?.id ?? null;
   return (
     <main>
-      <PageHeader title="Funil" subtitle={`${open} lead${open === 1 ? "" : "s"} em andamento`} actions={<Toolbar people={people} origins={origins} />} />
+      <PageHeader title="Quadro" subtitle={`${open} lead${open === 1 ? "" : "s"} em andamento`} actions={<><ViewSwitch current="quadro" /><Toolbar people={people} origins={origins} /></>} />
       {filtro && (
         <p className="mx-5 lg:mx-8 mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm" role="status">
           <span className="rounded-full bg-gold-soft text-gold-ink px-3 py-1 font-medium">Mostrando: {FILTER_LABEL[filtro].toLowerCase()}{user.role !== "gestor" ? " (só os seus)" : ""}{str("fonte") ? ` · origem ${str("fonte")}` : ""}</span>

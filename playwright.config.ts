@@ -14,7 +14,7 @@ export default defineConfig({
   projects: [
     { name: "setup", testMatch: /auth\.setup\.ts/ },
     { name: "desktop", dependencies: ["setup"], use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } }, testIgnore: /mobile\.spec\.ts/ },
-    { name: "celular", dependencies: ["setup"], use: { ...devices["iPhone 13"], browserName: "chromium" }, testMatch: /mobile\.spec\.ts/ },
+    { name: "celular", dependencies: ["setup"], use: { ...devices["iPhone 13"], browserName: "chromium" }, testMatch: /(mobile|fila|a11y)\.spec\.ts/ },
   ],
   webServer: {
     command: "npx next dev -p 3100",

@@ -41,7 +41,7 @@ it("nível 2 e alerta de gestão sem responsável vão para todos os gestores at
   const r = await sendPushForPendingAlerts(async (sub, payload) => { calls.push({ endpoint: sub.endpoint, payload: JSON.parse(payload) }); return 201; });
   expect(r).toEqual({ sent: 2, failed: 0 });
   expect(calls.map((c) => c.endpoint)).toEqual(["https://p/gil", "https://p/gil"]);
-  expect(calls.find((c) => c.payload.body === "escalado")?.payload).toMatchObject({ title: "Atraso escalado para a gestão", url: "/funil" });
+  expect(calls.find((c) => c.payload.body === "escalado")?.payload).toMatchObject({ title: "Atraso escalado para a gestão", url: "/atendimento" });
   expect(calls.find((c) => c.payload.body === "gestão")?.payload.title).toBe("Lead esperando");
 });
 
@@ -74,7 +74,7 @@ it("usa o dealId do alerta no link e grava last_ok_at; sender que lança conta c
   let url = "";
   const ok = await sendPushForPendingAlerts(async (_s, p) => { url = JSON.parse(p).url; return 201; });
   expect(ok.sent).toBe(1);
-  expect(url).toBe(`/funil?lead=${d.id}`);
+  expect(url).toBe(`/atendimento?lead=${d.id}`);
   expect((await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.endpoint, "https://p/ana")))[0].lastOkAt).not.toBeNull();
   await db.insert(alerts).values({ userId: ana.id, type: "a", message: "m2", dedupeKey: "d2", waitKey: "w7" });
   const bad = await sendPushForPendingAlerts(async () => { throw new Error("rede"); });

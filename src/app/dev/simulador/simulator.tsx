@@ -18,7 +18,7 @@ export function Simulator() {
       <label className="flex items-center gap-2 text-base"><input type="checkbox" checked={ad} onChange={(e) => setAd(e.target.checked)} /> Veio de anúncio (Click-to-WhatsApp)</label>
       <div className="flex gap-2">
         <Button loading={pending} onClick={() => start(async () => setOut(JSON.stringify(await simulateAction({ phone, name, text, fromMe, ad }), null, 2)))}>Enviar evento</Button>
-        <Link href="/funil" className="h-10 px-4 inline-flex items-center rounded-[var(--radius-control)] border border-line-strong text-base">Abrir funil</Link>
+        <Link href="/atendimento" className="h-10 px-4 inline-flex items-center rounded-[var(--radius-control)] border border-line-strong text-base">Abrir a fila</Link>
       </div>
       {out && <pre className="text-xs bg-paper-2 rounded-[var(--radius-control)] p-3 overflow-auto">{out}</pre>}
     </div>

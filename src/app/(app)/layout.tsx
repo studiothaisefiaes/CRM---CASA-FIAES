@@ -19,8 +19,8 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
         <HoursProvider hours={hours}>
           <Sidebar user={user} alerts={alerts} />
           <LateWatch initial={late} />
-          {/* O que o shell mostra: sino (alerts) e banners de conexão (channels). */}
-          <LiveRefresh scopes={["alerts", "channels"]} />
+          {/* Banners de conexão (channels) vêm do servidor; o sino busca /api/alertas sozinho (useLiveAlerts) e o atrasado, /api/alertas/atrasados. */}
+          <LiveRefresh scopes={["channels"]} />
           <div className="lg:pl-[232px] min-h-dvh pb-20 lg:pb-0">
             <ShellBannersView banners={banners} role={user.role} />
             {children}

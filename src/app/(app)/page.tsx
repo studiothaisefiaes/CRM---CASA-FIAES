@@ -9,6 +9,7 @@ import { LiveRefresh } from "@/components/shell/live";
 import { PushOptIn } from "@/components/shell/push-optin";
 import { vapidConfig } from "@/server/env";
 import { formatPhoneClient } from "@/lib/phone-client";
+import { leadHref } from "@/lib/lead-href";
 
 export const metadata = { title: "Hoje" };
 
@@ -41,7 +42,7 @@ export default async function HojePage({ searchParams }: PageProps<"/">) {
             <p className={`text-sm mt-2 ${late ? "text-alert" : "text-paper/60"}`}>{late ? `${late} além do prazo` : t.waiting.length ? "todos dentro do prazo" : "ninguém esperando"}</p>
           </div>
           {next && (
-            <Link href={`/funil?lead=${next.id}`} className={`h-11 px-4 rounded-[var(--radius-control)] inline-flex items-center gap-2 text-base font-semibold shrink-0 transition-transform active:scale-[0.98] ${late ? "bg-alert text-white" : "bg-gold text-ink"}`}>
+            <Link href={leadHref(next.id)} className={`h-11 px-4 rounded-[var(--radius-control)] inline-flex items-center gap-2 text-base font-semibold shrink-0 transition-transform active:scale-[0.98] ${late ? "bg-alert text-white" : "bg-gold text-ink"}`}>
               Atender próximo <IconArrowRight size={16} />
             </Link>
           )}
@@ -61,7 +62,7 @@ export default async function HojePage({ searchParams }: PageProps<"/">) {
         <section className="rounded-[var(--radius-panel)] border border-line bg-paper">
           <header className="flex items-center justify-between px-5 pt-4 pb-3">
             <h2 className="font-serif text-[22px] font-light">Esperando resposta</h2>
-            <Link href="/funil" className="text-sm text-gold-ink hover:underline">Abrir funil</Link>
+            <Link href="/atendimento" className="text-sm text-gold-ink hover:underline">Abrir a fila</Link>
           </header>
           <WaitingList items={t.waiting} />
         </section>
@@ -85,7 +86,7 @@ function Block({ title, icon, items, empty, render }: { title: string; icon: Rea
         <ul className="mt-2 divide-y divide-line/70">
           {items.slice(0, 6).map((i) => (
             <li key={i.id + (i.extra ?? "")}>
-              <Link href={`/funil?lead=${i.id}`} className="flex items-center justify-between gap-3 py-2 text-sm hover:text-gold-ink transition-colors">
+              <Link href={leadHref(i.id)} className="flex items-center justify-between gap-3 py-2 text-sm hover:text-gold-ink transition-colors">
                 <span className="truncate">{i.name ?? formatPhoneClient(i.phone)}</span><span className="text-muted text-sm shrink-0">{render(i)}</span>
               </Link>
             </li>

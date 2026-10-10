@@ -29,7 +29,7 @@ export async function dailySummaryText(user: Pick<SessionUser, "id" | "role" | "
     rows<{ id: string }>(sql`
       select d.id from deals d
       where d.closed_at is null and d.awaiting_reply_since is not null and d.awaiting_reply_since <= ${iso(now)}::timestamptz and ${dealScope(f)}`),
-    // "Atrasado" é uma definição só, a do motor e do shell: alerta de espera aberto (o mesmo número do sino e da lista /funil?filtro=atrasados).
+    // "Atrasado" é uma definição só, a do motor e do shell: alerta de espera aberto (o mesmo número do sino e da lista /atendimento?filtro=atrasados).
     countLateLeads(user),
     rows<{ n: number }>(sql`
       select count(*)::int as n from tasks t left join deals d on d.id = t.deal_id
@@ -60,12 +60,13 @@ export async function dailySummaryText(user: Pick<SessionUser, "id" | "role" | "
   if (amanhaCobrancas) lines.push(`• Cobranças de amanhã: ${amanhaCobrancas}${gestor ? ` (${brl(tm.cobrancasCents)})` : ""}`);
 
   const links: DailySummary["links"] = [];
+  if (mi.leads) links.push({ label: "Ver leads novos de hoje", href: "/atendimento?filtro=novos" });
   if (late) links.push({ label: `Ver atrasados (${late})`, href: "/atendimento?filtro=atrasados" });
   else if (waiting.length) links.push({ label: "Ver quem espera resposta", href: "/atendimento?filtro=esperando" });
   if (tasksLate) links.push({ label: "Ver tarefas atrasadas", href: "/atendimento?filtro=tarefas-atrasadas" });
-  if (amanhaAgendados) links.push({ label: "Ver agendados de amanhã", href: "/funil?filtro=agendados-amanha" });
-  if (amanhaCobrancas) links.push({ label: "Ver cobranças de amanhã", href: "/funil?filtro=cobrancas-amanha" });
-  if (parados) links.push({ label: "Ver parados", href: "/funil?filtro=parados" });
+  if (amanhaAgendados) links.push({ label: "Ver agendados de amanhã", href: "/atendimento?filtro=agendados-amanha" });
+  if (amanhaCobrancas) links.push({ label: "Ver cobranças de amanhã", href: "/atendimento?filtro=cobrancas-amanha" });
+  if (parados) links.push({ label: "Ver parados", href: "/atendimento?filtro=parados" });
   if (gestor) links.push({ label: "Abrir relatórios de hoje", href: "/relatorios?periodo=hoje" });
   return { text: lines.join("\n"), links, highlight: hourLocal >= 19 };
 }
