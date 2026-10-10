@@ -2,7 +2,7 @@ import { and, asc, eq, isNull, lte, sql } from "drizzle-orm";
 import { db, pool, type Tx } from "../db";
 import { alerts, automations, contacts, deals, messages, outbox, settings, stages, type OutboxItem } from "../db/schema";
 import { isOpen } from "../../lib/business-hours";
-import { deliverAutomated, resolveChannel, SendError, UncertainSendError, UNCERTAIN_SEND_MESSAGE } from "./send";
+import { deliverAutomated, NotSentError, resolveChannel, SendError, UncertainSendError, UNCERTAIN_SEND_MESSAGE } from "./send";
 import { getBusinessHours } from "./hours";
 import { isQuiet } from "./quiet";
 
@@ -145,12 +145,13 @@ async function processItem(item: OutboxItem, now: Date, open: boolean): Promise<
     delivered = await deliverAutomated(item.dealId, channel, { kind: item.kind === "poll" ? "poll" : "text", text: item.text, options: values }, last,
       (messageId) => saveMessageId(item, messageId));
   } catch (e) {
-    if (e instanceof UncertainSendError) { // a Evolution não respondeu: pode ter saído, então NÃO reenvia
-      await finish(item.id, { status: "failed", error: UNCERTAIN_SEND_MESSAGE });
-      await alertInterrupted(item, row.contact.name ?? row.contact.phoneE164, "não teve resposta da Evolution e pode ter saído");
+    // Fail-closed: só reenvia o que está EXPLICITAMENTE marcado como "não saiu" (resposta de erro da Evolution ou falha antes de chamar o provider).
+    const notSent = (e instanceof NotSentError) || (e instanceof SendError && !(e instanceof UncertainSendError));
+    if (!notSent) { // incerto ou desconhecido: pode ter saído, então NÃO reenvia
+      await finish(item.id, { status: "failed", error: e instanceof UncertainSendError ? UNCERTAIN_SEND_MESSAGE : `Erro inesperado no envio: ${(e instanceof Error ? e.message : String(e)).slice(0, 200)}` });
+      await alertInterrupted(item, row.contact.name ?? row.contact.phoneE164, "não teve resposta confiável da Evolution e pode ter saído");
       return "failed";
     }
-    // resposta HTTP de erro da Evolution: a mensagem NÃO saiu
     const msg = (e instanceof Error ? e.message : String(e)).slice(0, 300);
     if (!last) {
       await finish(item.id, { status: "pending", error: msg, notBefore: new Date(now.getTime() + BACKOFF_MIN[item.attempts - 1] * 60_000) });
@@ -196,18 +197,21 @@ async function failStuck(now: Date) {
 }
 
 /**
- * Worker (a cada minuto): envia os itens vencidos da fila, no máximo `settings.envio_teto_hora` por hora (padrão 20).
+ * Worker (a cada minuto): envia os itens vencidos da fila, no máximo `settings.envio_teto_hora` por hora (padrão 30).
  * Antes de cada envio reconfere lead, contato, canal, modo quieto e se a automação de origem ainda está ligada.
  */
 export async function drainOutbox(now = new Date()): Promise<{ sent: number; cancelled: number; retry: number; failed: number; skipped?: boolean }> {
   // Um drain por vez: com dois em paralelo o teto por hora seria contado duas vezes. Cadeado de sessão numa conexão só dele.
   const lock = await pool.connect();
+  let destroy: Error | undefined; // se o cadeado não puder ser solto, a conexão é destruída em vez de voltar ao pool com ele preso
   try {
-    const { rows } = await lock.query("select pg_try_advisory_lock($1::bigint) as ok", [OUTBOX_LOCK_KEY]);
-    if (!rows[0].ok) return { sent: 0, cancelled: 0, retry: 0, failed: 0, skipped: true };
+    let got: boolean;
+    try { got = (await lock.query("select pg_try_advisory_lock($1::bigint) as ok", [OUTBOX_LOCK_KEY])).rows[0].ok; }
+    catch (e) { destroy = e instanceof Error ? e : new Error(String(e)); throw e; }
+    if (!got) return { sent: 0, cancelled: 0, retry: 0, failed: 0, skipped: true };
     try { return await drainLocked(now); }
-    finally { await lock.query("select pg_advisory_unlock($1::bigint)", [OUTBOX_LOCK_KEY]); }
-  } finally { lock.release(); }
+    finally { await lock.query("select pg_advisory_unlock($1::bigint)", [OUTBOX_LOCK_KEY]).catch((e: unknown) => { destroy = e instanceof Error ? e : new Error(String(e)); }); }
+  } finally { lock.release(destroy); }
 }
 
 async function drainLocked(now: Date) {

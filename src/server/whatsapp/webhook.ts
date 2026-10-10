@@ -1,11 +1,12 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { asc, eq, isNull, and, lt, gt, ne, sql } from "drizzle-orm";
 import { db } from "../db";
-import { alerts, channels, deals, messages, webhookEvents } from "../db/schema";
+import { alerts, channels, deals, messages, outbox, webhookEvents } from "../db/schema";
 import { importHistoryChat, recordInbound, recordOutbound, type HistoryMessage, type MediaNode } from "../domain/deals";
 import { emit } from "../domain/events";
 import { startQuietIfPaired } from "../domain/quiet";
 import { applyPollVote } from "../domain/poll-vote";
+import { UNCERTAIN_SEND_MESSAGE } from "../domain/send";
 
 export function checkSecret(received: string | null, expected: string) {
   if (!received) return false;
@@ -292,13 +293,36 @@ async function claimPendingSend(jid: string, externalId: string, content: { kind
         and m2.created_at > now() - interval '2 minutes'
       order by m2.created_at desc limit 1)
     returning m.id` : sql`
-    update messages m set external_id = ${externalId}, status = case when m.status = 'pending' then 'sent' else m.status end
+    update messages m set external_id = ${externalId}, status = case when m.status in ('pending','failed') then 'sent' else m.status end,
+      error = case when m.status = 'failed' then null else m.error end
     where m.id = (select m2.id from messages m2 join contacts c on c.id = m2.contact_id
-      where c.phone_e164 = ${phone} and m2.direction = 'out' and m2.external_id is null and m2.status in ('pending','sent')
-        and m2.body is not distinct from ${content.body} and m2.created_at > now() - interval '5 minutes'
-      order by m2.created_at desc limit 1)
+      where c.phone_e164 = ${phone} and m2.direction = 'out' and m2.external_id is null
+        and m2.body is not distinct from ${content.body}
+        and ((m2.status in ('pending','sent') and m2.created_at > now() - interval '5 minutes')
+          -- envio automático marcado "incerto" (a Evolution não respondeu) cujo eco chegou depois: a mensagem tinha saído
+          or (m2.status = 'failed' and m2.error = ${UNCERTAIN_SEND_MESSAGE} and m2.created_at > now() - interval '15 minutes'
+              and (${channelId}::uuid is null or m2.channel_id = ${channelId}::uuid)))
+      order by case m2.status when 'pending' then 0 when 'sent' then 1 else 2 end, m2.created_at desc limit 1)
     returning m.id`);
+  const claimed = r.rows[0] as { id: string } | undefined;
+  if (claimed && !media) await promoteUncertainSend(claimed.id, externalId, channelId);
   return r.rows.length > 0;
+}
+
+/**
+ * Eco de um envio automático que a fila deu como "incerto": o item do outbox passa a `sent`, o alerta da gestão é resolvido e
+ * o envio é registrado como automático (não conta como resposta humana: sem evento `resposta`, `firstResponseAt` nem `awaitingReplySince`).
+ * Se a linha não pertence a um item falho da fila, não faz nada.
+ */
+async function promoteUncertainSend(messageId: string, externalId: string, channelId: string | null) {
+  const [item] = await db.update(outbox).set({ status: "sent", sentAt: new Date(), error: null })
+    .where(and(sql`${outbox.options}->>'messageId' = ${messageId}`, eq(outbox.status, "failed"))).returning({ id: outbox.id, dealId: outbox.dealId });
+  if (!item) return;
+  const now = new Date();
+  await db.update(alerts).set({ resolvedAt: now, readAt: sql`coalesce(${alerts.readAt}, ${now.toISOString()}::timestamptz)` })
+    .where(and(eq(alerts.dedupeKey, `auto:${item.id}`), isNull(alerts.resolvedAt)));
+  await recordOutbound({ dealId: item.dealId, channelId, externalId, status: "sent", claimMessageId: messageId, automated: true })
+    .catch((e) => console.error("[eco] não registrou o envio promovido", e instanceof Error ? e.message : e));
 }
 
 /**

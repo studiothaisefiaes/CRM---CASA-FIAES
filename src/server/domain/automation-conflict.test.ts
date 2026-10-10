@@ -27,4 +27,11 @@ describe("confirmação por enquete x lembrete de agendamento", () => {
     await expect(saveAutomation(enq.id, input, gestor)).rejects.toThrow(/Desligue o lembrete de agendamento/);
     await expect(saveAutomation(enq.id, { ...(input as object), enabled: false } as never, gestor)).resolves.not.toThrow();
   });
+  it("uma só automação com lembrete em texto e enquete juntos também é recusada", async () => {
+    const enq = await get("confirmacao_d1");
+    const both = { name: "As duas", enabled: true, trigger: enq.trigger, conditions: [], actions: [
+      { type: "enviar_mensagem", message: "Oi {nome}, lembrete" }, { type: "enviar_enquete_confirmacao", message: "Confirma, {nome}?" }] } as never;
+    await expect(saveAutomation(null, both, gestor)).rejects.toThrow(/lembrete em texto e a enquete/);
+    await expect(saveAutomation(null, { ...(both as object), enabled: false } as never, gestor)).rejects.toThrow(/lembrete em texto e a enquete/);
+  });
 });

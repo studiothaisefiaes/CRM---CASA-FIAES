@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "../db";
-import { automations, channels, contacts, settings, outbox, deals, tasks, messages, alerts, users } from "../db/schema";
+import { automations, channels, contacts, settings, outbox, deals, tasks, messages, alerts, users, dealEvents } from "../db/schema";
 import { enqueueAutomated, drainOutbox } from "./outbox";
 import { recordInbound as recordInboundReal } from "./deals";
 import { archiveDeals } from "./archive";
@@ -10,6 +10,7 @@ import { setWhatsappProvider } from "../whatsapp/evolution";
 import { runRules } from "../rules/engine";
 import { sendHooks } from "./send";
 import { ProviderError } from "../whatsapp/provider";
+import { UNCERTAIN_SEND_MESSAGE } from "./send";
 import { pool } from "../db";
 import { OUTBOX_LOCK_KEY } from "./outbox";
 import { resetDb } from "../../../test/db";
@@ -22,18 +23,19 @@ const sent: string[] = [];
 let failNext = 0;
 let failWith: (() => Error) | null = null;
 let textCalls = 0;
+let beforeFail: (() => Promise<void>) | null = null;
 const fake = {
   createInstance: async () => {}, connect: async () => ({ status: "conectado" as const }), state: async () => "conectado" as const, logout: async () => {}, remove: async () => {},
-  sendText: async (_i: string, _to: string, text: string) => { textCalls++; if (failWith) throw failWith(); if (failNext > 0) { failNext--; throw new ProviderError("Evolution respondeu 503: fora do ar", 503); } sent.push(text); return { externalId: "OUT" + sent.length }; },
+  sendText: async (_i: string, _to: string, text: string) => { textCalls++; if (failWith) { await beforeFail?.(); throw failWith(); } if (failNext > 0) { failNext--; throw new ProviderError("Evolution respondeu 500: fora do ar", 500); } sent.push(text); return { externalId: "OUT" + sent.length }; },
   sendPoll: async (_i: string, _to: string, name: string, options: string[]) => { sent.push("poll:" + name + ":" + options.join("|")); return { externalId: "POLL1" }; },
 };
 let chId = "";
 const lead = async (phone: string, at: Date) => { const r = await recordInbound({ channelId: chId, externalId: phone + at.getTime(), phoneRaw: phone, body: "oi", at }); if (!("dealId" in r)) throw new Error(); return r.dealId; };
 beforeEach(async () => {
-  sent.length = 0; failNext = 0; failWith = null; textCalls = 0; await resetDb(); setWhatsappProvider(fake);
+  sent.length = 0; failNext = 0; failWith = null; textCalls = 0; beforeFail = null; await resetDb(); setWhatsappProvider(fake);
   [{ id: chId }] = await db.insert(channels).values({ name: "Rec", instanceName: "rec", status: "conectado", phone: "+557199990404" }).returning();
 });
-afterEach(() => { setWhatsappProvider(null); sendHooks.beforeConfirm = undefined; });
+afterEach(async () => { await db.execute(sql`drop trigger if exists t12_trg on messages`); setWhatsappProvider(null); sendHooks.beforeConfirm = undefined; });
 
 describe("fila de envios automáticos", () => {
   const t0 = new Date("2026-10-13T13:00:00Z"); // ter 10h em Salvador (aberto)
@@ -466,5 +468,104 @@ describe("fix round 2: envio incerto (a Evolution não respondeu)", () => {
     const rows = await db.select().from(messages).where(eq(messages.dealId, id));
     expect(rows.find((r) => r.id === mine.id)!.status).toBe("failed");
     expect(rows.find((r) => r.id === other.id)!.status).toBe("pending");
+  });
+});
+
+describe("fix round 3: fail-closed no retry", () => {
+  const t0 = new Date("2026-10-13T13:00:00Z");
+  const one = async (phone = "71999991001") => { const id = await lead(phone, t0); await enqueueAutomated({ dealId: id, kind: "text", text: "uma" }); return id; };
+  for (const status of [408, 502, 503, 504]) {
+    it(`HTTP ${status} é incerto: failed, 1 envio, alerta, sem retry`, async () => {
+      const id = await one();
+      failWith = () => new ProviderError(`Evolution respondeu ${status}`, status);
+      await drainOutbox(t0);
+      expect((await db.select().from(outbox))[0]).toMatchObject({ status: "failed", attempts: 1, error: UNCERTAIN_SEND_MESSAGE });
+      expect((await db.select().from(alerts)).some((a) => a.type === "envio_automatico_falhou" && a.dealId === id)).toBe(true);
+      await drainOutbox(new Date(t0.getTime() + 3 * 3_600_000));
+      expect(textCalls).toBe(1);
+    });
+  }
+  for (const status of [400, 422, 500]) {
+    it(`HTTP ${status} é "não saiu": tenta de novo`, async () => {
+      await one();
+      failWith = () => new ProviderError(`Evolution respondeu ${status}`, status);
+      await drainOutbox(t0);
+      expect((await db.select().from(outbox))[0]).toMatchObject({ status: "pending", attempts: 1 });
+    });
+  }
+  it("erro desconhecido (nem HTTP nem rede): failed com alerta, sem retry", async () => {
+    await one();
+    failWith = () => new Error("boom inesperado");
+    await drainOutbox(t0);
+    expect((await db.select().from(outbox))[0]).toMatchObject({ status: "failed", attempts: 1 });
+    await drainOutbox(new Date(t0.getTime() + 3 * 3_600_000));
+    expect(textCalls).toBe(1);
+  });
+  it("erro de banco ao marcar a mensagem no caminho incerto não gera retry", async () => {
+    const id = await one("71999991002");
+    await db.execute(sql`create or replace function t12_fail() returns trigger as $$ begin raise exception 'banco caiu'; end $$ language plpgsql`);
+    await db.execute(sql`create trigger t12_trg before update on messages for each row when (new.status = 'failed') execute function t12_fail()`);
+    failWith = () => new DOMException("aborted", "AbortError");
+    await drainOutbox(t0);
+    expect((await db.select().from(outbox))[0]).toMatchObject({ status: "failed", attempts: 1, error: UNCERTAIN_SEND_MESSAGE });
+    expect((await db.select().from(alerts)).some((a) => a.dealId === id && a.type === "envio_automatico_falhou")).toBe(true);
+    await drainOutbox(new Date(t0.getTime() + 3 * 3_600_000));
+    expect(textCalls).toBe(1);
+  });
+});
+
+describe("fix round 3: eco x timeout", () => {
+  const t0 = new Date("2026-10-13T13:00:00Z");
+  const echo = (phone: string, id: string, text: string) => ingestEvolution({ event: "send.message", instance: "rec", data: { key: { remoteJid: `55${phone}@s.whatsapp.net`, fromMe: true, id }, message: { conversation: text }, messageTimestamp: 1 } });
+  it("eco chega antes do timeout: entregue, item 'sent', sem alerta, 1 bolha", async () => {
+    const id = await lead("71999991101", t0);
+    await enqueueAutomated({ dealId: id, kind: "text", text: "chegou" });
+    failWith = () => new DOMException("aborted", "AbortError");
+    beforeFail = async () => { await echo("7199991101", "ECO1", "chegou"); };
+    await drainOutbox(t0);
+    expect((await db.select().from(outbox))[0]).toMatchObject({ status: "sent" });
+    expect(await db.select().from(alerts)).toHaveLength(0);
+    const out = (await db.select().from(messages).where(eq(messages.dealId, id))).filter((m) => m.direction === "out");
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ status: "sent", externalId: "ECO1", error: null });
+  });
+  it("eco depois do incerto promove a linha: 1 bolha 'sent', item 'sent', alerta resolvido, sem virar resposta humana", async () => {
+    const id = await lead("71999991102", t0);
+    await enqueueAutomated({ dealId: id, kind: "text", text: "tardia" });
+    failWith = () => new DOMException("aborted", "AbortError");
+    await drainOutbox(t0);
+    expect((await db.select().from(outbox))[0].status).toBe("failed");
+    const before = (await db.select().from(deals).where(eq(deals.id, id)))[0];
+    expect(before.awaitingReplySince).not.toBeNull();
+    await echo("7199991102", "ECO2", "tardia");
+    const out = (await db.select().from(messages).where(eq(messages.dealId, id))).filter((m) => m.direction === "out");
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ status: "sent", externalId: "ECO2", error: null });
+    expect((await db.select().from(outbox))[0]).toMatchObject({ status: "sent", error: null });
+    const al = (await db.select().from(alerts)).filter((a) => a.type === "envio_automatico_falhou");
+    expect(al).toHaveLength(1); expect(al[0].resolvedAt).not.toBeNull();
+    const after = (await db.select().from(deals).where(eq(deals.id, id)))[0];
+    expect(after.awaitingReplySince?.getTime()).toBe(before.awaitingReplySince?.getTime());
+    expect(after.firstResponseAt).toBeNull();
+    expect((await db.select().from(dealEvents).where(eq(dealEvents.dealId, id))).some((e) => e.type === "resposta")).toBe(false);
+    expect(after.lastOutboundAt).not.toBeNull(); // conta como envio automático, como qualquer outro
+  });
+  it("linha 'failed' por outro erro não é promovida", async () => {
+    const id = await lead("71999991103", t0);
+    const [d] = await db.select().from(deals).where(eq(deals.id, id));
+    const [failed] = await db.insert(messages).values({ dealId: id, contactId: d.contactId, channelId: chId, direction: "out", kind: "text", body: "outra", status: "failed", error: "Evolution respondeu 500" }).returning();
+    await echo("7199991103", "ECO3", "outra");
+    const row = (await db.select().from(messages).where(eq(messages.id, failed.id)))[0];
+    expect(row).toMatchObject({ status: "failed", externalId: null });
+  });
+  it("pending vence a linha 'failed' incerta", async () => {
+    const id = await lead("71999991104", t0);
+    const [d] = await db.select().from(deals).where(eq(deals.id, id));
+    const base = { dealId: id, contactId: d.contactId, channelId: chId, direction: "out", kind: "text", body: "igual" } as const;
+    const [fail, pend] = await db.insert(messages).values([{ ...base, status: "failed", error: UNCERTAIN_SEND_MESSAGE }, { ...base, status: "pending" }]).returning();
+    await echo("7199991104", "ECO4", "igual");
+    const rows = await db.select().from(messages).where(eq(messages.dealId, id));
+    expect(rows.find((r) => r.id === pend.id)).toMatchObject({ status: "sent", externalId: "ECO4" });
+    expect(rows.find((r) => r.id === fail.id)).toMatchObject({ status: "failed", externalId: null });
   });
 });

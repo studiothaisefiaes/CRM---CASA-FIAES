@@ -17,6 +17,11 @@ export const UNCERTAIN_SEND_MESSAGE = "Envio incerto: a Evolution não respondeu
 export class UncertainSendError extends SendError {
   constructor() { super(UNCERTAIN_SEND_MESSAGE); }
 }
+/** A Evolution respondeu com erro explícito de que NÃO enviou (4xx/5xx, exceto 408/502/503/504): é o único caso com retry. */
+export class NotSentError extends SendError {}
+/** Status em que a resposta pode ter vindo de um proxy/timeout e a mensagem ainda ter saído. */
+const AMBIGUOUS_STATUS = new Set([408, 502, 503, 504]);
+const isNotSent = (e: unknown) => e instanceof ProviderError && e.status !== undefined && e.status >= 400 && e.status <= 599 && !AMBIGUOUS_STATUS.has(e.status);
 
 export const MAX_MEDIA_BYTES = 16 * 1024 * 1024;
 type Channel = typeof channels.$inferSelect;
@@ -270,13 +275,30 @@ export async function deliverAutomated(dealId: string, channel: Channel | null, 
       ? await prov.sendPoll!(channel.instanceName, row.phone, p.text, p.options)
       : await prov.sendText(channel.instanceName, row.phone, p.text));
   } catch (e) {
-    if (!(e instanceof ProviderError && e.status !== undefined)) {
-      await db.update(messages).set({ status: "failed", error: UNCERTAIN_SEND_MESSAGE }).where(eq(messages.id, pending.id));
+    if (!isNotSent(e)) {
+      // Pode ter saído (timeout, rede, 408/502/503/504, erro desconhecido). Fail-closed: nunca reenviar.
+      // Só vira "falhou" se ainda estiver pendente: se o eco do WhatsApp chegou antes, a mensagem foi entregue.
+      let delivered = false;
+      try {
+        const done = await db.update(messages).set({ status: "failed", error: UNCERTAIN_SEND_MESSAGE }).where(and(eq(messages.id, pending.id), eq(messages.status, "pending"))).returning({ id: messages.id });
+        if (done.length === 0) {
+          const [cur] = await db.select({ status: messages.status, externalId: messages.externalId }).from(messages).where(eq(messages.id, pending.id));
+          delivered = cur?.status === "sent";
+          if (delivered) externalId = cur.externalId;
+        }
+      } catch (dbErr) {
+        console.error("[fila] não marcou a mensagem como incerta", pending.id, errMsg(dbErr)); // o item falha do mesmo jeito
+      }
+      if (delivered) {
+        // O eco chegou antes: entregue. Registra como qualquer envio automático (sem contar como resposta humana).
+        await recordOutbound({ dealId, channelId: channel.id, externalId, body, kind: p.kind, status: "sent", claimMessageId: pending.id, automated: true }).catch(() => {});
+        return {};
+      }
       throw new UncertainSendError();
     }
     if (keepFailed) await db.update(messages).set({ status: "failed", error: errMsg(e).slice(0, 300) }).where(eq(messages.id, pending.id));
     else await db.delete(messages).where(eq(messages.id, pending.id));
-    throw e;
+    throw e instanceof SendError ? e : new NotSentError(errMsg(e));
   }
   try {
     await confirmSent(pending.id, { dealId, channelId: channel.id, externalId, body, userId: null, automated: true });

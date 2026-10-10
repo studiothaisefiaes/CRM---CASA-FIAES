@@ -53,11 +53,13 @@ const isAgendamento = (a: AutoShape) => (a.trigger as { type?: string } | null)?
  * O lembrete de agendamento (texto) e a confirmação por enquete disparam no mesmo momento: ligados juntos, a cliente
  * receberia duas mensagens. Recusa ligar um com o outro ligado.
  */
-async function assertNoConfirmationConflict(tx: Tx, selfId: string | null, v: AutoShape) {
-  if (!v.enabled || !isAgendamento(v)) return;
-  await tx.execute(sql`select pg_advisory_xact_lock(7120013)`); // duas telas salvando ao mesmo tempo não furam a regra
+async function assertNoConfirmationConflict(tx: Tx, selfId: string | null, v: AutoShape, opts: { always?: boolean } = {}) {
   const mine = actionTypes(v);
   const poll = mine.includes("enviar_enquete_confirmacao"), text = mine.includes("enviar_mensagem");
+  // Uma só automação com os dois: a cliente receberia o lembrete e a enquete (ao salvar vale mesmo desligada).
+  if (poll && text && (v.enabled || opts.always)) throw new Error("Uma automação não pode enviar o lembrete em texto e a enquete de confirmação juntos. Deixe só um dos dois.");
+  if (!v.enabled || !isAgendamento(v)) return;
+  await tx.execute(sql`select pg_advisory_xact_lock(7120013)`); // duas telas salvando ao mesmo tempo não furam a regra
   if (!poll && !text) return;
   const others = (await tx.select().from(automations).where(eq(automations.enabled, true))).filter((o) => o.id !== selfId && isAgendamento(o));
   if (poll && others.some((o) => actionTypes(o).includes("enviar_mensagem")))
@@ -69,7 +71,7 @@ async function assertNoConfirmationConflict(tx: Tx, selfId: string | null, v: Au
 export async function saveAutomation(id: string | null, input: AutomationInput, userId: string) {
   const v = automationInputSchema.parse(input);
   return db.transaction(async (tx) => {
-    await assertNoConfirmationConflict(tx, id, v);
+    await assertNoConfirmationConflict(tx, id, v, { always: true });
     if (!id) {
       const [a] = await tx.insert(automations).values({ ...v, updatedBy: userId }).returning();
       await tx.insert(automationVersions).values({ automationId: a.id, version: 1, snapshot: v, userId });
