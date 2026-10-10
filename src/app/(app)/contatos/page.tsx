@@ -5,73 +5,67 @@ import { LiveRefresh } from "@/components/shell/live";
 import { PageHeader } from "@/components/page-header";
 import { ImportButton } from "./import-button";
 import { SearchBox } from "./search-box";
-import { Badge } from "@/components/ui/badge";
+import { ContactsList } from "@/components/contacts/contacts-list";
+import { QueueSelectionProvider, SelectToggle } from "@/components/queue/queue-selection";
 import { Empty } from "@/components/ui/empty";
-import { formatPhoneClient } from "@/lib/phone-client";
-import { leadHref } from "@/lib/lead-href";
+import { cn } from "@/lib/cn";
 
 export const metadata = { title: "Contatos" };
+
+const CHIP = "inline-flex h-11 items-center rounded-[var(--radius-control)] border px-3.5 text-sm font-medium transition-colors sm:h-10";
 
 export default async function ContatosPage({ searchParams }: PageProps<"/contatos">) {
   const user = await requireUser();
   const sp = await searchParams;
-  const q = typeof sp.q === "string" ? sp.q : null;
+  const q = typeof sp.q === "string" ? sp.q.trim().slice(0, 80) : "";
   const clientes = sp.clientes === "1";
+  const ignorados = sp.ignorados === "1";
   const page = Number(sp.p ?? 1) || 1;
-  const data = await listContacts({ q, onlyClients: clientes, page });
+  const data = await listContacts({ q, onlyClients: clientes, includeIgnored: ignorados, page });
   const pages = Math.max(1, Math.ceil(data.total / data.size));
-  const qs = (p: number) => { const s = new URLSearchParams(); if (q) s.set("q", q); if (clientes) s.set("clientes", "1"); if (p > 1) s.set("p", String(p)); return s.size ? `?${s}` : ""; };
+  const href = (over: { clientes?: boolean; ignorados?: boolean; p?: number }) => {
+    const s = new URLSearchParams();
+    if (q) s.set("q", q);
+    if (over.clientes ?? clientes) s.set("clientes", "1");
+    if (over.ignorados ?? ignorados) s.set("ignorados", "1");
+    if (over.p && over.p > 1) s.set("p", String(over.p));
+    return s.size ? `/contatos?${s}` : "/contatos";
+  };
+  const keep: Record<string, string> = { ...(clientes ? { clientes: "1" } : {}), ...(ignorados ? { ignorados: "1" } : {}) };
   return (
-    <main className="pb-12">
-      <LiveRefresh scopes={["queue"]} />
-      <PageHeader title="Contatos" subtitle={`${data.total.toLocaleString("pt-BR")} contato${data.total === 1 ? "" : "s"}`}
-        actions={<><SearchBox initial={q ?? ""} /><Link href={clientes ? "/contatos" : "/contatos?clientes=1"} className={`h-9 px-3 inline-flex items-center rounded-[var(--radius-control)] border text-sm ${clientes ? "bg-ink text-paper border-ink" : "border-line-strong"}`}>Só clientes</Link>{user.role === "gestor" && <ImportButton />}</>} />
-      <div className="px-5 lg:px-8">
-        {data.rows.length === 0 ? (
-          <div className="rounded-[var(--radius-panel)] border border-line bg-paper"><Empty title={q ? "Nada encontrado" : "Nenhum contato ainda"}>{q ? "Tente outro nome ou telefone." : "Os contatos aparecem quando alguém manda mensagem no WhatsApp, ou importando o histórico de clientes."}</Empty></div>
-        ) : (
-          <>
-          <ul className="sm:hidden rounded-[var(--radius-panel)] border border-line bg-paper divide-y divide-line/70">
-            {data.rows.map((c) => (
-              <li key={c.id}>
-                <Link href={c.lastDealId ? leadHref(c.lastDealId) : `/contatos?q=${encodeURIComponent(c.phone)}`} className="flex items-center justify-between gap-3 px-4 py-3 active:bg-paper-2">
-                  <span className="min-w-0"><span className="block font-medium truncate">{c.name ?? "Sem nome"}</span><span className="block text-sm text-muted tabular">{formatPhoneClient(c.phone)}</span></span>
-                  {c.isClient ? <Badge tone="ok">Cliente</Badge> : <Badge>Lead</Badge>}
-                </Link>
-              </li>
-            ))}
-          </ul>
-          <div className="hidden sm:block rounded-[var(--radius-panel)] border border-line bg-paper overflow-x-auto">
-            <table className="w-full text-sm min-w-[720px]">
-              <thead><tr className="text-left text-xs text-muted border-b border-line">
-                <th className="font-medium px-5 py-3">Nome</th><th className="font-medium px-3">Telefone</th><th className="font-medium px-3">E-mail</th><th className="font-medium px-3">Situação</th><th className="font-medium px-3">Último atendimento</th><th className="font-medium px-3 text-right pr-5">Leads</th>
-              </tr></thead>
-              <tbody>
-                {data.rows.map((c) => (
-                  <tr key={c.id} className="relative border-b border-line/70 last:border-0 hover:bg-paper-2/60 transition-colors">
-                    <td className="px-5 py-2.5 font-medium">{c.lastDealId ? <Link href={leadHref(c.lastDealId)} className="hover:text-gold-ink after:absolute after:inset-0">{c.name ?? "Sem nome"}</Link> : (c.name ?? "Sem nome")}</td>
-                    <td className="px-3 tabular text-graphite whitespace-nowrap">{formatPhoneClient(c.phone)}</td>
-                    <td className="px-3 text-graphite truncate max-w-[220px]">{c.email ?? "—"}</td>
-                    <td className="px-3">{c.isClient ? <Badge tone="ok">Cliente{c.clientSince ? ` desde ${new Date(c.clientSince).getFullYear()}` : ""}</Badge> : <Badge>Lead</Badge>}</td>
-                    <td className="px-3 text-graphite">{c.lastServiceAt ? new Date(c.lastServiceAt).toLocaleDateString("pt-BR") : "—"}</td>
-                    <td className="px-3 pr-5 text-right tabular">{c.deals}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          </>
-        )}
-        {pages > 1 && (
-          <nav className="flex items-center justify-between mt-4 text-sm" aria-label="Páginas">
-            <span className="text-muted">Página {data.page} de {pages}</span>
-            <div className="flex gap-2">
-              {data.page > 1 && <Link href={`/contatos${qs(data.page - 1)}`} className="h-9 px-3 inline-flex items-center rounded-[var(--radius-control)] border border-line-strong">Anterior</Link>}
-              {data.page < pages && <Link href={`/contatos${qs(data.page + 1)}`} className="h-9 px-3 inline-flex items-center rounded-[var(--radius-control)] border border-line-strong">Próxima</Link>}
+    <QueueSelectionProvider>
+      <main className="pb-12">
+        <LiveRefresh scopes={["queue"]} />
+        <PageHeader title="Contatos" subtitle={`${data.total.toLocaleString("pt-BR")} contato${data.total === 1 ? "" : "s"}${q ? " encontrado" + (data.total === 1 ? "" : "s") : ""}`}
+          actions={user.role === "gestor" ? <ImportButton /> : undefined} />
+        <div className="px-5 lg:px-8">
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <div className="order-1 min-w-0 flex-1 sm:flex-none"><SearchBox initial={q} keep={keep} /></div>
+            <SelectToggle className="order-2 min-h-11 border border-line-strong sm:order-4 sm:ml-auto sm:min-h-10 lg:min-h-10" />
+            <div className="order-3 flex w-full flex-wrap gap-2 sm:w-auto">
+              <Link href={href({ clientes: !clientes })} aria-pressed={clientes} className={cn(CHIP, clientes ? "border-ink bg-ink text-paper" : "border-line-strong hover:bg-paper-2")}>Só clientes</Link>
+              <Link href={href({ ignorados: !ignorados })} aria-pressed={ignorados} className={cn(CHIP, ignorados ? "border-ink bg-ink text-paper" : "border-line-strong hover:bg-paper-2")}>Incluir “Não é cliente”</Link>
             </div>
-          </nav>
-        )}
-      </div>
-    </main>
+          </div>
+          {data.rows.length === 0 ? (
+            <div className="rounded-[var(--radius-panel)] border border-line bg-paper">
+              <Empty title={q ? "Nada encontrado" : "Nenhum contato ainda"}
+                action={q && !ignorados ? <Link href={href({ ignorados: true })} className="inline-flex min-h-11 items-center text-sm font-semibold text-gold-ink underline underline-offset-4">Buscar também em “Não é cliente”</Link> : undefined}>
+                {q ? "Tente outro nome, telefone ou um trecho da conversa." : "Os contatos aparecem quando alguém manda mensagem no WhatsApp, ou importando o histórico de clientes."}
+              </Empty>
+            </div>
+          ) : <ContactsList rows={data.rows} term={q} />}
+          {pages > 1 && (
+            <nav className="mt-4 flex items-center justify-between text-sm" aria-label="Páginas">
+              <span className="text-muted">Página {data.page} de {pages}</span>
+              <div className="flex gap-2">
+                {data.page > 1 && <Link href={href({ p: data.page - 1 })} className="inline-flex min-h-11 items-center rounded-[var(--radius-control)] border border-line-strong px-3.5 sm:min-h-9">Anterior</Link>}
+                {data.page < pages && <Link href={href({ p: data.page + 1 })} className="inline-flex min-h-11 items-center rounded-[var(--radius-control)] border border-line-strong px-3.5 sm:min-h-9">Próxima</Link>}
+              </div>
+            </nav>
+          )}
+        </div>
+      </main>
+    </QueueSelectionProvider>
   );
 }

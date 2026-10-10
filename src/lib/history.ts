@@ -14,7 +14,7 @@ export type HistoryEntry = {
   id: string; at: string; /** Ex.: "Valor: R$ 100,00 → R$ 150,00". */ text: string; /** Ex.: "Ana, 14:02". */ meta: string;
   tone: "default" | "etapa" | "alerta" | "ok";
 };
-export type HistoryDay = { key: string; label: string; entries: HistoryEntry[] };
+export type HistoryDay<E extends { at: string } = HistoryEntry> = { key: string; label: string; entries: E[] };
 
 /** Eventos que a conversa já mostra: ficam fora do histórico. */
 const HIDDEN = new Set(["mensagem_recebida", "mensagem_enviada", "lido"]);
@@ -108,9 +108,9 @@ export function historyEntries(events: HistoryEvent[], lk: HistoryLookup): Histo
 }
 
 /** Agrupa por dia de Salvador: "Hoje", "Ontem" e depois "sábado, 10 de outubro". */
-export function groupByDay(entries: HistoryEntry[], now: number): HistoryDay[] {
+export function groupByDay<E extends { at: string }>(entries: E[], now: number): HistoryDay<E>[] {
   const today = Math.floor((now - OFFSET_MS) / DAY_MS);
-  const days: HistoryDay[] = [];
+  const days: HistoryDay<E>[] = [];
   for (const e of entries) {
     const t = Date.parse(e.at);
     const key = dayKey(t);

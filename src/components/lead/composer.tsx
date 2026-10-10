@@ -21,9 +21,11 @@ const size = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1).
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 const kindOf = (f: File): Attachment["kind"] => (f.type.startsWith("image/") ? "image" : f.type.startsWith("audio/") ? "audio" : "file");
 
-export function Composer({ dealId, firstName, quickReplies, onOptimistic, onSent, slaSeconds, replyTo, onClearReply }: {
+export function Composer({ dealId, firstName, quickReplies, onOptimistic, onSent, slaSeconds, replyTo, onClearReply, autoFocus }: {
   dealId: string; firstName: string; quickReplies: Reply[]; onOptimistic: (text: string | null) => void; onSent?: () => void; slaSeconds?: number | null;
   replyTo?: QuoteTarget | null; onClearReply?: () => void;
+  /** Abre com o cursor no campo ("Iniciar conversa" da ficha do contato). */
+  autoFocus?: boolean;
 }) {
   const [text, setText] = useState("");
   const [pending, start] = useTransition();
@@ -43,6 +45,7 @@ export function Composer({ dealId, firstName, quickReplies, onOptimistic, onSent
   useEffect(() => () => { const r = recorder.current; if (r) { r.cancelled = true; clearInterval(r.timer); if (r.rec.state !== "inactive") r.rec.stop(); r.stream.getTracks().forEach((t) => t.stop()); } }, []);
   useEffect(() => () => { if (attachment) URL.revokeObjectURL(attachment.url); }, [attachment]);
   useEffect(() => { if (replyTo) ref.current?.focus(); }, [replyTo?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (autoFocus) ref.current?.focus({ preventScroll: true }); }, [autoFocus, dealId]);
   // Teclado do celular: quando a área visível encolhe (iOS não redimensiona a página), o campo em foco volta para a vista e o Enviar não fica coberto.
   useEffect(() => {
     const vv = window.visualViewport;

@@ -76,8 +76,10 @@ function SideSkeleton() {
  * (o item da Fila) e o histórico e os dados chegam por Server Action. Depois de responder, oferece "Próximo da fila".
  * Fique com `key={dealId}`: trocar de lead monta uma conversa nova (estado limpo, "lido" marcado uma vez).
  */
-export function ConversationPane({ dealId, initial, initialTab = "conversa", back = "below-lg", wa }: {
+export function ConversationPane({ dealId, initial, initialTab = "conversa", back = "below-lg", wa, focusComposer }: {
   dealId: string; initial: QueueItem | null; initialTab?: PaneTab; back?: PaneBack; wa?: WaWarning;
+  /** Abre com o cursor no campo de mensagem (vindo de "Iniciar conversa"). */
+  focusComposer?: boolean;
 }) {
   const [detail, setDetail] = useState<DealDetail | null>(null);
   const [viewer, setViewer] = useState<Viewer | null>(null);
@@ -176,7 +178,7 @@ export function ConversationPane({ dealId, initial, initialTab = "conversa", bac
             )}
           </AnimatePresence>
           <Composer dealId={dealId} firstName={firstName} quickReplies={detail?.quickReplies ?? []} onOptimistic={onOptimistic} onSent={onSent}
-            replyTo={replyTo} onClearReply={() => setReplyTo(null)} slaSeconds={slaMinutes ? slaMinutes * 60 : null} />
+            replyTo={replyTo} onClearReply={() => setReplyTo(null)} slaSeconds={slaMinutes ? slaMinutes * 60 : null} autoFocus={focusComposer} />
         </section>
         <section aria-label="Dados do cliente" className={`min-h-0 overflow-y-auto scroll-thin px-5 py-4 flex-1 ${tab === "conversa" ? "hidden" : "block"} xl:block xl:flex-none xl:col-start-2 xl:row-start-1 xl:row-span-2 xl:border-l border-line bg-paper-2/40`}>
           {detail ? <ClientPane d={detail} tab={tab} viewer={viewer} actions={actions} /> : <SideSkeleton />}
