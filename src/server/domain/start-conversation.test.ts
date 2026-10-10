@@ -1,12 +1,16 @@
-import { it, expect, beforeEach } from "vitest";
+import { it, expect, beforeEach, vi } from "vitest";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "../db";
 import { contacts, deals, messages, outbox, stages, users } from "../db/schema";
+import * as dealsModule from "./deals";
 import { recordInbound } from "./deals";
 import { archiveDeals } from "./archive";
 import { startConversation } from "./start-conversation";
 import { UserFacingError } from "./errors";
 import { resetDb } from "../../../test/db";
+
+// `findOpenDeal` passa direto, a não ser quando o teste manda a primeira chamada "não ver" o lead (simula o lead nascendo entre o lock e o INSERT).
+vi.mock("./deals", async (orig) => { const m = await orig<typeof import("./deals")>(); return { ...m, findOpenDeal: vi.fn(m.findOpenDeal) }; });
 
 let uid = "";
 beforeEach(async () => {
@@ -71,4 +75,16 @@ it("contato 'Não é cliente' não abre lead: precisa voltar a ser cliente antes
 
 it("contato que não existe", async () => {
   await expect(startConversation("00000000-0000-4000-8000-000000000000", uid)).rejects.toBeInstanceOf(UserFacingError);
+});
+
+it("o lead abriu entre o lock e o INSERT: o índice único barra, e devolve o lead que ficou aberto (sem erro, sem duplicar)", async () => {
+  const c = await contact("+5571999990006");
+  const [stage] = await db.select().from(stages).where(eq(stages.key, "lead"));
+  const [other] = await db.insert(deals).values({ contactId: c.id, stageId: stage.id, origin: "WhatsApp" }).returning();
+  // A primeira conferência (dentro da transação) não vê o lead; a segunda, depois do conflito, vê.
+  vi.mocked(dealsModule.findOpenDeal).mockImplementationOnce(async () => null as never);
+  const r = await startConversation(c.id, uid);
+  expect(r).toEqual({ dealId: other.id, created: false });
+  expect(await open(c.id)).toHaveLength(1);
+  expect(await db.select().from(messages)).toHaveLength(0);
 });

@@ -40,11 +40,16 @@ export async function listContacts(opts: { q?: string | null; onlyClients?: bool
   if (term) conds.push(sql`(${byName} or coalesce(c.email, '') ilike ${like} or ${byPhone}${byMessage ? sql` or h.contact_id is not null` : sql``})`);
   const where = sql.join(conds, sql` and `);
 
-  // Uma mensagem por contato (a mais recente que casa). Só existe quando há termo com tamanho para isso.
+  // Uma mensagem por contato (a mais recente que casa). Os filtros do contato (Não é cliente, Só clientes) valem ANTES do limite:
+  // um contato ignorado cheio de mensagens não gasta as 500 vagas e esconde quem importa.
+  const hitConds: SQL[] = [sql`m.body ilike ${like}`, sql`m.deleted_at is null`];
+  if (!opts.includeIgnored) hitConds.push(sql`not hc.ignored`);
+  if (opts.onlyClients) hitConds.push(sql`hc.is_client`);
   const hits = term && byMessage
     ? sql`hits as (
         select distinct on (contact_id) contact_id, body, created_at from (
-          select contact_id, body, created_at from messages where body ilike ${like} and deleted_at is null order by created_at desc limit ${MESSAGE_HIT_LIMIT}
+          select m.contact_id, m.body, m.created_at from messages m join contacts hc on hc.id = m.contact_id
+          where ${sql.join(hitConds, sql` and `)} order by m.created_at desc limit ${MESSAGE_HIT_LIMIT}
         ) m order by contact_id, created_at desc)`
     : sql`hits as (select null::uuid as contact_id, null::text as body, null::timestamptz as created_at where false)`;
   const order = term

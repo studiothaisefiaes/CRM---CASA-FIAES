@@ -9,6 +9,7 @@ import { QueueColumn } from "@/components/queue/queue-column";
 import { parseQueueFilter } from "@/lib/report-links";
 import { parseQueueFoco, parseQueueView, queueQuery } from "@/lib/queue";
 import { isMobileUserAgent } from "@/lib/device";
+import { isUuid } from "@/lib/uuid";
 
 export const metadata = { title: "Atendimento" };
 
@@ -20,7 +21,7 @@ export default async function AtendimentoPage({ searchParams }: PageProps<"/aten
   const filtro = parseQueueFilter(sp.filtro);
   const q = str("q"), dono = str("dono"), etapa = str("etapa"), fonte = str("fonte");
   const lead = str("lead");
-  const leadId = lead && /^[0-9a-f-]{36}$/i.test(lead) ? lead : null;
+  const leadId = isUuid(lead) ? lead : null;
   // Celular: a conversa é uma tela própria. Decide aqui, antes de carregar e montar o lead; o ViewportRedirect cobre o resto (janela estreita no desktop).
   if (leadId && isMobileUserAgent((await headers()).get("user-agent"))) redirect(`/atendimento/${leadId}`);
   const foco = parseQueueFoco(sp.foco);

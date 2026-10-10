@@ -1,10 +1,11 @@
 import { it, expect, beforeEach, describe } from "vitest";
+import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { contacts, messages, users } from "../db/schema";
 import { recordInbound } from "../domain/deals";
 import { archiveDeals } from "../domain/archive";
 import { resetDb } from "../../../test/db";
-import { listContacts } from "./contacts";
+import { listContacts, MESSAGE_HIT_LIMIT } from "./contacts";
 
 const names = async (opts: Parameters<typeof listContacts>[0]) => (await listContacts(opts)).rows.map((r) => r.name);
 let dealIds: Record<string, string> = {};
@@ -99,4 +100,25 @@ it("devolve o lead aberto e o dono de cada contato", async () => {
   const [c] = await db.select().from(contacts).limit(1);
   const r = await listContacts({ q: c.phoneE164.slice(-8) });
   expect(r.rows[0].openDealId).toBeTruthy();
+});
+
+describe("limite de 500 mensagens", () => {
+  it("contato 'Não é cliente' cheio de mensagens não gasta as vagas de quem aparece", async () => {
+    const [ig] = await db.insert(contacts).values({ phoneE164: "+5571999119999", name: "Ruído", ignored: true }).returning();
+    const now = Date.now();
+    await db.insert(messages).values(Array.from({ length: MESSAGE_HIT_LIMIT + 50 }, (_, i) => ({ contactId: ig.id, direction: "in" as const, body: "tratamento relâmpago", createdAt: new Date(now + 60_000 + i) })));
+    await db.insert(messages).values({ contactId: (await db.select().from(contacts).where(eq(contacts.name, "Dora Lins")))[0].id, direction: "in", body: "quero o tratamento relâmpago", createdAt: new Date(now - 86_400_000) });
+    expect(await names({ q: "relâmpago" })).toEqual(["Dora Lins"]);
+    expect(await names({ q: "relâmpago", includeIgnored: true })).toContain("Ruído"); // pedindo os ignorados, eles entram na conta (e no limite)
+  });
+
+  it("'Só clientes' também vale antes do limite", async () => {
+    const [carla] = await db.select().from(contacts).where(eq(contacts.name, "Carla Mendes"));
+    const [dora] = await db.select().from(contacts).where(eq(contacts.name, "Dora Lins"));
+    await db.update(contacts).set({ isClient: true }).where(eq(contacts.id, dora.id));
+    const now = Date.now();
+    await db.insert(messages).values(Array.from({ length: MESSAGE_HIT_LIMIT + 10 }, (_, i) => ({ contactId: carla.id, direction: "in" as const, body: "horário de sábado", createdAt: new Date(now + 60_000 + i) })));
+    await db.insert(messages).values({ contactId: dora.id, direction: "in", body: "tem horário de sábado?", createdAt: new Date(now - 86_400_000) });
+    expect(await names({ q: "sábado", onlyClients: true })).toEqual(["Dora Lins"]);
+  });
 });

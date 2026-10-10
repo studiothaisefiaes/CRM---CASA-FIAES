@@ -7,6 +7,7 @@ import { LiveRefresh } from "@/components/shell/live";
 import { QueueColumn } from "@/components/queue/queue-column";
 import { ConversationPane } from "@/components/queue/conversation-pane";
 import { isMobileUserAgent } from "@/lib/device";
+import { isUuid } from "@/lib/uuid";
 
 export const metadata = { title: "Conversa" };
 
@@ -22,7 +23,7 @@ export default async function ConversaPage({ params, searchParams }: PageProps<"
   const user = await requireUser();
   const { id } = await params;
   const compose = (await searchParams).compose === "1"; // vindo de "Iniciar conversa": o cursor já abre no campo de mensagem
-  if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
+  if (!isUuid(id)) notFound();
   const withList = !isMobileUserAgent((await headers()).get("user-agent"));
   const [item, queue, banners, bulk] = await Promise.all([getQueueItem(id), withList ? getQueue(user, {}) : Promise.resolve(null), getShellBanners(), withList ? getBulkOptions(user) : Promise.resolve(null)]);
   if (!item) notFound();

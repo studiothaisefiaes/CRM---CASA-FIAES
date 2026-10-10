@@ -8,6 +8,7 @@ import { businessSecondsBetween } from "../../lib/business-hours";
 import { NEAR_SLA_RATIO, SECTION_ORDER, type QueueFoco, type QueueSectionKey, type QueueView } from "../../lib/queue";
 import type { QueueFilter } from "../../lib/report-links";
 import { lateDealIds } from "./late-count";
+import { isUuid } from "../../lib/uuid";
 
 export type QueueItem = {
   dealId: string; contactId: string; name: string; phone: string; hasAvatar: boolean;
@@ -50,7 +51,6 @@ export type QueueOptions = {
 export const QUEUE_LIMIT = 1000;
 const BAHIA_OFFSET_MS = 3 * 3_600_000; // America/Bahia, UTC-3, sem horário de verão
 const DAY_MS = 86_400_000;
-const UUID = /^[0-9a-f-]{36}$/i;
 
 /** Começo (00h em Salvador) do dia que contém `at`. */
 const bahiaDayStart = (at: Date) => {
@@ -166,7 +166,7 @@ export async function getQueue(user: Who, opts: QueueOptions = {}): Promise<Queu
   const conds: SQL[] = [isNull(deals.closedAt), isNull(deals.archivedAt), eq(contacts.ignored, false)];
   const sc = scopeCond(user, onlyOwn);
   if (sc) conds.push(sc);
-  if (gestor && opts.filtro && opts.dono && UUID.test(opts.dono)) conds.push(eq(deals.ownerId, opts.dono));
+  if (gestor && opts.filtro && opts.dono && isUuid(opts.dono)) conds.push(eq(deals.ownerId, opts.dono));
   if (opts.etapa && /^[a-z0-9_]{1,40}$/i.test(opts.etapa)) conds.push(eq(stages.key, opts.etapa));
   if (opts.fonte) conds.push(sql`${SOURCE_EXPR("deals")} = ${opts.fonte}`);
 
@@ -284,7 +284,7 @@ export async function nextWaitingId(user: Who, exceptId: string): Promise<string
   const sc = scopeCond(user);
   const [row] = await db.select({ id: deals.id }).from(deals).innerJoin(contacts, eq(contacts.id, deals.contactId))
     .where(and(isNull(deals.closedAt), isNull(deals.archivedAt), eq(contacts.ignored, false), sql`${deals.awaitingReplySince} is not null`,
-      UUID.test(exceptId) ? sql`${deals.id} <> ${exceptId}` : undefined, ...(sc ? [sc] : [])))
+      isUuid(exceptId) ? sql`${deals.id} <> ${exceptId}` : undefined, ...(sc ? [sc] : [])))
     .orderBy(asc(deals.awaitingReplySince)).limit(1);
   return row?.id ?? null;
 }
@@ -294,7 +294,7 @@ export async function nextWaitingId(user: Who, exceptId: string): Promise<string
  * (filtro, busca); não devolve lead arquivado nem contato ignorado. Sem seções: as etiquetas de sinal ficam de fora, porque só a lista usa.
  */
 export async function getQueueItem(id: string): Promise<QueueItem | null> {
-  if (!UUID.test(id)) return null;
+  if (!isUuid(id)) return null;
   // Arquivados e contatos ignorados ficam fora, como na Fila.
   const [r] = await lightRows([eq(deals.id, id), isNull(deals.archivedAt), eq(contacts.ignored, false)]);
   if (!r) return null;

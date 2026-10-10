@@ -13,6 +13,7 @@ import { formatBRL } from "@/lib/money";
 import { dueLabel } from "@/lib/next-action";
 import { formatPhoneClient } from "@/lib/phone-client";
 import { leadHref } from "@/lib/lead-href";
+import { isUuid } from "@/lib/uuid";
 
 export const metadata = { title: "Contato" };
 
@@ -33,6 +34,7 @@ const H2 = "font-serif text-xl font-light tracking-[-0.01em]";
 export default async function ContatoPage({ params }: PageProps<"/contatos/[id]">) {
   const user = await requireUser();
   const { id } = await params;
+  if (!isUuid(id)) notFound();
   const gestor = user.role === "gestor";
   const data = await getContact(id, { withValues: gestor });
   if (!data) notFound();
@@ -155,7 +157,7 @@ export default async function ContatoPage({ params }: PageProps<"/contatos/[id]"
           )}
         </aside>
 
-        <ContactTimeline days={days} messageTotal={data.messageTotal} messageShown={data.messages.length} />
+        <ContactTimeline days={days} messageTotal={data.messageTotal} messageShown={data.messages.length} eventsTruncated={data.eventsTruncated} />
       </div>
     </main>
   );

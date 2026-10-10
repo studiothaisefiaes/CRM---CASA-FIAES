@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import type { TimelineDay, TimelineEntry } from "@/lib/contact-timeline";
 import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/segmented";
+import { HISTORY_EVENT_LIMIT } from "@/lib/history";
 import { cn } from "@/lib/cn";
 
 type Filter = "tudo" | "conversa" | "atendimento";
@@ -28,7 +29,7 @@ function Entry({ e }: { e: TimelineEntry }) {
  * A história inteira do contato, do mais novo ao mais antigo, em dias de Salvador. Mostra os primeiros 40 itens e o resto sob "Ver mais".
  * O filtro separa a conversa (mensagens) do atendimento (etapas, vendas, tarefas e mudanças). O texto já vem pronto do servidor.
  */
-export function ContactTimeline({ days, messageTotal, messageShown }: { days: TimelineDay[]; messageTotal: number; messageShown: number }) {
+export function ContactTimeline({ days, messageTotal, messageShown, eventsTruncated = false }: { days: TimelineDay[]; messageTotal: number; messageShown: number; eventsTruncated?: boolean }) {
   const [filter, setFilter] = useState<Filter>("tudo");
   const [shown, setShown] = useState(PAGE);
   const filtered = useMemo(() => {
@@ -70,6 +71,7 @@ export function ContactTimeline({ days, messageTotal, messageShown }: { days: Ti
           Ver mais <span className="font-normal text-muted">({total - shown} {total - shown === 1 ? "item" : "itens"})</span>
         </Button>
       )}
+      {eventsTruncated && <p className="mt-3 text-xs text-muted" data-testid="aviso-eventos">Mostrando os {HISTORY_EVENT_LIMIT} eventos mais recentes. Os mais antigos continuam guardados.</p>}
       {messageTotal > messageShown && <p className="mt-3 text-xs text-muted">Mostrando as últimas {messageShown} de {messageTotal.toLocaleString("pt-BR")} mensagens. As mais antigas continuam guardadas.</p>}
     </section>
   );

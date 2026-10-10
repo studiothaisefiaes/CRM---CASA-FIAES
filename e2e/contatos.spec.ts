@@ -57,6 +57,17 @@ test("buscar por trecho de mensagem, abrir a ficha e iniciar a conversa", async 
   await semPortal(page);
   await shot(page, "02-busca-trecho-destacado-desktop");
 
+  // Voltar do navegador: o campo acompanha o ?q= (busca → chip "Só clientes" empilha uma entrada → outra busca troca o termo → voltar)
+  await page.getByRole("link", { name: "Só clientes" }).click();
+  await expect(page).toHaveURL(/clientes=1/);
+  await busca.fill("Irene");
+  await expect(page).toHaveURL(/q=Irene/);
+  await page.goBack();
+  await expect(page).toHaveURL(/q=cauteriza/);
+  await expect(page).not.toHaveURL(/clientes=1/);
+  await expect(busca).toHaveValue("cauterização");
+  await expect(lista.getByRole("link", { name: /Heloísa Vidigal/ })).toBeVisible();
+
   // Atualizar a página mantém a busca (ela mora na URL)
   await page.reload();
   await expect(busca).toHaveValue("cauterização");
@@ -113,6 +124,21 @@ test("buscar por trecho de mensagem, abrir a ficha e iniciar a conversa", async 
   await expect(page).toHaveURL(new RegExp(String(novo[0].id)));
   expect(await abertos(telefone(1, 3))).toHaveLength(1);
   expect(erros, "erros do navegador").toEqual([]);
+});
+
+test("id malformado dá 404 (e não erro 500), na ficha e na conversa; histórico longo avisa o corte", async ({ page, isMobile }) => {
+  test.skip(isMobile, "desktop");
+  await login(page);
+  for (const rota of ["/contatos/" + "-".repeat(36), "/atendimento/" + "-".repeat(36), "/atendimento/" + "-".repeat(36) + "/cliente"]) {
+    // /atendimento/[id] tem loading.tsx: a resposta já começou em 200 e a página de "não encontrada" chega no fluxo. Nos dois casos, nunca o erro 500.
+    const r = await page.goto(rota);
+    expect(r?.status(), rota).not.toBe(500);
+    await expect(page.getByText("This page could not be found.").or(page.getByText(/não encontrad/i)).first(), rota).toBeVisible();
+  }
+  await contatos(page, 6, ["Historia Longa"]);
+  await e2eSql("insert into deal_events (deal_id, type, payload, created_at) select d.id, 'campo_alterado', '{\"campos\":[{\"campo\":\"observations\",\"de\":null,\"para\":\"x\"}]}'::jsonb, now() - (g || ' minutes')::interval from deals d join contacts c on c.id = d.contact_id, generate_series(1, 320) g where c.phone_e164 = $1", [telefone(6, 1)]);
+  await page.goto(`/contatos/${await contactId(telefone(6, 1))}`);
+  await expect(page.getByTestId("aviso-eventos")).toHaveText(/Mostrando os 300 eventos mais recentes/);
 });
 
 test("busca por telefone, contato 'Não é cliente' fora da busca padrão e 'Voltar a ser cliente'", async ({ page, isMobile }) => {

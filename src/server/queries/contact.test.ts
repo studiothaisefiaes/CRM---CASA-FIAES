@@ -25,6 +25,7 @@ describe("getContact", () => {
   it("não existe: null (e id inválido também)", async () => {
     expect(await getContact("00000000-0000-4000-8000-000000000000")).toBeNull();
     expect(await getContact("nao-e-uuid")).toBeNull();
+    expect(await getContact("-".repeat(36))).toBeNull(); // parece UUID pelo tamanho e pelos caracteres, mas o Postgres recusaria
   });
 
   it("junta contato, todos os leads, mensagens, tarefas e eventos", async () => {

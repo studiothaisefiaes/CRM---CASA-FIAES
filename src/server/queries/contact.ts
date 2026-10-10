@@ -5,10 +5,10 @@ import { contacts, dealEvents, deals, leadSources, lists, messages, stages, task
 import { SOURCE_EXPR } from "../reports/common";
 import { NOT_IDENTIFIED } from "../../lib/source-kinds";
 import { HISTORY_EVENT_LIMIT, type HistoryLookup } from "../../lib/history";
+import { isUuid } from "../../lib/uuid";
 
 export const CONTACT_MESSAGE_LIMIT = 200;
 const CONTACT_DEAL_LIMIT = 100, CONTACT_TASK_LIMIT = 100;
-const UUID = /^[0-9a-f-]{36}$/i;
 /** A conversa já mostra estes; no histórico do contato eles entram como mensagens, não como eventos. */
 const CONVERSATION_EVENTS = ["mensagem_recebida", "mensagem_enviada", "lido"];
 
@@ -32,7 +32,7 @@ export type ContactMessage = { id: string; direction: "in" | "out"; kind: string
  * - `values` (vendas e total gasto): só com `withValues` (gestão). Sem isso, nem o valor de cada lead sai.
  */
 export async function getContact(id: string, opts: { withValues?: boolean } = {}) {
-  if (!UUID.test(id)) return null;
+  if (!isUuid(id)) return null;
   const [contact] = await db.select({
     id: contacts.id, name: contacts.name, phone: contacts.phoneE164, email: contacts.email, instagram: contacts.instagram, notes: contacts.notes,
     isClient: contacts.isClient, clientSince: contacts.clientSince, lastServiceAt: contacts.lastServiceAt, ignored: contacts.ignored,

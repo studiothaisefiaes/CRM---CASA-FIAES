@@ -14,6 +14,24 @@ import { detectOrigin, findOpenDeal, stageByKey } from "./deals";
  * Duas chamadas ao mesmo tempo (duplo toque, duas abas) terminam no mesmo lead: a linha do contato é travada na transação.
  */
 export async function startConversation(contactId: string, userId: string): Promise<{ dealId: string; created: boolean }> {
+  try { return await startConversationTx(contactId, userId); }
+  catch (e) {
+    // O lead abriu entre o lock e o INSERT (a entrada de mensagem não trava o contato): o índice único barrou o segundo. Leva ao que ficou aberto.
+    if (!isOpenDealConflict(e)) throw e;
+    const open = await findOpenDeal(contactId);
+    if (!open) throw e;
+    return { dealId: open.id, created: false };
+  }
+}
+
+/** Violação do índice `deals_one_open_per_contact` (o driver pode embrulhar o erro do Postgres em `cause`). */
+const isOpenDealConflict = (e: unknown): boolean => {
+  const err = e as { code?: string; constraint?: string; cause?: { code?: string; constraint?: string } } | null;
+  const pg = err?.code ? err : err?.cause;
+  return pg?.code === "23505" && (pg.constraint ?? "deals_one_open_per_contact") === "deals_one_open_per_contact";
+};
+
+async function startConversationTx(contactId: string, userId: string): Promise<{ dealId: string; created: boolean }> {
   const result = await db.transaction(async (tx) => {
     const [c] = await tx.select().from(contacts).where(eq(contacts.id, contactId)).for("update");
     if (!c) throw new UserFacingError("Esse contato não existe mais.");

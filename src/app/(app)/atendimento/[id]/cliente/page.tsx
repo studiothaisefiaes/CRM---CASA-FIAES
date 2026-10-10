@@ -6,6 +6,7 @@ import { getShellBanners } from "@/server/queries/banners";
 import { ConversationPane } from "@/components/queue/conversation-pane";
 import { ViewportRedirect } from "@/components/queue/queue-route";
 import { IconArrowRight } from "@/components/icons";
+import { isUuid } from "@/lib/uuid";
 
 export const metadata = { title: "Cliente" };
 
@@ -13,7 +14,7 @@ export const metadata = { title: "Cliente" };
 export default async function ClientePage({ params }: PageProps<"/atendimento/[id]/cliente">) {
   const user = await requireUser();
   const { id } = await params;
-  if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
+  if (!isUuid(id)) notFound();
   const [item, banners] = await Promise.all([getQueueItem(id), getShellBanners()]);
   if (!item) notFound();
   return (
