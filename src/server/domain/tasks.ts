@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
 import { db, type Tx } from "../db";
 import { alerts, contacts, deals, tasks, type Task } from "../db/schema";
 import { logEvent, emit } from "./events";
@@ -36,21 +36,22 @@ export async function createTask(input: NewTask, userId: string): Promise<Task> 
   return t;
 }
 
+/** Conclui (ou cancela) a tarefa e resolve o aviso `task:<id>`. Idempotente: se já estava concluída, não repete o evento. */
+export async function completeTaskTx(tx: Tx, id: string, userId: string | null, acao: "concluida" | "cancelada" = "concluida", at = new Date()): Promise<Task> {
+  const [row] = await tx.update(tasks).set({ doneAt: at }).where(and(eq(tasks.id, id), isNull(tasks.doneAt))).returning();
+  if (!row) {
+    const [existing] = await tx.select().from(tasks).where(eq(tasks.id, id));
+    if (!existing) throw new Error("Tarefa não encontrada");
+    return existing;
+  }
+  await tx.update(alerts).set({ resolvedAt: at, readAt: sql`coalesce(${alerts.readAt}, ${at.toISOString()}::timestamptz)` })
+    .where(and(eq(alerts.waitKey, `task:${id}`), isNull(alerts.resolvedAt)));
+  if (row.dealId) await logEvent(tx, row.dealId, "tarefa", { acao, tarefa: row.id, tipo: row.kind, titulo: row.title }, userId);
+  return row;
+}
+
 export async function completeTask(id: string, userId: string): Promise<Task> {
-  const now = new Date();
-  const t = await db.transaction(async (tx) => {
-    const [row] = await tx.update(tasks).set({ doneAt: now }).where(and(eq(tasks.id, id), isNull(tasks.doneAt))).returning();
-    if (!row) {
-      const [existing] = await tx.select().from(tasks).where(eq(tasks.id, id));
-      if (!existing) throw new Error("Tarefa não encontrada");
-      return existing; // já concluída: não duplica o evento
-    }
-    // O aviso de "vencendo" some junto com a tarefa.
-    await tx.update(alerts).set({ resolvedAt: now, readAt: sql`coalesce(${alerts.readAt}, ${now.toISOString()}::timestamptz)` })
-      .where(and(eq(alerts.waitKey, `task:${id}`), isNull(alerts.resolvedAt)));
-    if (row.dealId) await logEvent(tx, row.dealId, "tarefa", { acao: "concluida", tarefa: row.id, tipo: row.kind, titulo: row.title }, userId);
-    return row;
-  });
+  const t = await db.transaction((tx) => completeTaskTx(tx, id, userId));
   await emit("lead_atualizado", { dealId: t.dealId ?? undefined });
   return t;
 }
@@ -70,31 +71,32 @@ export async function nextActionOf(dealId: string): Promise<Task | null> {
   return t ?? null;
 }
 
-/** Troca a tarefa em aberto de um tipo por outra (ou só remove, se `next` for null). Usado por agendamento e venda. */
+/** Cancela a tarefa em aberto de um tipo e cria a nova (ou só remove, se `next` for null). Usado por agendamento e venda. */
 export async function replaceOpenTaskTx(tx: Tx, dealId: string, contactId: string, kind: "comparecimento" | "retorno", next: { title: string; dueAt: Date; assigneeId: string | null } | null, userId: string | null) {
-  await tx.delete(tasks).where(and(eq(tasks.dealId, dealId), eq(tasks.kind, kind), isNull(tasks.doneAt)));
+  const open = await tx.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.dealId, dealId), eq(tasks.kind, kind), isNull(tasks.doneAt)));
+  for (const t of open) await completeTaskTx(tx, t.id, userId, "cancelada"); // cancela (guarda o histórico), não apaga
   if (next) await createTaskTx(tx, { dealId, contactId, kind, ...next }, userId);
 }
 
 /**
- * Lembretes (worker, a cada 5 min): tarefa com responsável que vence nos próximos 15 min e ainda não foi avisada
- * vira um alerta `tarefa_vencendo` (nível 1) para o responsável. `wait_key = task:<id>` garante um só aviso por tarefa.
+ * Lembretes (worker, a cada 5 min): tarefa com responsável que vence nos próximos 15 min (ou venceu há até 2 dias)
+ * e ainda não foi avisada vira um alerta `tarefa_vencendo` (nível 1) para o responsável, ou para a gestão se não tem responsável. `wait_key = task:<id>` garante um só aviso por tarefa.
  */
 export async function remindDueTasks(now = new Date()): Promise<{ alerts: number }> {
   const until = new Date(now.getTime() + 15 * 60_000);
+  const floor = new Date(now.getTime() - 2 * 86_400_000); // vencida há mais de 2 dias não avisa (evita rajada ao religar o worker)
   const due = await db.select({ t: tasks, contactName: contacts.name, phone: contacts.phoneE164 }).from(tasks)
     .innerJoin(contacts, eq(contacts.id, tasks.contactId))
     .leftJoin(deals, eq(deals.id, tasks.dealId))
     .where(and(
-      isNull(tasks.doneAt), gte(tasks.dueAt, now), lte(tasks.dueAt, until), isNotNull(tasks.assigneeId),
+      isNull(tasks.doneAt), gte(tasks.dueAt, floor), lte(tasks.dueAt, until),
       or(isNull(tasks.dealId), isNull(deals.archivedAt)), eq(contacts.ignored, false),
     ));
   let created = 0;
   for (const { t, contactName, phone } of due) {
-    if (!t.assigneeId) continue;
     const quem = contactName?.trim() || phone;
     const [row] = await db.insert(alerts).values({
-      dealId: t.dealId, userId: t.assigneeId, audience: "responsavel", type: "tarefa_vencendo", severity: "info",
+      dealId: t.dealId, userId: t.assigneeId, audience: t.assigneeId ? "responsavel" : "gestao", type: "tarefa_vencendo", severity: "info",
       message: `${t.title} — ${quem}`, dedupeKey: `task:${t.id}`, waitKey: `task:${t.id}`, level: 1, createdAt: now,
     }).onConflictDoNothing().returning({ id: alerts.id });
     if (row) { created++; await emit("regras", { deals: t.dealId ? [t.dealId] : [] }); }

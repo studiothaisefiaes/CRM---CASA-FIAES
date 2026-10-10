@@ -1,12 +1,12 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db, type Tx } from "../db";
-import { contacts, deals, auditLog, leadSources, lists, stages } from "../db/schema";
+import { contacts, deals, auditLog, leadSources, lists, stages, tasks } from "../db/schema";
 import { normalizePhone } from "./phone";
 import { logEvent, emit } from "./events";
 import { findOpenDeal, stageByKey, moveDealTx } from "./deals";
 import { FIELD_LABELS } from "../../lib/field-labels";
-import { nextDayMorning, replaceOpenTaskTx } from "./tasks";
+import { completeTaskTx, nextDayMorning, replaceOpenTaskTx } from "./tasks";
 
 export const ATTENDANCE = ["confirmado", "compareceu", "faltou", "remarcou"] as const;
 const dateOrNull = z.union([z.string().datetime({ offset: true }), z.literal(""), z.null()]).transform((v) => (v ? new Date(v) : null));
@@ -185,6 +185,9 @@ export async function setAttendance(dealId: string, status: "compareceu" | "falt
     if (!deal) throw new Error("Lead não encontrado");
     await tx.update(deals).set({ attendance: value, attendanceAt: new Date() }).where(eq(deals.id, dealId));
     await logEvent(tx, dealId, "comparecimento", { de: deal.attendance, para: value }, userId);
+    // A conferência de comparecimento está feita: conclui a tarefa aberta (e o aviso dela).
+    const open = await tx.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.dealId, dealId), eq(tasks.kind, "comparecimento"), isNull(tasks.doneAt)));
+    for (const t of open) await completeTaskTx(tx, t.id, userId);
   });
   await emit("lead_atualizado", { dealId });
 }
