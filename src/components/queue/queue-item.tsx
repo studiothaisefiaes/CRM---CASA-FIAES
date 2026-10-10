@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useSyncExternalStore, type MouseEvent } from "react";
 import type { QueueItem } from "@/server/queries/queue";
 import { ContactAvatar } from "@/components/ui/contact-avatar";
-import { IconMic } from "@/components/icons";
+import { IconCheck, IconMic } from "@/components/icons";
 import { useHours, useNow } from "@/components/pipeline/timer";
 import { businessSecondsBetween } from "@/lib/business-hours";
 import { seconds } from "@/lib/format";
@@ -57,8 +57,21 @@ function statusOf(section: QueueSectionKey, ring: RingState, waitSec: number, sl
   return null;
 }
 
-export function QueueRow({ item, section, selected, href, tabIndex, onOpen }: {
+/** Estado de seleção em massa de um item. `mode` ligado: tocar marca em vez de abrir. */
+export type RowSelection = { mode: boolean; checked: boolean; onToggle: (opts: { range: boolean }) => void };
+
+/** A caixinha de marcar. Só desenho (aria-hidden): quem marca é a própria linha (`option` com `aria-selected`), por Espaço ou toque. */
+function Box({ checked, size = 22 }: { checked: boolean; size?: number }) {
+  return (
+    <span aria-hidden className={cn("grid shrink-0 place-items-center rounded-[6px] border-2 transition-colors", checked ? "border-ink bg-ink text-paper" : "border-graphite bg-paper")} style={{ width: size, height: size }}>
+      {checked && <IconCheck size={size - 8} strokeWidth={3} />}
+    </span>
+  );
+}
+
+export function QueueRow({ item, section, selected, href, tabIndex, onOpen, selection }: {
   item: QueueItem; section: QueueSectionKey; selected: boolean; href: string; tabIndex: number; onOpen?: (item: QueueItem, e: MouseEvent<HTMLAnchorElement>) => void;
+  selection?: RowSelection;
 }) {
   const clock = useNow();
   const hours = useHours();
@@ -74,16 +87,28 @@ export function QueueRow({ item, section, selected, href, tabIndex, onOpen }: {
   const name = item.name === item.phone ? formatPhoneClient(item.phone) : item.name;
   const snippet = item.lastMessage || (item.lastKind ? KIND[item.lastKind] ?? null : null);
   const pills = item.signals.filter((s) => s !== "Sem dono");
+  const selecting = !!selection?.mode;
   return (
-    <Link href={href} prefetch={false} scroll={false} role="option" aria-selected={selected} tabIndex={tabIndex} data-deal-id={item.dealId}
-      onClick={(e) => onOpen?.(item, e)}
+    <Link href={href} prefetch={false} scroll={false} role="option" aria-selected={selecting ? selection.checked : selected} tabIndex={tabIndex} data-deal-id={item.dealId}
+      onClick={(e) => {
+        if (selecting) { e.preventDefault(); selection.onToggle({ range: e.shiftKey }); return; }
+        onOpen?.(item, e);
+      }}
       className={cn(
         "group relative flex items-start gap-3 pl-3 pr-4 min-h-[72px] border-b border-line/80 outline-offset-[-2px] scroll-mt-12 scroll-mb-2 transition-colors aria-selected:ring-2 aria-selected:ring-inset aria-selected:ring-gold",
-        w.row, selected ? "bg-gold-soft/70 hover:bg-gold-soft" : section === "atrasados" ? "hover:bg-alert-soft/70" : "hover:bg-paper-2",
+        w.row, (selecting ? selection.checked : selected) ? "bg-gold-soft/70 hover:bg-gold-soft" : section === "atrasados" ? "hover:bg-alert-soft/70" : "hover:bg-paper-2",
       )}>
-      <Ring state={ring} progress={progress} size={w.avatar}>
-        <ContactAvatar contactId={item.contactId} hasAvatar={item.hasAvatar} name={name} size={w.avatar} />
-      </Ring>
+      {selecting && <span aria-hidden data-testid="item-caixa" className="-ml-1.5 -mr-1 grid size-11 shrink-0 place-items-center self-center"><Box checked={selection.checked} /></span>}
+      <span className="relative shrink-0">
+        <Ring state={ring} progress={progress} size={w.avatar}>
+          <ContactAvatar contactId={item.contactId} hasAvatar={item.hasAvatar} name={name} size={w.avatar} />
+        </Ring>
+        {/* Desktop: a caixinha aparece sobre a foto ao passar o mouse ou focar o item. No celular a seleção entra por "Selecionar". */}
+        {selection && !selecting && (
+          <span aria-hidden data-testid="item-selecionar" onClick={(e) => { e.preventDefault(); e.stopPropagation(); selection.onToggle({ range: e.shiftKey }); }}
+            className="absolute inset-0 hidden place-items-center rounded-full bg-paper/80 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 pointer-fine:grid"><Box checked={false} /></span>
+        )}
+      </span>
       <span className="min-w-0 flex-1">
         <span className="flex items-baseline justify-between gap-3">
           <span className={cn("truncate", w.name)}>{name}</span>

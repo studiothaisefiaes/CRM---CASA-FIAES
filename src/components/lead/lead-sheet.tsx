@@ -10,40 +10,21 @@ import { AutoField } from "./fields";
 import { StageDialogs, type PendingMove } from "@/components/pipeline/stage-dialogs";
 import { markConversationReadAction, moveDealAction } from "@/app/(app)/funil/actions";
 import { useToast } from "@/components/ui/toast";
-import { attendanceLabel } from "@/lib/field-labels";
 import { IconClose, IconPhone, IconMail, IconInstagram, IconWhatsApp, IconCake, IconClock, IconArrowRight } from "@/components/icons";
 import { useLiveRefresh } from "@/components/shell/live";
 import { useUrgency } from "@/components/pipeline/timer";
 import { Badge } from "@/components/ui/badge";
 import { formatPhoneClient } from "@/lib/phone-client";
-import { relTime, money, PAYMENT_LABEL } from "@/lib/format";
+import { money, PAYMENT_LABEL } from "@/lib/format";
+import { groupByDay, historyEntries } from "@/lib/history";
+import { Button } from "@/components/ui/button";
 import { SPRING, EASE } from "@/lib/motion";
-import { FIELD_LABELS } from "@/lib/field-labels";
 import { isChannelOrigin, NOT_IDENTIFIED } from "@/lib/source-kinds";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const toLocal = (d: Date | string | null) => { if (!d) return ""; const x = new Date(d); return `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}T${pad(x.getHours())}:${pad(x.getMinutes())}`; };
 const toDate = (d: Date | string | null) => (d ? toLocal(d).slice(0, 10) : "");
 const centsToInput = (c: number | null) => (c == null ? "" : (c / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 }));
-
-const EVENT_TEXT = (e: DealDetail["events"][number]): string => {
-  const p = e.payload as Record<string, unknown>;
-  switch (e.type) {
-    case "lead_criado": return `Lead criado${p.origin && !isChannelOrigin(String(p.origin)) ? ` (${p.origin})` : ""}`;
-    case "etapa_alterada": return `Movido para ${String(p.para).replace("followup_", "Follow-up ").replace(/^\w/, (c) => c.toUpperCase())}${String(p.motivo ?? "").startsWith("automacao") ? " (automático)" : p.motivo === "respondido" ? " (respondido)" : p.motivo === "cliente_respondeu" ? " (cliente respondeu)" : ""}`;
-    case "resposta": { const s = Number(p.waitedSeconds ?? 0); return `Respondido em ${s < 60 ? `${s}s` : `${Math.round(s / 60)} min`}${p.fromPhone ? " pelo celular" : ""}`; }
-    case "campo_alterado": return `Alterou ${(p.campos as (string | { campo: string })[] | undefined)?.map((c) => (typeof c === "string" ? c : FIELD_LABELS[c.campo] ?? c.campo)).join(", ") ?? "dados"}`;
-    case "responsavel_alterado": return "Trocou o responsável";
-    case "assumiu": return "Assumiu o lead";
-    case "venda": return "Venda fechada";
-    case "comparecimento": return `Comparecimento: ${attendanceLabel(p.para)}`;
-    case "alerta": return String(p.mensagem ?? "Alerta");
-    case "mensagem_recebida": return "Mensagem recebida";
-    case "lido": return "Mensagens marcadas como lidas";
-    case "mensagem_enviada": return p.fromPhone ? "Mensagem enviada pelo celular" : "Mensagem enviada";
-    default: return e.type;
-  }
-};
 
 /** Os campos editáveis do lead (nome, contato, origem, agendamento, valor…). `cols` é o número de colunas dos pares de campos. */
 export function LeadDetails({ d, cols }: { d: DealDetail; cols: "grid-cols-1" | "grid-cols-2" }) {
@@ -85,18 +66,43 @@ export function LeadDetails({ d, cols }: { d: DealDetail; cols: "grid-cols-1" | 
   );
 }
 
-/** A linha do tempo do lead. */
+const HISTORY_PAGE = 15;
+
+/**
+ * O histórico do lead: o que mudou, do mais novo para o mais antigo, agrupado por dia. Mudança de campo mostra o de/para
+ * ("Valor: R$ 100,00 → R$ 150,00 (Ana, 14:02)"). Mensagens ficam de fora (já estão na conversa). "Ver mais" abre mais 15 linhas.
+ */
 export function LeadTimeline({ d }: { d: DealDetail }) {
+  const [shown, setShown] = useState(HISTORY_PAGE);
+  const [now] = useState(() => Date.now());
+  const entries = useMemo(() => historyEntries(d.events, {
+    users: Object.fromEntries(d.people.map((p) => [p.id, p.name])),
+    lists: Object.fromEntries([...d.objections, ...d.lostReasons, ...d.services, ...d.origins].map((l) => [l.id, l.label])),
+    sources: Object.fromEntries(d.sources.map((s) => [s.id, s.label])),
+  }), [d.events, d.people, d.objections, d.lostReasons, d.services, d.origins, d.sources]);
+  const days = useMemo(() => groupByDay(entries.slice(0, shown), now), [entries, shown, now]);
+  if (!entries.length) return <p className="text-sm text-muted">Nada aconteceu neste lead ainda.</p>;
   return (
-  <ol className="relative flex flex-col gap-3 pl-4 before:absolute before:left-[3px] before:top-1 before:bottom-1 before:w-px before:bg-line">
-    {d.events.map((e, i) => (
-      <motion.li key={e.id} initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: Math.min(i * 0.025, 0.4), duration: 0.3, ease: EASE }} className="relative">
-        <span className={`absolute -left-4 top-1.5 size-[7px] rounded-full ${e.type === "alerta" ? "bg-alert" : e.type === "etapa_alterada" ? "bg-gold" : "bg-line-strong"}`} />
-        <p className="text-sm leading-snug">{EVENT_TEXT(e)}</p>
-        <p className="text-xs text-muted">{relTime(e.createdAt)}{e.user ? ` · ${e.user.split(" ")[0]}` : ""}</p>
-      </motion.li>
-    ))}
-  </ol>
+    <div className="flex flex-col gap-4">
+      {days.map((day) => (
+        <section key={day.key} aria-label={day.label} className="flex flex-col gap-2">
+          <h5 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted first-letter:uppercase" suppressHydrationWarning>{day.label}</h5>
+          <ol className="relative flex flex-col gap-2.5 pl-4 before:absolute before:left-[3px] before:top-1.5 before:bottom-1.5 before:w-px before:bg-line">
+            {day.entries.map((e) => (
+              <li key={e.id} className="relative" data-testid="historico-item">
+                <span aria-hidden className={`absolute -left-4 top-[7px] size-[7px] rounded-full ${e.tone === "alerta" ? "bg-alert" : e.tone === "etapa" ? "bg-gold" : e.tone === "ok" ? "bg-ok" : "bg-line-strong"}`} />
+                <p className="text-sm leading-snug text-ink">{e.text} <span className="text-muted">({e.meta})</span></p>
+              </li>
+            ))}
+          </ol>
+        </section>
+      ))}
+      {entries.length > shown && (
+        <Button variant="secondary" size="sm" className="self-start pointer-coarse:min-h-11" onClick={() => setShown((n) => n + HISTORY_PAGE)}>
+          Ver mais ({entries.length - shown})
+        </Button>
+      )}
+    </div>
   );
 }
 

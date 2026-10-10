@@ -1,7 +1,9 @@
 import { and, asc, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
 import { db, type Tx } from "../db";
-import { alerts, contacts, deals, tasks, type Task } from "../db/schema";
+import { alerts, contacts, deals, tasks, users, type Task } from "../db/schema";
+import { UserFacingError } from "./errors";
 import { logEvent, emit } from "./events";
+import { bahiaAt } from "../../lib/next-action";
 
 export const TASK_KINDS = ["proxima_acao", "retorno", "comparecimento", "geral"] as const;
 export type TaskKind = (typeof TASK_KINDS)[number];
@@ -72,11 +74,47 @@ export async function nextActionOf(dealId: string): Promise<Task | null> {
 }
 
 /** Cancela a tarefa em aberto de um tipo e cria a nova (ou só remove, se `next` for null). Usado por agendamento e venda. */
-export async function replaceOpenTaskTx(tx: Tx, dealId: string, contactId: string, kind: "comparecimento" | "retorno", next: { title: string; dueAt: Date; assigneeId: string | null } | null, userId: string | null) {
+export async function replaceOpenTaskTx(tx: Tx, dealId: string, contactId: string, kind: "proxima_acao" | "comparecimento" | "retorno", next: { title: string; dueAt: Date; assigneeId: string | null } | null, userId: string | null) {
   const open = await tx.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.dealId, dealId), eq(tasks.kind, kind), isNull(tasks.doneAt)));
   for (const t of open) await completeTaskTx(tx, t.id, userId, "cancelada"); // cancela (guarda o histórico), não apaga
   if (next) await createTaskTx(tx, { dealId, contactId, kind, ...next }, userId);
 }
+
+export const NEXT_ACTION_TITLE_MAX = 120;
+/** Tolerância para "agora": quem abre a folha e demora para confirmar não leva erro por alguns minutos. */
+const PAST_GRACE_MS = 5 * 60_000;
+
+/**
+ * Define a próxima ação do lead: UMA aberta por lead. Se já existia, ela é cancelada (fica no histórico) e a nova entra no lugar.
+ * O responsável tem de ser alguém ativo da equipe; sem responsável, vale o dono do lead.
+ */
+export async function setNextActionTx(tx: Tx, dealId: string, input: { title: string; dueAt: Date; assigneeId?: string | null }, userId: string | null, now = new Date()): Promise<Task> {
+  const title = input.title.trim();
+  if (!title) throw new UserFacingError("Escreva o que precisa ser feito.");
+  if (title.length > NEXT_ACTION_TITLE_MAX) throw new UserFacingError(`Resuma em até ${NEXT_ACTION_TITLE_MAX} caracteres.`);
+  if (Number.isNaN(input.dueAt.getTime())) throw new UserFacingError("Escolha a data e a hora.");
+  if (input.dueAt.getTime() < now.getTime() - PAST_GRACE_MS) throw new UserFacingError("Essa data já passou. Escolha uma data futura.");
+  const [deal] = await tx.select({ contactId: deals.contactId, ownerId: deals.ownerId, archivedAt: deals.archivedAt }).from(deals).where(eq(deals.id, dealId));
+  if (!deal) throw new UserFacingError("Lead não encontrado");
+  if (deal.archivedAt) throw new UserFacingError("Esse lead saiu da fila.");
+  const assigneeId = input.assigneeId === undefined ? deal.ownerId : input.assigneeId;
+  if (assigneeId) {
+    const [u] = await tx.select({ id: users.id }).from(users).where(and(eq(users.id, assigneeId), eq(users.active, true)));
+    if (!u) throw new UserFacingError("Essa pessoa não está mais na equipe.");
+  }
+  await replaceOpenTaskTx(tx, dealId, deal.contactId, "proxima_acao", { title, dueAt: input.dueAt, assigneeId }, userId);
+  const [t] = await tx.select().from(tasks).where(and(eq(tasks.dealId, dealId), eq(tasks.kind, "proxima_acao"), isNull(tasks.doneAt)));
+  return t;
+}
+
+export async function setNextAction(dealId: string, input: { title: string; dueAt: Date; assigneeId?: string | null }, userId: string): Promise<Task> {
+  const t = await db.transaction((tx) => setNextActionTx(tx, dealId, input, userId));
+  await emit("lead_atualizado", { dealId });
+  return t;
+}
+
+/** Quando o "Remarcar" de quem faltou deve aparecer: 10h de amanhã (Salvador). */
+export const remarcarDueAt = (now: Date) => bahiaAt(now.getTime(), 1, 10);
 
 /**
  * Lembretes (worker, a cada 5 min): tarefa com responsável que vence nos próximos 15 min (ou venceu há até 2 dias)

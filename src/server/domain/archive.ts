@@ -8,9 +8,9 @@ import { findOpenDeal } from "./deals";
  * "Não é cliente" (individual ou em massa): o lead sai do funil, da fila, dos relatórios e do motor,
  * mas nada é apagado. Guarda a etapa em que estava para o Desfazer devolver tudo como era.
  */
-export async function archiveDeals(dealIds: string[], userId: string): Promise<{ archived: number }> {
+export async function archiveDeals(dealIds: string[], userId: string): Promise<{ archived: number; ids: string[] }> {
   const ids = [...new Set(dealIds)];
-  if (!ids.length) return { archived: 0 };
+  if (!ids.length) return { archived: 0, ids: [] };
   const done = await db.transaction(async (tx) => {
     const now = new Date();
     const rows = await tx.update(deals).set({ archivedAt: now, archivedBy: userId, archivedStageId: sql`${deals.stageId}` })
@@ -29,7 +29,7 @@ export async function archiveDeals(dealIds: string[], userId: string): Promise<{
     return rows;
   });
   for (const r of done) await emit("lead_arquivado", { dealId: r.id });
-  return { archived: done.length };
+  return { archived: done.length, ids: done.map((r) => r.id) };
 }
 
 /**

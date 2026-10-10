@@ -6,7 +6,8 @@ import { normalizePhone } from "./phone";
 import { logEvent, emit } from "./events";
 import { findOpenDeal, stageByKey, moveDealTx } from "./deals";
 import { FIELD_LABELS } from "../../lib/field-labels";
-import { completeTaskTx, nextDayMorning, replaceOpenTaskTx } from "./tasks";
+import { completeTaskTx, nextDayMorning, remarcarDueAt, replaceOpenTaskTx, setNextActionTx } from "./tasks";
+import { UserFacingError } from "./errors";
 
 export const ATTENDANCE = ["confirmado", "compareceu", "faltou", "remarcou"] as const;
 const dateOrNull = z.union([z.string().datetime({ offset: true }), z.literal(""), z.null()]).transform((v) => (v ? new Date(v) : null));
@@ -44,8 +45,7 @@ async function assertService(tx: Tx, serviceId: string) {
   if (svc?.kind !== "service") throw new Error("Serviço não encontrado");
 }
 
-/** Erro com texto pronto para a tela (pt-BR, fixo): as Server Actions o mostram como está. */
-export class UserFacingError extends Error {}
+export { UserFacingError } from "./errors";
 
 /** A alteração de campos dentro de uma transação que já existe (quem chama emite o aviso depois do commit). */
 export async function updateDealTx(tx: Tx, dealId: string, raw: DealPatch, userId: string) {
@@ -212,19 +212,45 @@ export async function closeSale(dealId: string, raw: CloseSaleInput, userId: str
   return { alreadyClosed };
 }
 
+/** O comparecimento dentro de uma transação que já existe (quem chama emite o aviso depois do commit). */
+export async function setAttendanceTx(tx: Tx, dealId: string, status: (typeof ATTENDANCE)[number], userId: string | null) {
+  const value = z.enum(ATTENDANCE).parse(status);
+  const [deal] = await tx.select({ attendance: deals.attendance }).from(deals).where(eq(deals.id, dealId)).for("update");
+  if (!deal) throw new Error("Lead não encontrado");
+  await tx.update(deals).set({ attendance: value, attendanceAt: new Date() }).where(eq(deals.id, dealId));
+  await logEvent(tx, dealId, "comparecimento", { de: deal.attendance, para: value }, userId);
+  // A conferência de comparecimento está feita: conclui a tarefa aberta (e o aviso dela). Confirmar o horário não é comparecer.
+  if (value !== "confirmado") {
+    const open = await tx.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.dealId, dealId), eq(tasks.kind, "comparecimento"), isNull(tasks.doneAt)));
+    for (const t of open) await completeTaskTx(tx, t.id, userId);
+  }
+}
+
 /** Marca o comparecimento do agendamento (a enquete de confirmação grava "confirmado", sem autor). */
 export async function setAttendance(dealId: string, status: (typeof ATTENDANCE)[number], userId: string | null) {
-  const value = z.enum(ATTENDANCE).parse(status);
-  await db.transaction(async (tx) => {
-    const [deal] = await tx.select({ attendance: deals.attendance }).from(deals).where(eq(deals.id, dealId)).for("update");
-    if (!deal) throw new Error("Lead não encontrado");
-    await tx.update(deals).set({ attendance: value, attendanceAt: new Date() }).where(eq(deals.id, dealId));
-    await logEvent(tx, dealId, "comparecimento", { de: deal.attendance, para: value }, userId);
-    // A conferência de comparecimento está feita: conclui a tarefa aberta (e o aviso dela). Confirmar o horário não é comparecer.
-    if (value !== "confirmado") {
-      const open = await tx.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.dealId, dealId), eq(tasks.kind, "comparecimento"), isNull(tasks.doneAt)));
-      for (const t of open) await completeTaskTx(tx, t.id, userId);
-    }
-  });
+  await db.transaction((tx) => setAttendanceTx(tx, dealId, status, userId));
   await emit("lead_atualizado", { dealId });
+}
+
+/**
+ * "Compareceu" / "Faltou" na Fila e no painel: grava o comparecimento e conclui a conferência. Quem faltou ganha a próxima ação
+ * "Remarcar" para amanhã às 10h (responsável: o dono do lead), tudo na mesma transação.
+ * Só vale para lead aberto na etapa Agendado; repetir o mesmo valor não duplica evento nem tarefa.
+ */
+export async function markAttendance(dealId: string, status: "compareceu" | "faltou", userId: string, now = new Date()): Promise<{ changed: boolean }> {
+  const value = z.enum(["compareceu", "faltou"]).parse(status);
+  const changed = await db.transaction(async (tx) => {
+    const [row] = await tx.select({ attendance: deals.attendance, archivedAt: deals.archivedAt, closedAt: deals.closedAt, contactId: deals.contactId, ownerId: deals.ownerId, kind: stages.kind, name: contacts.name })
+      .from(deals).innerJoin(stages, eq(stages.id, deals.stageId)).innerJoin(contacts, eq(contacts.id, deals.contactId)).where(eq(deals.id, dealId));
+    if (!row) throw new UserFacingError("Lead não encontrado");
+    if (row.archivedAt || row.kind !== "agendado") throw new UserFacingError("Só dá para conferir o comparecimento de um lead agendado.");
+    if (row.attendance === value) return false;
+    await setAttendanceTx(tx, dealId, value, userId);
+    if (value === "faltou") {
+      await setNextActionTx(tx, dealId, { title: `Remarcar com ${row.name?.trim() || "a cliente"}`, dueAt: remarcarDueAt(now), assigneeId: row.ownerId }, userId, now);
+    }
+    return true;
+  });
+  if (changed) await emit("lead_atualizado", { dealId });
+  return { changed };
 }

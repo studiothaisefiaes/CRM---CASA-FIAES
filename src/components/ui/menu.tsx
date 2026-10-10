@@ -7,10 +7,10 @@ import { cn } from "@/lib/cn";
 export type MenuItem = { label: string; onSelect: () => void; danger?: boolean; /** Opção em uso (aria-current): destaca em negrito. */ current?: boolean };
 
 /** Menu de ações: abre pelo botão, setas/Home/End navegam, Esc fecha e devolve o foco ao botão. */
-export function Menu({ trigger, items, label, align = "right", className, triggerClassName }: {
+export function Menu({ trigger, items, label, align = "right", up = false, className, triggerClassName }: {
   trigger: ReactNode; items: MenuItem[];
   /** Nome acessível do botão quando `trigger` é só um ícone. */
-  label?: string; align?: "left" | "right"; className?: string; triggerClassName?: string;
+  label?: string; align?: "left" | "right"; /** Abre para cima (menus no rodapé da tela). */ up?: boolean; className?: string; triggerClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
@@ -60,7 +60,7 @@ export function Menu({ trigger, items, label, align = "right", className, trigge
           <motion.div
             ref={list} id={id} role="menu" aria-label={label} onKeyDown={onListKey}
             initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: DUR.fast, ease: EASE }}
-            className={cn("absolute z-50 top-full mt-1.5 min-w-44 max-h-[min(70dvh,26rem)] overflow-y-auto overscroll-contain p-1 bg-paper border border-line rounded-[var(--radius-card)] shadow-[var(--shadow-pop)]", align === "right" ? "right-0" : "left-0")}
+            className={cn("absolute z-50 min-w-44 max-h-[min(70dvh,26rem)] overflow-y-auto overscroll-contain p-1 bg-paper border border-line rounded-[var(--radius-card)] shadow-[var(--shadow-pop)]", up ? "bottom-full mb-1.5" : "top-full mt-1.5", align === "right" ? "right-0" : "left-0")}
           >
             {items.map((it) => (
               <button

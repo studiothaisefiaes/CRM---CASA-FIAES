@@ -6,7 +6,7 @@ import { ContactAvatar } from "@/components/ui/contact-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Menu, type MenuItem } from "@/components/ui/menu";
-import { LeadSide } from "@/components/lead/lead-sheet";
+import { LeadDetails, LeadTimeline } from "@/components/lead/lead-sheet";
 import { IconCalendar } from "@/components/icons";
 import { formatPhoneClient } from "@/lib/phone-client";
 import { PAYMENT_LABEL } from "@/lib/format";
@@ -17,6 +17,9 @@ import type { PaneTab } from "./pane-header";
 import type { LeadActions } from "./use-lead-actions";
 import { StagePath } from "./stage-path";
 import { WhyLate } from "./why-late";
+import { NextAction } from "./next-action";
+import { HowKnown } from "./how-known";
+import { AttendanceBar } from "./attendance-bar";
 
 const longDate = (iso: string | Date) => {
   const d = new Date(iso);
@@ -98,6 +101,7 @@ export function ClientPane({ d, tab, viewer, actions }: { d: DealDetail; tab: Pa
   const last = d.messages.at(-1);
   // Celular: a aba Histórico mostra só a linha do tempo; no painel largo tudo fica visível.
   const top = tab === "historico" ? "hidden xl:flex" : "flex";
+  const notIdentified = d.sourceLabel === NOT_IDENTIFIED || isChannelOrigin(d.sourceLabel);
 
   return (
     <>
@@ -119,9 +123,14 @@ export function ClientPane({ d, tab, viewer, actions }: { d: DealDetail; tab: Pa
             <Badge tone={k === "fechado" ? "ok" : k === "perdido" ? "alert" : "gold"}>{d.stage.name}</Badge>
           </div>
           <Outcome d={d} />
+          {k === "agendado" && <AttendanceBar attendance={d.deal.attendance} busy={actions.busy} onPick={actions.attendance} />}
           {open && <WhyLate awaitingSince={d.deal.awaitingReplySince ? new Date(d.deal.awaitingReplySince).toISOString() : null} slaMinutes={d.stage.slaMinutes}
             lastAt={last ? new Date(last.createdAt).toISOString() : null} lastDirection={last?.direction ?? null} />}
         </section>
+
+        {open && notIdentified && <HowKnown d={d} actions={actions} />}
+
+        {open && <NextAction d={d} actions={actions} />}
 
         <section aria-label="Ações" className="flex flex-col gap-2">
           <h4 className={H}>Ações</h4>
@@ -156,7 +165,14 @@ export function ClientPane({ d, tab, viewer, actions }: { d: DealDetail; tab: Pa
           <Row label="Serviço">{svc ?? "—"}</Row>
         </dl>
       </div>
-      <LeadSide d={d} tab={tab} bp="xl" cols="grid-cols-1" />
+      <section aria-labelledby="painel-dados" className={cn("flex-col gap-3 border-t border-line pt-4 pb-5", tab === "historico" ? "hidden xl:flex" : "flex")}>
+        <h4 id="painel-dados" className={H}>Dados</h4>
+        <LeadDetails d={d} cols="grid-cols-1" />
+      </section>
+      <section aria-labelledby="painel-historico" className={cn("flex-col gap-3 border-t border-line pt-4 pb-3", tab === "dados" ? "hidden xl:flex" : "flex")}>
+        <h4 id="painel-historico" className={H}>Histórico</h4>
+        <LeadTimeline d={d} />
+      </section>
     </>
   );
 }

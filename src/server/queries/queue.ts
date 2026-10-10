@@ -27,7 +27,13 @@ export type QueueCounts = {
   total: number; aguardando: number; atrasados: number; perto: number; agendadosHoje: number; parados: number; acoesHoje: number; tarefasAtrasadas: number;
   views: Record<QueueView, number>;
 };
-export type QueueResult = { sections: QueueSection[]; counts: QueueCounts; /** Preenchido quando o limite cortou a lista. */ truncated: { shown: number; total: number } | null };
+/** Agendado cujo horário já passou e ainda sem "Compareceu"/"Faltou": a conferência do dia. */
+export type AttendanceDue = { dealId: string; contactId: string; name: string; phone: string; hasAvatar: boolean; scheduledAt: string; ownerName: string | null };
+export type QueueResult = {
+  sections: QueueSection[]; counts: QueueCounts; /** Preenchido quando o limite cortou a lista. */ truncated: { shown: number; total: number } | null;
+  /** Leads Agendados com o horário vencido, para conferir o comparecimento (fora do listbox da Fila). */
+  conferir: AttendanceDue[];
+};
 export type QueueOptions = {
   view?: QueueView;
   /** Chips do resumo: mesmo escopo dos `counts`. */
@@ -96,6 +102,32 @@ async function details(ids: string[]) {
     .leftJoin(sql`lateral (select t.title from tasks t where t.deal_id = ${deals.id} and t.done_at is null and t.kind in ('proxima_acao', 'retorno', 'comparecimento') order by t.due_at asc limit 1) nt`, sql`true`)
     .where(inArray(deals.id, ids));
   return new Map(rows.map((r) => [r.id, r]));
+}
+
+export const ATTENDANCE_DUE_LIMIT = 20;
+
+/**
+ * A conferência de comparecimento: leads em Agendado cujo horário já passou e que ainda não têm Compareceu/Faltou ("confirmado" pela enquete conta como
+ * não conferido). Mesmo escopo da Fila (atendente vê os dela e os sem dono); o mais antigo primeiro.
+ */
+export async function attendanceDue(user: Who, now: Date, opts: { mine?: boolean; limit?: number } = {}): Promise<AttendanceDue[]> {
+  const sc = scopeCond(user);
+  const rows = await db.select({ dealId: deals.id, contactId: contacts.id, name: contacts.name, phone: contacts.phoneE164, hasAvatar: sql<boolean>`(${contacts.avatarPath} is not null)`, scheduledAt: deals.scheduledAt, ownerName: users.name })
+    .from(deals).innerJoin(contacts, eq(contacts.id, deals.contactId)).innerJoin(stages, eq(stages.id, deals.stageId)).leftJoin(users, eq(users.id, deals.ownerId))
+    .where(and(isNull(deals.closedAt), isNull(deals.archivedAt), eq(contacts.ignored, false), eq(stages.kind, "agendado"), ...(opts.mine ? [eq(deals.ownerId, user.id)] : []),
+      sql`${deals.scheduledAt} <= ${now.toISOString()}::timestamptz`, sql`(${deals.attendance} is null or ${deals.attendance} = 'confirmado')`, ...(sc ? [sc] : [])))
+    .orderBy(asc(deals.scheduledAt)).limit(opts.limit ?? ATTENDANCE_DUE_LIMIT);
+  return rows.map((r) => ({ dealId: r.dealId, contactId: r.contactId, name: r.name?.trim() || r.phone, phone: r.phone, hasAvatar: r.hasAvatar, scheduledAt: new Date(r.scheduledAt!).toISOString(), ownerName: r.ownerName }));
+}
+
+/** Opções da barra de ações em massa: as etapas sem diálogo e, para a gestão, as pessoas da equipe. */
+export type BulkOptions = { stages: { key: string; name: string }[]; people: { id: string; name: string }[]; canAssign: boolean };
+export async function getBulkOptions(user: Who): Promise<BulkOptions> {
+  const [stageRows, people] = await Promise.all([
+    db.select({ key: stages.key, name: stages.name }).from(stages).where(and(eq(stages.active, true), inArray(stages.kind, ["lead", "atendimento", "followup"]))).orderBy(asc(stages.position)),
+    user.role === "gestor" ? db.select({ id: users.id, name: users.name }).from(users).where(eq(users.active, true)).orderBy(asc(users.name)) : Promise.resolve([]),
+  ]);
+  return { stages: stageRows, people, canAssign: user.role === "gestor" };
 }
 
 /**
@@ -240,7 +272,11 @@ export async function getQueue(user: Who, opts: QueueOptions = {}): Promise<Queu
     const last = sections.at(-1);
     if (last && last.key === p.section) last.items.push(item); else sections.push({ key: p.section, items: [item] });
   }
-  return { sections, counts, truncated: total > shown.length ? { shown: shown.length, total } : null };
+  // A conferência só acompanha as visões em que faz sentido e some quando há busca/filtro (a lista ali é outra pergunta).
+  const view = opts.view ?? "todos";
+  const refined = !!(opts.q?.trim() || opts.filtro || opts.foco || opts.etapa || opts.dono || opts.fonte);
+  const conferir = refined || !["todos", "meus", "agendados-hoje"].includes(view) ? [] : await attendanceDue(user, now, { mine: view === "meus" });
+  return { sections, counts, truncated: total > shown.length ? { shown: shown.length, total } : null, conferir };
 }
 
 /** O lead que espera há mais tempo no escopo de quem pediu (sem o `exceptId`): destino do "Próximo da fila", sem montar a Fila inteira. */

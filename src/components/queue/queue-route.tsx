@@ -3,9 +3,11 @@ import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { MouseEvent } from "react";
-import type { QueueItem, QueueSection } from "@/server/queries/queue";
+import type { BulkOptions, QueueItem, QueueSection } from "@/server/queries/queue";
 import { IconArrowRight } from "@/components/icons";
 import { QueueList } from "./queue-list";
+import { BulkBar } from "./bulk-bar";
+import { useQueueSelection } from "./queue-selection";
 import { cn } from "@/lib/cn";
 import { ConversationOpeningView } from "./conversation-opening";
 import { readQueueState, rememberLead, useQueueState, useSavedQueueQuery } from "./use-queue-state";
@@ -17,7 +19,7 @@ export { ViewportRedirect } from "./open-lead";
  * `QueueList` ligada à rota. No celular o item é um link para /atendimento/ID. No desktop (≥ 1024 px) o clique abre a conversa
  * no painel do meio (`?lead=ID`) na hora, sem recarregar a página nem a lista, que mantém a rolagem. Clique com Ctrl/Cmd/botão do meio segue o link normal.
  */
-export function QueueListRoute({ sections, query, selectedId, className }: { sections: QueueSection[]; query: string; selectedId?: string | null; className?: string }) {
+export function QueueListRoute({ sections, query, selectedId, className, bulk }: { sections: QueueSection[]; query: string; selectedId?: string | null; className?: string; bulk?: BulkOptions }) {
   const router = useRouter();
   const { ref, onScroll, freeze } = useQueueState(query);
   // Celular: tocar troca a tela na hora (cabeçalho e última mensagem do item) enquanto a rota da conversa carrega.
@@ -26,6 +28,10 @@ export function QueueListRoute({ sections, query, selectedId, className }: { sec
   const open = useOpenLead();
   const current = useCurrentLead(selectedId ?? null);
   usePrimeItems(sections);
+  const selection = useQueueSelection();
+  // Só vale a seleção do que ainda está na lista (um lead que saiu, por tempo real ou filtro, não entra na ação).
+  const present = new Set(sections.flatMap((s) => s.items.map((i) => i.dealId)));
+  const chosen = selection ? [...selection.selected].filter((id) => present.has(id)) : [];
   const onOpen = (item: QueueItem, e: MouseEvent<HTMLAnchorElement>) => {
     if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
     rememberLead(item.dealId);
@@ -41,7 +47,8 @@ export function QueueListRoute({ sections, query, selectedId, className }: { sec
   };
   return (
     <>
-      <QueueList sections={sections} selectedId={current} onOpen={onOpen} listRef={ref} onScroll={onScroll} className={className} />
+      <QueueList sections={sections} selectedId={current} onOpen={onOpen} listRef={ref} onScroll={onScroll} className={className} selection={selection ?? undefined} />
+      {bulk && <BulkBar ids={chosen} options={bulk} openId={current} />}
       {navigating && opening && <div className="lg:hidden fixed inset-0 z-40"><ConversationOpeningView item={opening} /></div>}
     </>
   );

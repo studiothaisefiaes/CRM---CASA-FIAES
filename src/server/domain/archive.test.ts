@@ -58,8 +58,8 @@ describe("arquivar (não é cliente)", () => {
       const r = await recordInbound({ channelId: null, externalId: p, phoneRaw: p, body: "oi" });
       if ("dealId" in r) ids.push(r.dealId);
     }
-    expect(await archiveDeals(ids, uid)).toEqual({ archived: 3 });
-    expect(await archiveDeals(ids, uid)).toEqual({ archived: 0 }); // já arquivados: não conta de novo
+    expect(await archiveDeals(ids, uid)).toMatchObject({ archived: 3 });
+    expect(await archiveDeals(ids, uid)).toMatchObject({ archived: 0 }); // já arquivados: não conta de novo
     expect(await db.select().from(deals)).toHaveLength(3);
   });
 
@@ -90,7 +90,7 @@ describe("arquivar (não é cliente)", () => {
     const r2 = await recordInbound({ channelId: null, externalId: "F2", phoneRaw: "71999990014", body: "voltei" });
     if (!("dealId" in r2)) throw new Error();
     expect(r2.dealId).not.toBe(r1.dealId);
-    expect(await archiveDeals([r1.dealId], uid)).toEqual({ archived: 1 });
+    expect(await archiveDeals([r1.dealId], uid)).toMatchObject({ archived: 1 });
     expect((await db.select().from(contacts))[0].ignored).toBe(false);
   });
 

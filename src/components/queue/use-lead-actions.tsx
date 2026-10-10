@@ -2,15 +2,16 @@
 import { useCallback, useState, useTransition, type ReactNode } from "react";
 import type { DealDetail } from "@/server/queries/deal";
 import type { Viewer } from "@/app/(app)/atendimento/actions";
-import { archiveAction, claimAction, moveDealAction, restoreAction, transferAction } from "@/app/(app)/funil/actions";
+import { archiveAction, claimAction, completeTaskAction, moveDealAction, restoreAction, setAttendanceAction, setOriginAction, transferAction } from "@/app/(app)/funil/actions";
 import { useToast } from "@/components/ui/toast";
 import { formatBRL } from "@/lib/money";
 import { CloseSaleSheet } from "./close-sale-sheet";
 import { LoseSheet } from "./lose-sheet";
+import { NextActionSheet } from "./next-action-sheet";
 import { ScheduleSheet } from "./schedule-sheet";
 import { useCloseLead, useOpenLead } from "./open-lead";
 
-type SheetKind = "schedule" | "close" | "lose";
+type SheetKind = "schedule" | "close" | "lose" | "next";
 
 export type LeadActions = {
   /** Muda de etapa. Agendado, Fechado e Perdido abrem a folha que pede o que falta; as outras movem direto. */
@@ -20,6 +21,12 @@ export type LeadActions = {
   transfer: (userId: string, userName: string) => void;
   /** "Não é cliente": arquiva, sai do painel e oferece Desfazer por 8 s. */
   notClient: () => void;
+  /** Conclui a próxima ação (ou outra tarefa) com um toque. */
+  completeTask: (taskId: string, title: string) => void;
+  /** "Compareceu" / "Faltou" do agendamento. Faltou cria a próxima ação "Remarcar". */
+  attendance: (status: "compareceu" | "faltou") => void;
+  /** "Como conheceu?": grava a origem (uma origem cadastrada ou texto livre). Devolve true se salvou. */
+  setOrigin: (choice: { sourceId: string } | { origin: string }) => Promise<boolean>;
   busy: boolean;
   sheets: ReactNode;
 };
@@ -74,12 +81,39 @@ export function useLeadActions({ d, name, viewer, reload }: { d: DealDetail | nu
     });
   }, [d, reload, toast]);
 
+  const completeTask = useCallback((taskId: string, title: string) => {
+    start(async () => {
+      const r = await completeTaskAction(taskId);
+      toast(r.ok ? `Concluída: ${title}` : r.error, r.ok ? "ok" : "error");
+      if (r.ok) await reload();
+    });
+  }, [reload, toast]);
+
+  const attendance = useCallback((status: "compareceu" | "faltou") => {
+    if (!d) return;
+    start(async () => {
+      const r = await setAttendanceAction(d.deal.id, status);
+      if (!r.ok) { toast(r.error, "error"); return; }
+      toast(!r.data?.changed ? "Já estava registrado" : status === "compareceu" ? `${name} compareceu` : `${name} faltou · próxima ação: Remarcar`, !r.data?.changed ? "info" : "ok");
+      await reload();
+    });
+  }, [d, name, reload, toast]);
+
+  const setOrigin = useCallback(async (choice: { sourceId: string } | { origin: string }) => {
+    if (!d) return false;
+    const r = await setOriginAction({ dealId: d.deal.id, ...choice });
+    toast(r.ok ? "Origem salva" : r.error, r.ok ? "ok" : "error");
+    if (r.ok) await reload();
+    return r.ok;
+  }, [d, reload, toast]);
+
   const notClient = useCallback(() => {
     if (!d) return;
     const id = d.deal.id;
     start(async () => {
       const r = await archiveAction([id]);
       if (!r.ok) { toast(r.error, "error"); return; }
+      if (!r.data?.archived) { toast("Esse lead é de outra pessoa", "error"); return; }
       closeLead();
       toast(`${name} saiu da fila`, "ok", {
         label: "Desfazer",
@@ -111,11 +145,15 @@ export function useLeadActions({ d, name, viewer, reload }: { d: DealDetail | nu
         <LoseSheet key={`l${sheet.n}`} open={sheet.open} onClose={close} dealId={d.deal.id} name={name} reasons={d.lostReasons.map((l) => ({ id: l.id, label: l.label }))}
           onDone={() => done("Lead marcado como perdido")} />
       )}
+      {sheet.kind === "next" && (
+        <NextActionSheet key={`n${sheet.n}`} open={sheet.open} onClose={close} dealId={d.deal.id} name={name} people={d.people}
+          defaultAssigneeId={d.deal.ownerId ?? viewer?.id ?? null} replacing={d.nextAction?.title ?? null} onDone={() => done("Próxima ação salva")} />
+      )}
     </>
   ) : null;
 
-  return { moveTo, open, claim, transfer, notClient, busy: pending, sheets };
+  return { moveTo, open, claim, transfer, notClient, completeTask, attendance, setOrigin, busy: pending, sheets };
 }
 
 /** Sem lead carregado ainda (tela de abertura): nada acontece. */
-export const NO_ACTIONS: LeadActions = { moveTo: () => {}, open: () => {}, claim: () => {}, transfer: () => {}, notClient: () => {}, busy: false, sheets: null };
+export const NO_ACTIONS: LeadActions = { moveTo: () => {}, open: () => {}, claim: () => {}, transfer: () => {}, notClient: () => {}, completeTask: () => {}, attendance: () => {}, setOrigin: async () => false, busy: false, sheets: null };

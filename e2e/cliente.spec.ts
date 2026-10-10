@@ -146,7 +146,7 @@ test("fechar venda em 4 toques: pagamento, serviço e valor em reais, sem duplic
   expect(String((await e2eSql("select label from lists where id = $1", [d.service_id]))[0].label)).toBe("Coloração");
   expect(await eventos(id, "venda")).toHaveLength(1);
   // O painel acompanha: situação com a venda e etapa atual Fechado
-  await expect(painel(page).getByText("Venda fechada · R$ 1.158,50")).toBeVisible();
+  await expect(painel(page).getByText("Venda fechada · R$ 1.158,50").first()).toBeVisible();
   await expect(painel(page).getByRole("list", { name: "Etapas" }).locator('[aria-current="step"]')).toContainText("Fechado");
   expect(erros, "erros do navegador").toEqual([]);
 });

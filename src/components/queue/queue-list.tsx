@@ -7,6 +7,7 @@ import { Empty } from "@/components/ui/empty";
 import { DUR, EASE } from "@/lib/motion";
 import { cn } from "@/lib/cn";
 import { QueueRow } from "./queue-item";
+import type { QueueSelectionState } from "./queue-selection";
 
 const HEAD: Record<QueueSectionKey, string> = {
   atrasados: "bg-alert text-white py-2.5 font-serif text-[18px]",
@@ -22,11 +23,13 @@ export const defaultHref = (i: QueueItem) => `/atendimento/${i.dealId}`;
 
 /**
  * A lista da Fila: um `listbox` com as seções em `group` e cada lead como `option` (um link). Setas, Home e End movem o foco (roving tabindex); Enter abre.
+ * Seleção em massa (`selection`): o listbox é `aria-multiselectable` e a linha continua sendo a `option` (nada de controle dentro dela): Espaço marca,
+ * e com a seleção ligada ("Selecionar") tocar marca em vez de abrir, `aria-selected` passa a dizer "marcado" e Esc sai. A caixinha é só desenho.
  * O listbox só tem grupos e opções: o estado vazio e o botão que recolhe "Aguardando a cliente" ficam do lado de fora.
  * Só recebe dados e callbacks (nada de next/navigation), para poder ser testada sozinha; `QueueListRoute` liga à rota.
  */
-export function QueueList({ sections, selectedId, hrefFor = defaultHref, onOpen, listRef, onScroll, className }: {
-  sections: QueueSection[]; selectedId?: string | null; hrefFor?: (item: QueueItem) => string;
+export function QueueList({ sections, selectedId, hrefFor = defaultHref, onOpen, listRef, onScroll, className, selection }: {
+  sections: QueueSection[]; selectedId?: string | null; hrefFor?: (item: QueueItem) => string; selection?: QueueSelectionState;
   onOpen?: (item: QueueItem, e: MouseEvent<HTMLAnchorElement>) => void; listRef?: (el: HTMLDivElement | null) => void; onScroll?: (e: UIEvent<HTMLDivElement>) => void; className?: string;
 }) {
   const inner = useRef<HTMLDivElement | null>(null);
@@ -46,6 +49,13 @@ export function QueueList({ sections, selectedId, hrefFor = defaultHref, onOpen,
   }, [selectedId]);
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const opt = (e.target as HTMLElement).closest<HTMLElement>("[role=option]");
+    if (selection && e.key === " " && opt?.dataset.dealId) {
+      e.preventDefault(); // Espaço não rola a lista: marca o item (e liga a seleção, se ainda não estava)
+      if (!selection.mode) selection.enter(opt.dataset.dealId); else selection.toggle(opt.dataset.dealId, { range: e.shiftKey, order: visible });
+      return;
+    }
+    if (selection?.mode && e.key === "Escape") { e.preventDefault(); selection.exit(); return; }
     if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
     const opts = [...(inner.current?.querySelectorAll<HTMLElement>("[role=option]") ?? [])];
     if (!opts.length) return;
@@ -66,7 +76,8 @@ export function QueueList({ sections, selectedId, hrefFor = defaultHref, onOpen,
 
   return (
     <div className={cn("flex flex-col min-h-0", className)}>
-      <div ref={setRefs} role="listbox" aria-label="Fila" aria-orientation="vertical" onKeyDown={onKeyDown} onFocus={onFocus} onScroll={onScroll}
+      {selection && <span id="fila-ajuda" className="sr-only">Espaço marca vários leads para agir em massa.</span>}
+      <div ref={setRefs} role="listbox" aria-label="Fila" aria-orientation="vertical" aria-multiselectable={selection ? true : undefined} aria-describedby={selection ? "fila-ajuda" : undefined} onKeyDown={onKeyDown} onFocus={onFocus} onScroll={onScroll}
         className="flex-1 min-h-0 overflow-y-auto overscroll-contain scroll-thin">
         {sections.map((s) => {
           if (!isOpen(s)) return null; // recolhida: só a barra de baixo, fora do listbox
@@ -80,7 +91,8 @@ export function QueueList({ sections, selectedId, hrefFor = defaultHref, onOpen,
               <AnimatePresence initial={false}>
                 {s.items.map((item) => (
                   <motion.div key={item.dealId} role="none" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: DUR.base, ease: EASE }}>
-                    <QueueRow item={item} section={s.key} selected={item.dealId === selectedId} href={hrefFor(item)} tabIndex={item.dealId === tabId ? 0 : -1} onOpen={onOpen} />
+                    <QueueRow item={item} section={s.key} selected={item.dealId === selectedId} href={hrefFor(item)} tabIndex={item.dealId === tabId ? 0 : -1} onOpen={onOpen}
+                      selection={selection ? { mode: selection.mode, checked: selection.selected.has(item.dealId), onToggle: ({ range }) => (selection.mode ? selection.toggle(item.dealId, { range, order: visible }) : selection.enter(item.dealId)) } : undefined} />
                   </motion.div>
                 ))}
               </AnimatePresence>
