@@ -76,6 +76,24 @@ describe("coalesce", () => {
     expect(fn).toHaveBeenCalledTimes(1);
   });
 
+  it("fluxo contínuo a cada 100 ms por 5 s não fica adiando: sai a cada 2 s (maxWait)", () => {
+    vi.useFakeTimers();
+    const fn = vi.fn();
+    const call = coalesce(fn, 400, 2000);
+    for (let t = 0; t < 5000; t += 100) { call(); vi.advanceTimersByTime(100); }
+    expect(fn.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(fn.mock.calls.length).toBeLessThanOrEqual(3);
+  });
+
+  it("com maxWait, uma rajada curta continua virando 1 só", () => {
+    vi.useFakeTimers();
+    const fn = vi.fn();
+    const call = coalesce(fn, 400, 2000);
+    for (let i = 0; i < 20; i++) { call(); vi.advanceTimersByTime(30); }
+    vi.advanceTimersByTime(400);
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
   it("rajadas separadas chamam de novo e cancel descarta a pendente", () => {
     vi.useFakeTimers();
     const fn = vi.fn();

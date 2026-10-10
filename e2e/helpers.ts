@@ -1,7 +1,22 @@
 import { expect, type Page } from "@playwright/test";
 import { execSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 
-export async function login(page: Page, email = "gestao@e2e.local", password = "senha-e2e-123") {
+/** Estado de sessão salvo pelo projeto `setup` (e2e/auth.setup.ts), um por papel. */
+export const AUTH_FILE: Record<string, string> = { "gestao@e2e.local": "e2e/.auth/gestao.json", "ana@e2e.local": "e2e/.auth/ana.json" };
+
+/** Entra reaproveitando a sessão do `setup` (sem passar pelo formulário). Troca de usuário limpando antes os cookies. */
+export async function login(page: Page, email = "gestao@e2e.local") {
+  const file = AUTH_FILE[email];
+  if (!file) throw new Error(`sem sessão salva para ${email}: use loginReal`);
+  const state = JSON.parse(readFileSync(file, "utf8")) as { cookies: Parameters<ReturnType<Page["context"]>["addCookies"]>[0] };
+  await page.context().addCookies(state.cookies);
+  await page.goto("/");
+  await expect(page).toHaveURL(/\/$/);
+}
+
+/** Login de verdade pelo formulário. Conta no limite de tentativas: só o setup e o spec de login usam. */
+export async function loginReal(page: Page, email = "gestao@e2e.local", password = "senha-e2e-123") {
   await page.goto("/login");
   await page.getByLabel("E-mail").fill(email);
   await page.getByLabel("Senha").fill(password);

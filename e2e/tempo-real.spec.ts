@@ -49,9 +49,7 @@ test("com Relatórios aberto, mensagem não gera GET /relatorios; venda sim; raj
   await page.waitForTimeout(2500);
   expect(hits.length, `refreshes: ${hits.join(" | ")}`).toBe(1);
 
-
   // 4. Funil: mensagem recarrega; tipo desconhecido também (fail-open). Reaproveita o login (o limite de tentativas é por IP).
-  hits.length = 0;
   const funil = countPage(page, "/funil");
   await openStream(page, () => page.goto("/funil"));
   await expect(page.getByRole("heading", { name: "Funil" })).toBeVisible();

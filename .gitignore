@@ -44,6 +44,7 @@ next-env.d.ts
 !.env.example
 /.next-e2e/
 /test-results/
+/e2e/.auth/
 /playwright-report/
 
 # mídia baixada do WhatsApp

@@ -5,7 +5,7 @@ import { useLive } from "./live";
 import { playAlert } from "./sound";
 
 /** Eventos ao vivo que podem mudar quem está atrasado. */
-const RELEVANT = new Set(["regras", "alerta", "lead_criado", "lead_atualizado", "lead_arquivado", "lead_restaurado", "mensagem_recebida", "mensagem_enviada", "resposta", "etapa_alterada", "historico_importado"]);
+const RELEVANT = new Set(["regras", "alerta", "lead_criado", "lead_atualizado", "lead_arquivado", "lead_restaurado", "mensagem_recebida", "mensagem_enviada", "resposta", "etapa_alterada", "historico_importado", "reconectado"]);
 const DEBOUNCE_MS = 2000;
 
 /** Versão local de "cruzou o limite" (a T21 troca pela primitiva final): chama `onCross` só quando o número sobe. */

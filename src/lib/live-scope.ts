@@ -64,10 +64,20 @@ export function shouldRefresh(e: LiveEventLike, scopes: string[]): boolean {
   return touched.some((s) => scopes.includes(s));
 }
 
-/** Junta uma rajada de chamadas numa só, `ms` depois da última. `cancel` descarta a pendente. */
-export function coalesce(fn: () => void, ms: number) {
+/**
+ * Junta uma rajada de chamadas numa só, `ms` depois da última. Com `maxWait`, um fluxo contínuo não adia para sempre:
+ * a chamada sai no máximo `maxWait` depois da primeira da rajada. `cancel` descarta a pendente.
+ */
+export function coalesce(fn: () => void, ms: number, maxWait?: number) {
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const call = () => { clearTimeout(timer); timer = setTimeout(() => { timer = undefined; fn(); }, ms); };
+  let firstAt = 0;
+  const call = () => {
+    const now = Date.now();
+    if (timer === undefined) firstAt = now;
+    clearTimeout(timer);
+    const wait = maxWait === undefined ? ms : Math.max(0, Math.min(ms, firstAt + maxWait - now));
+    timer = setTimeout(() => { timer = undefined; fn(); }, wait);
+  };
   call.cancel = () => { clearTimeout(timer); timer = undefined; };
   return call;
 }

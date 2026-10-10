@@ -8,9 +8,11 @@ export { shouldRefresh };
 
 export type LiveEvent = { type: string; dealId?: string; scope?: string | string[]; [k: string]: unknown };
 type Listener = (e: LiveEvent) => void;
-type Api = { subscribe: (l: Listener) => () => void; requestRefresh: () => void };
+type Api = { subscribe: (l: Listener) => () => void; requestRefresh: (opts?: { minGapMs?: number }) => void };
 
 const REFRESH_DEBOUNCE_MS = 400;
+const REFRESH_MAX_WAIT_MS = 2000; // fluxo contínuo de avisos não adia o refresh para sempre
+const FOCUS_MIN_GAP_MS = 5000; // voltar para a aba/janela não recarrega se acabou de recarregar
 const Ctx = createContext<Api>({ subscribe: () => () => {}, requestRefresh: () => {} });
 
 /**
@@ -34,7 +36,7 @@ export function useLive(scopes?: string[], onEvent?: (e: LiveEvent) => void) {
 /**
  * A tela declara os escopos que mostra e só recarrega (router.refresh) quando um aviso toca neles.
  * Rajadas viram um refresh só; com a aba oculta o refresh espera ela voltar. `pollMs` recarrega de tempos em tempos
- * e ao focar a aba (telas que não assinam a Fila, como os Relatórios).
+ * e ao voltar para a aba/janela (visibilitychange e focus), no máximo uma vez a cada 5 s (telas que não assinam a Fila, como os Relatórios).
  */
 export function useLiveRefresh(scopes: string[], opts: { pollMs?: number } = {}) {
   const api = useContext(Ctx);
@@ -43,10 +45,11 @@ export function useLiveRefresh(scopes: string[], opts: { pollMs?: number } = {})
   const { pollMs } = opts;
   useEffect(() => {
     if (!pollMs) return;
-    const tick = () => { if (document.visibilityState === "visible") requestRefresh(); };
+    const tick = () => { if (document.visibilityState === "visible") requestRefresh({ minGapMs: FOCUS_MIN_GAP_MS }); };
     const id = setInterval(tick, pollMs);
     document.addEventListener("visibilitychange", tick);
-    return () => { clearInterval(id); document.removeEventListener("visibilitychange", tick); };
+    window.addEventListener("focus", tick);
+    return () => { clearInterval(id); document.removeEventListener("visibilitychange", tick); window.removeEventListener("focus", tick); };
   }, [pollMs, requestRefresh]);
 }
 
@@ -62,14 +65,16 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   const listeners = useRef(new Set<Listener>());
   const stale = useRef(false);
   const refresh = useRef<ReturnType<typeof coalesce> | null>(null);
+  const lastAt = useRef(0);
 
   useEffect(() => {
     const run = () => {
       if (document.visibilityState !== "visible") { stale.current = true; return; }
       stale.current = false;
+      lastAt.current = Date.now();
       router.refresh();
     };
-    const call = coalesce(run, REFRESH_DEBOUNCE_MS);
+    const call = coalesce(run, REFRESH_DEBOUNCE_MS, REFRESH_MAX_WAIT_MS);
     refresh.current = call;
     let es: EventSource | null = null;
     let retry: ReturnType<typeof setTimeout> | undefined;
@@ -98,7 +103,10 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   }, [router]);
 
   const subscribe = useCallback((l: Listener) => { listeners.current.add(l); return () => { listeners.current.delete(l); }; }, []);
-  const requestRefresh = useCallback(() => { refresh.current?.(); }, []);
+  const requestRefresh = useCallback((opts?: { minGapMs?: number }) => {
+    if (opts?.minGapMs && Date.now() - lastAt.current < opts.minGapMs) return;
+    refresh.current?.();
+  }, []);
   const value = useMemo(() => ({ subscribe, requestRefresh }), [subscribe, requestRefresh]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

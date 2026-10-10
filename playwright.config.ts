@@ -12,8 +12,9 @@ export default defineConfig({
   globalSetup: "./e2e/global-setup.ts",
   use: { baseURL: "http://localhost:3100", trace: "retain-on-failure", locale: "pt-BR", timezoneId: "America/Bahia" },
   projects: [
-    { name: "desktop", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } }, testIgnore: /mobile\.spec\.ts/ },
-    { name: "celular", use: { ...devices["iPhone 13"], browserName: "chromium" }, testMatch: /mobile\.spec\.ts/ },
+    { name: "setup", testMatch: /auth\.setup\.ts/ },
+    { name: "desktop", dependencies: ["setup"], use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } }, testIgnore: /mobile\.spec\.ts/ },
+    { name: "celular", dependencies: ["setup"], use: { ...devices["iPhone 13"], browserName: "chromium" }, testMatch: /mobile\.spec\.ts/ },
   ],
   webServer: {
     command: "npx next dev -p 3100",

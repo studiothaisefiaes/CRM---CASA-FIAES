@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { login, simulate, ageLead } from "./helpers";
+import { login, loginReal, simulate, ageLead } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 
@@ -9,6 +9,11 @@ test("login com senha errada mostra erro claro", async ({ page }) => {
   await page.getByLabel("Senha").fill("errada");
   await page.getByRole("button", { name: "Entrar" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "E-mail ou senha incorretos." })).toBeVisible();
+});
+
+test("login de verdade pelo formulário entra no Hoje", async ({ page }) => {
+  await loginReal(page);
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
 });
 
 test("rota protegida sem login vai para o login", async ({ page }) => {
