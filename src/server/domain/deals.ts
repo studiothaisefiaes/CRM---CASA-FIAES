@@ -2,6 +2,7 @@ import { and, asc, desc, eq, inArray, isNotNull, isNull, notInArray, or, sql } f
 import { db, type Tx } from "../db";
 import { alerts, auditLog, contacts, deals, messages, stages, users, type Stage } from "../db/schema";
 import { normalizePhone } from "./phone";
+import { matchSource } from "./sources";
 import { emit, logEvent } from "./events";
 import { archiveDeals, restoreDeals } from "./archive";
 import { isQuiet } from "./quiet";
@@ -115,10 +116,12 @@ export async function recordInbound(input: InboundInput): Promise<InboundResult>
     let created = false;
     if (!deal) {
       const lead = await stageByKey("lead", tx);
-      const origin = detectOrigin({ body: input.body, hasAdReferral: input.hasAdReferral, isClient: contact.isClient });
+      // Link/QR de origem tem prioridade; sem ele, vale a detecção por evidência no texto/anúncio.
+      const linked = await matchSource(input.body, tx);
+      const origin = linked?.label ?? detectOrigin({ body: input.body, hasAdReferral: input.hasAdReferral, isClient: contact.isClient });
       [deal] = await tx.insert(deals).values({
         contactId: contact.id, stageId: lead.id, ownerId: await pickOwner(tx), channelId: input.channelId, origin,
-        sourceLabel: detectSource({ body: input.body, hasAdReferral: input.hasAdReferral }), stageEnteredAt: at, createdAt: at,
+        sourceId: linked?.id ?? null, sourceLabel: linked?.label ?? detectSource({ body: input.body, hasAdReferral: input.hasAdReferral }), stageEnteredAt: at, createdAt: at,
       }).returning();
       created = true;
       await logEvent(tx, deal.id, "lead_criado", { origin, initialStage: lead.key, historico: false });

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { assertUser } from "@/server/auth/session";
 import * as cfg from "@/server/domain/config";
 import type { AutomationInput } from "@/server/rules/types";
+import * as sources from "@/server/domain/sources";
 import { env } from "@/server/env";
 
 type R<T = undefined> = { ok: true; data?: T } | { ok: false; error: string };
@@ -30,3 +31,5 @@ export const disconnectChannelAction = async (id: string, remove: boolean) => ru
 export const inviteMemberAction = async (v: { name: string; email: string; role: "gestor" | "atendente" }) =>
   run(async (u) => `${env().APP_URL}/convite/${await cfg.inviteMember(v, u)}`, "/config/equipe");
 export const setMemberAction = async (id: string, patch: { role?: "gestor" | "atendente"; active?: boolean }) => run((u) => cfg.setMember(id, patch, u), "/config/equipe");
+export const createSourceAction = async (v: Parameters<typeof sources.createSource>[0]) => run((u) => sources.createSource(v, u), "/config/origens");
+export const setSourceActiveAction = async (id: string, active: boolean) => run((u) => sources.setSourceActive(id, active, u), "/config/origens");
