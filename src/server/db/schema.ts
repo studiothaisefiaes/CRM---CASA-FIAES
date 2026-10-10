@@ -297,8 +297,9 @@ export const outbox = pgTable("outbox", {
   /** text | poll */
   kind: text("kind").notNull(),
   text: text("text").notNull(),
-  options: jsonb("options").$type<string[]>(),
-  /** pending | sent | failed */
+  /** Opções da enquete (lista) ou { values, source }: `source` diz de onde veio ("automacao:<id>" | "auto_resposta") para reconferir na hora de enviar. */
+  options: jsonb("options").$type<string[] | { values?: string[]; source?: string } | null>(),
+  /** pending | sending | sent | failed | cancelled */
   status: text("status").notNull().default("pending"),
   notBefore: timestamp("not_before", { withTimezone: true }).notNull().defaultNow(),
   sentAt: timestamp("sent_at", { withTimezone: true }),

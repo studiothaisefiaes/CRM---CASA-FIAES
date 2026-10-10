@@ -4,6 +4,7 @@ import { db } from "../db";
 import { alerts, automations, contacts, deals, messages, stages, users, automationRuns } from "../db/schema";
 import { recordInbound, recordOutbound, moveDeal } from "../domain/deals";
 import { runRules } from "./engine";
+import { drainOutbox } from "../domain/outbox";
 import { resetDb } from "../../../test/db";
 
 const T0 = new Date("2026-10-13T13:00:00Z"); // terça-feira, 10h em Salvador (expediente)
@@ -131,7 +132,9 @@ describe("motor de automações", () => {
     await db.update(deals).set({ scheduledAt: new Date(T0.getTime() + 20 * 3_600_000), awaitingReplySince: new Date(T0.getTime() - 60_000) }).where(eq(deals.id, id));
     await db.update(automations).set({ enabled: true }).where(eq(automations.key, "lembrete_agendamento"));
     const s = await runRules(T0);
-    expect(s.sent).toBe(1);
+    expect(s.sent).toBe(1); // enfileirada: o motor não envia, a fila (worker) é que envia
+    expect((await db.select().from(messages)).filter((m) => m.direction === "out")).toHaveLength(0);
+    await drainOutbox(T0);
     const out = (await db.select().from(messages)).filter((m) => m.direction === "out");
     expect(out[0].body).toMatch(/Mariana[\s\S]*quarta-feira[\s\S]*06:00/);
     expect((await db.select().from(deals).where(eq(deals.id, id)))[0].awaitingReplySince).not.toBeNull();

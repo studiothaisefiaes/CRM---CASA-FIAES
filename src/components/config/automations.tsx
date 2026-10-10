@@ -28,7 +28,7 @@ const describeTrigger = (t: Trigger) => {
   }
 };
 const describeAction = (a: Action, stages: StageOpt[]) =>
-  a.type === "mover_para_etapa" ? `mover para ${stages.find((s) => s.key === a.stage)?.name ?? a.stage}` : a.type === "mover_para_proximo_followup" ? "mover para o próximo follow-up" : a.type === "alertar_gestao" ? "avisar a gestão" : a.type === "escalar_gestao" ? "escalar o alerta para a gestão" : a.type === "enviar_mensagem" ? "enviar mensagem à cliente" : "alertar quem é responsável";
+  a.type === "mover_para_etapa" ? `mover para ${stages.find((s) => s.key === a.stage)?.name ?? a.stage}` : a.type === "mover_para_proximo_followup" ? "mover para o próximo follow-up" : a.type === "alertar_gestao" ? "avisar a gestão" : a.type === "escalar_gestao" ? "escalar o alerta para a gestão" : a.type === "enviar_mensagem" ? "enviar mensagem à cliente" : a.type === "enviar_enquete_confirmacao" ? "enviar enquete de confirmação" : "alertar quem é responsável";
 
 const GROUPS: { title: string; hint: string; types: Trigger["type"][]; icon: "clock" | "flow" | "cal" }[] = [
   { title: "Atendimento", hint: "prazos de resposta e leads parados", types: ["sem_resposta_minutos", "parado_dias"], icon: "clock" },
@@ -108,7 +108,7 @@ function Editor({ item, stages, onClose }: { item: Item | "new" | null; stages: 
   };
   const setAction = (i: number, a: Action) => setV({ ...v, actions: v.actions.map((x, j) => (j === i ? a : x)) });
   const newAction = (type: Action["type"]): Action => type === "mover_para_etapa" ? { type, stage: "atendimento" } : type === "mover_para_proximo_followup" || type === "escalar_gestao" ? { type }
-    : { type, message: type === "alertar_gestao" ? "Atenção: {nome}" : type === "enviar_mensagem" ? "Oi, {nome}! " : "Hora de falar com {nome}" };
+    : { type, message: type === "alertar_gestao" ? "Atenção: {nome}" : type === "enviar_mensagem" ? "Oi, {nome}! " : type === "enviar_enquete_confirmacao" ? "Oi, {nome}! Seu horário na Casa Fiaes é {data}, às {hora}. Você confirma?" : "Hora de falar com {nome}" };
 
   return (
     <Dialog open={open} onClose={onClose} title={isNew ? "Nova automação" : "Editar automação"} width={640}
@@ -153,8 +153,8 @@ function Editor({ item, stages, onClose }: { item: Item | "new" | null; stages: 
                 <Select className="w-auto" value={a.type} onChange={(e) => setAction(i, newAction(e.target.value as Action["type"]))}>
                   {Object.entries(ACTION_LABELS).filter(([k]) => k !== "escalar_gestao" || v.trigger.type === "sem_resposta_minutos").map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                 </Select>
-                {"message" in a && (a.type === "enviar_mensagem"
-                  ? <textarea className="flex-1 min-w-[220px] rounded-[var(--radius-control)] border border-control/70 px-3 py-2 text-base min-h-20" value={a.message} onChange={(e) => setAction(i, { ...a, message: e.target.value })} aria-label="Texto da mensagem" />
+                {"message" in a && (a.type === "enviar_mensagem" || a.type === "enviar_enquete_confirmacao"
+                  ? <textarea className="flex-1 min-w-[220px] rounded-[var(--radius-control)] border border-control/70 px-3 py-2 text-base min-h-20" value={a.message} onChange={(e) => setAction(i, { ...a, message: e.target.value })} aria-label={a.type === "enviar_enquete_confirmacao" ? "Pergunta da enquete" : "Texto da mensagem"} />
                   : <Input className="flex-1 min-w-[220px]" value={a.message} onChange={(e) => setAction(i, { ...a, message: e.target.value })} />)}
                 {a.type === "mover_para_etapa" && <Select className="w-auto" value={a.stage} onChange={(e) => setAction(i, { ...a, stage: e.target.value })}>{stages.map((s) => <option key={s.key} value={s.key}>{s.name}</option>)}</Select>}
                 {v.actions.length > 1 && <button type="button" aria-label="Remover ação" onClick={() => setV({ ...v, actions: v.actions.filter((_, j) => j !== i) })} className="size-8 grid place-items-center rounded-[8px] text-muted hover:bg-paper-2"><IconClose size={14} /></button>}
@@ -162,7 +162,7 @@ function Editor({ item, stages, onClose }: { item: Item | "new" | null; stages: 
             ))}
             {v.actions.length < 4 && <button type="button" onClick={() => setV({ ...v, actions: [...v.actions, newAction("alertar_responsavel")] })} className="self-start text-sm text-gold-ink hover:underline">+ Adicionar ação</button>}
             <p className="text-xs text-muted">Nas mensagens você pode usar {"{nome}"}, {"{etapa}"}, {"{minutos}"}, {"{dias}"} e, em agendamentos, {"{data}"} e {"{hora}"}.</p>
-            {v.actions.some((x) => x.type === "enviar_mensagem") && <p className="text-sm bg-gold-soft text-gold-ink rounded-[var(--radius-control)] px-3 py-2">Esta automação manda mensagem de verdade para as clientes, pelo número da conversa, só no horário de atendimento. Revise o texto antes de ligar.</p>}
+            {v.actions.some((x) => x.type === "enviar_mensagem" || x.type === "enviar_enquete_confirmacao") && <p className="text-sm bg-gold-soft text-gold-ink rounded-[var(--radius-control)] px-3 py-2">Esta automação manda mensagem de verdade para as clientes, pelo número da conversa, só no horário de atendimento e respeitando o limite de envios por hora. Revise o texto antes de ligar.{v.actions.some((x) => x.type === "enviar_enquete_confirmacao") && " A enquete tem duas opções: Confirmo (marca o horário como confirmado) e Preciso remarcar (cria uma tarefa para remarcar)."}</p>}
           </div>
         </Block>
         <AnimatePresence>{preview && <motion.p initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="text-sm bg-gold-soft text-gold-ink rounded-[var(--radius-control)] px-3 py-2">{preview}</motion.p>}</AnimatePresence>

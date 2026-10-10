@@ -16,6 +16,8 @@ export interface WhatsAppProvider {
   sendMedia?(instanceName: string, toE164: string, file: { name: string; mime: string; data: Buffer; mediatype: "image" | "video" | "document" }, caption: string | null, quoted?: QuotedMessage): Promise<{ externalId: string | null }>;
   /** Mensagem de voz (a Evolution converte para OGG/Opus). */
   sendAudio?(instanceName: string, toE164: string, data: Buffer, quoted?: QuotedMessage): Promise<{ externalId: string | null }>;
+  /** Enquete de escolha única (`selectableCount: 1`). O voto volta pelo webhook (messages.upsert / messages.update com `pollUpdates`). */
+  sendPoll?(instanceName: string, toE164: string, name: string, options: string[]): Promise<{ externalId: string | null }>;
   /** Marca como lidas (visto azul) as mensagens recebidas com estes ids. */
   markRead?(instanceName: string, toE164: string, externalIds: string[]): Promise<void>;
   logout(instanceName: string): Promise<void>;

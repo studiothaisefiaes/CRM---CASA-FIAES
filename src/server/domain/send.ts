@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { and, desc, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "../db";
-import { alerts, channels, contacts, dealEvents, deals, messages } from "../db/schema";
+import { channels, contacts, dealEvents, deals, messages } from "../db/schema";
 import { whatsapp } from "../whatsapp/evolution";
 import type { QuotedMessage } from "../whatsapp/provider";
 import { save as saveMediaFile } from "../whatsapp/media";
@@ -25,7 +25,7 @@ async function loadTarget(dealId: string): Promise<Target> {
 }
 
 /** Responde sempre pelo mesmo número em que a cliente escreveu; null só quando não há nenhum conectado (e DEV_TOOLS simula). */
-async function resolveChannel(dealId: string, deal: Target["deal"]): Promise<Channel | null> {
+export async function resolveChannel(dealId: string, deal: Target["deal"]): Promise<Channel | null> {
   let channel = deal.channelId ? (await db.select().from(channels).where(eq(channels.id, deal.channelId)))[0] : undefined;
   if (channel && channel.status !== "conectado") {
     // O mesmo número pode ter sido lido de novo em outro canal: responde por ele e o lead passa a usar esse canal.
@@ -171,7 +171,7 @@ const isExternalIdConflict = (e: unknown) => {
  * Confirma o envio. Se o eco do WhatsApp criar a linha entre a conferência e a confirmação (violação de `messages_external_uq`),
  * funde de novo e conclui sem erro: a mensagem já foi entregue.
  */
-async function confirmSent(pendingId: string, input: { dealId: string; channelId: string; externalId: string | null; body?: string; userId: string }) {
+async function confirmSent(pendingId: string, input: { dealId: string; channelId: string; externalId: string | null; body?: string; userId: string | null; automated?: boolean }) {
   const confirm = (claimMessageId: string) => recordOutbound({ ...input, status: "sent", claimMessageId });
   const claim = await absorbEcho(pendingId, input.channelId, input.externalId);
   await sendHooks.beforeConfirm?.();
@@ -234,25 +234,36 @@ export async function markConversationRead(dealId: string, userId: string): Prom
   }
 }
 
-/** Mensagem enviada por automação (ex.: lembrete). Usa o número do lead; falha vira alerta para a gestão. */
-export async function sendAutomated(dealId: string, text: string) {
-  const [row] = await db.select({ deal: deals, phone: contacts.phoneE164, name: contacts.name }).from(deals)
-    .innerJoin(contacts, eq(contacts.id, deals.contactId)).where(eq(deals.id, dealId));
-  if (!row) return;
-  let channel = row.deal.channelId ? (await db.select().from(channels).where(eq(channels.id, row.deal.channelId)))[0] : undefined;
-  if (!channel || channel.status !== "conectado") channel = row.deal.channelId ? undefined : (await db.select().from(channels).where(eq(channels.status, "conectado")).limit(1))[0];
-  if (!channel) {
-    if (env().DEV_TOOLS) return recordOutbound({ dealId, channelId: null, body: text, status: "simulado", automated: true });
-    await db.insert(alerts).values({ dealId, audience: "gestao", type: "envio_automatico_falhou", severity: "info",
-      message: `Não foi possível enviar a mensagem automática para ${row.name ?? row.phone}: WhatsApp desconectado.`, dedupeKey: `auto:${dealId}:${text.slice(0, 40)}` }).onConflictDoNothing();
-    return;
-  }
-  const [pending] = await db.insert(messages).values({ dealId, contactId: row.deal.contactId, channelId: channel.id, direction: "out", kind: "text", body: text, status: "pending" }).returning({ id: messages.id });
+export type AutomatedPayload = { kind: "text" | "poll"; text: string; options: string[] };
+
+/**
+ * Entrega UMA mensagem automática já conferida pela fila (`drainOutbox`). Mesmo caminho dos envios do CRM:
+ * grava como pendente (sem autor: aparece como "automática"), chama o provider e confirma, fundindo o eco do WhatsApp.
+ * Sem canal (só com DEV_TOOLS) a mensagem fica como "simulada". Em falha lança o erro; `keepFailed` decide se a linha
+ * pendente vira "falhou" na conversa (última tentativa) ou é apagada (vai tentar de novo, sem encher a conversa).
+ */
+export async function deliverAutomated(dealId: string, channel: Channel | null, p: AutomatedPayload, keepFailed: boolean) {
+  const row = await loadTarget(dealId);
+  const body = p.kind === "poll" ? `Enquete: ${p.text}` : p.text; // igual ao que o eco do WhatsApp traz (parseContent)
+  if (!channel) return recordOutbound({ dealId, channelId: null, body, kind: p.kind, status: "simulado", automated: true });
+  const prov = whatsapp();
+  if (p.kind === "poll" && !prov.sendPoll) throw new SendError("Este WhatsApp ainda não envia enquetes.");
+  const [pending] = await db.insert(messages).values({ dealId, contactId: row.deal.contactId, channelId: channel.id, direction: "out", kind: p.kind, body, status: "pending" }).returning({ id: messages.id });
+  let externalId: string | null = null;
   try {
-    const { externalId } = await whatsapp().sendText(channel.instanceName, row.phone, text);
-    return recordOutbound({ dealId, channelId: channel.id, externalId, body: text, status: "sent", claimMessageId: pending.id, automated: true });
+    ({ externalId } = p.kind === "poll"
+      ? await prov.sendPoll!(channel.instanceName, row.phone, p.text, p.options)
+      : await prov.sendText(channel.instanceName, row.phone, p.text));
   } catch (e) {
-    await db.update(messages).set({ status: "failed", error: (e instanceof Error ? e.message : String(e)).slice(0, 300) }).where(eq(messages.id, pending.id));
+    if (keepFailed) await db.update(messages).set({ status: "failed", error: (e instanceof Error ? e.message : String(e)).slice(0, 300) }).where(eq(messages.id, pending.id));
+    else await db.delete(messages).where(eq(messages.id, pending.id));
     throw e;
   }
+  return confirmSent(pending.id, { dealId, channelId: channel.id, externalId, body, userId: null, automated: true });
+}
+
+/** Mensagem enviada por automação (ex.: lembrete): entra na fila com teto por hora e sai pelo worker (`drainOutbox`). */
+export async function sendAutomated(dealId: string, text: string, source?: string) {
+  const { enqueueAutomated } = await import("./outbox"); // import tardio: a fila usa este módulo para entregar
+  return enqueueAutomated({ dealId, kind: "text", text, source });
 }

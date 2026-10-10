@@ -24,7 +24,13 @@ export const actionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("mover_para_etapa"), stage: z.string() }),
   z.object({ type: z.literal("mover_para_proximo_followup") }),
   z.object({ type: z.literal("enviar_mensagem"), message: z.string().min(3).max(1000) }),
+  /** Enquete de escolha única com as opções de `CONFIRMACAO_OPCOES`; o voto atualiza o lead (ver webhook). */
+  z.object({ type: z.literal("enviar_enquete_confirmacao"), message: z.string().min(3).max(255) }),
 ]);
+
+/** Opções da enquete de confirmação: "Confirmo" marca o lead como confirmado; "Preciso remarcar" cria a tarefa de remarcar. */
+export const CONFIRMACAO_OPCOES = { confirmo: "Confirmo", remarcar: "Preciso remarcar" } as const;
+export const REMARCAR_TAREFA = "Remarcar horário";;
 
 export const automationInputSchema = z.object({
   name: z.string().trim().min(3).max(80),
@@ -59,4 +65,5 @@ export const ACTION_LABELS: Record<Action["type"], string> = {
   mover_para_etapa: "Mover para a etapa",
   mover_para_proximo_followup: "Mover para o próximo follow-up",
   enviar_mensagem: "Enviar mensagem à cliente no WhatsApp",
+  enviar_enquete_confirmacao: "Enviar enquete de confirmação no WhatsApp",
 };

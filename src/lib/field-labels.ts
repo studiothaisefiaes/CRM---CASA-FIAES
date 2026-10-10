@@ -5,3 +5,7 @@ export const FIELD_LABELS: Record<string, string> = {
   scheduledAt: "Agendamento", chargeAt: "Data de cobrança", recontactAt: "Data de recontato", serviceId: "Serviço",
   paidAt: "Data do pagamento", paidCents: "Valor pago", attendance: "Comparecimento",
 };
+
+/** Valores de `deals.attendance`: confirmado (enquete D-1) → compareceu | faltou | remarcou (conferência do dia). */
+export const ATTENDANCE_LABELS: Record<string, string> = { confirmado: "Confirmado", compareceu: "Compareceu", faltou: "Faltou", remarcou: "Remarcou" };
+export const attendanceLabel = (v: unknown) => (v == null || v === "" ? "removido" : ATTENDANCE_LABELS[String(v)] ?? String(v));

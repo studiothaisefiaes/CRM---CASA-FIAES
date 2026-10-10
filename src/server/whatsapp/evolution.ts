@@ -93,6 +93,13 @@ export class EvolutionProvider implements WhatsAppProvider {
     return { externalId: r?.key?.id ?? null };
   }
 
+  async sendPoll(instanceName: string, toE164: string, name: string, options: string[]) {
+    const r = await this.req<{ key?: { id?: string } }>("POST", `/message/sendPoll/${encodeURIComponent(instanceName)}`, {
+      number: toWhatsappNumber(toE164), name, selectableCount: 1, values: options,
+    });
+    return { externalId: r?.key?.id ?? null };
+  }
+
   async markRead(instanceName: string, toE164: string, externalIds: string[]) {
     const remoteJid = `${toWhatsappNumber(toE164)}@s.whatsapp.net`;
     await this.req("POST", `/chat/markMessageAsRead/${encodeURIComponent(instanceName)}`, {

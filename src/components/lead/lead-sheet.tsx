@@ -10,6 +10,7 @@ import { AutoField } from "./fields";
 import { StageDialogs, type PendingMove } from "@/components/pipeline/stage-dialogs";
 import { markConversationReadAction, moveDealAction } from "@/app/(app)/funil/actions";
 import { useToast } from "@/components/ui/toast";
+import { attendanceLabel } from "@/lib/field-labels";
 import { IconClose, IconPhone, IconMail, IconInstagram, IconWhatsApp, IconCake, IconClock, IconArrowRight } from "@/components/icons";
 import { useUrgency } from "@/components/pipeline/timer";
 import { Badge } from "@/components/ui/badge";
@@ -33,7 +34,7 @@ const EVENT_TEXT = (e: DealDetail["events"][number]): string => {
     case "responsavel_alterado": return "Trocou o responsável";
     case "assumiu": return "Assumiu o lead";
     case "venda": return "Venda fechada";
-    case "comparecimento": return `Comparecimento: ${String(p.para)}`;
+    case "comparecimento": return `Comparecimento: ${attendanceLabel(p.para)}`;
     case "alerta": return String(p.mensagem ?? "Alerta");
     case "mensagem_recebida": return "Mensagem recebida";
     case "lido": return "Mensagens marcadas como lidas";

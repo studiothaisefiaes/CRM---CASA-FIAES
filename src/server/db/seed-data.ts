@@ -82,6 +82,13 @@ export const DEFAULT_AUTOMATIONS: (AutomationInput & { key: string })[] = [
     actions: [{ type: "enviar_mensagem", message: "Oi, {nome}! Passando para lembrar do seu horário na Casa Fiaes: {data}, às {hora}. Pode confirmar respondendo esta mensagem?" }],
   },
   {
+    // Alternativa ao lembrete em texto: uma enquete de um toque. Nasce desligada (manda mensagem de verdade); não ligue as duas juntas.
+    key: "confirmacao_d1", name: "Confirmação do agendamento por enquete (D-1)", enabled: false,
+    trigger: { type: "agendamento_em_horas", hours: 24 },
+    conditions: [{ type: "etapa_em", stages: ["agendado"] }],
+    actions: [{ type: "enviar_enquete_confirmacao", message: "Oi, {nome}! Seu horário na Casa Fiaes é {data}, às {hora}. Você confirma?" }],
+  },
+  {
     key: "recontato", name: "Dia de recontato", enabled: true,
     trigger: { type: "data_recontato" },
     conditions: [],

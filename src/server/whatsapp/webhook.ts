@@ -5,6 +5,7 @@ import { alerts, channels, deals, messages, webhookEvents } from "../db/schema";
 import { importHistoryChat, recordInbound, recordOutbound, type HistoryMessage, type MediaNode } from "../domain/deals";
 import { emit } from "../domain/events";
 import { startQuietIfPaired } from "../domain/quiet";
+import { applyPollVote } from "../domain/poll-vote";
 
 export function checkSecret(received: string | null, expected: string) {
   if (!received) return false;
@@ -18,6 +19,10 @@ type DocMsg = { caption?: string; fileName?: string };
 /** Só os campos do Baileys que o CRM usa. */
 type LocationMsg = { degreesLatitude?: number; degreesLongitude?: number; name?: string; address?: string };
 type PollMsg = { name?: string };
+/** Voto em enquete como a Evolution 2.3.7 entrega (já decifrado): `vote.selectedOptions` traz os NOMES das opções escolhidas. */
+type PollUpdateMsg = { pollCreationMessageKey?: { id?: string; remoteJid?: string; fromMe?: boolean }; vote?: { selectedOptions?: unknown[] }; senderTimestampMs?: number };
+/** Agregado por opção que a Evolution monta em `data.pollUpdates`: quem votou em cada uma (lista vazia = não escolhida). */
+type PollAggregate = { name?: string; voters?: string[] };
 type ProtocolMsg = { key?: { id?: string }; type?: number | string; editedMessage?: Record<string, unknown> };
 export type BaileysMessage = {
   ptvMessage?: object; liveLocationMessage?: LocationMsg; contactsArrayMessage?: { displayName?: string };
@@ -28,11 +33,11 @@ export type BaileysMessage = {
   imageMessage?: { caption?: string }; videoMessage?: { caption?: string }; audioMessage?: object; stickerMessage?: object;
   documentMessage?: DocMsg; documentWithCaptionMessage?: { message?: { documentMessage?: DocMsg } };
   locationMessage?: LocationMsg; contactMessage?: { displayName?: string; vcard?: string };
-  reactionMessage?: object; protocolMessage?: ProtocolMsg; senderKeyDistributionMessage?: object;
+  reactionMessage?: object; pollUpdateMessage?: PollUpdateMsg; messageContextInfo?: object; protocolMessage?: ProtocolMsg; senderKeyDistributionMessage?: object;
 };
 type EvoKey = { remoteJid?: string; fromMe?: boolean; id?: string; remoteJidAlt?: string; senderPn?: string };
-type EvoMessageData = { key?: EvoKey; pushName?: string | null; message?: BaileysMessage | null; messageType?: string; messageTimestamp?: number; contextInfo?: CtxInfo | null };
-type EvoConnectionData = { state?: string; statusReason?: number; wuid?: string; keyId?: string; status?: string; senderPn?: string; remoteJidAlt?: string };
+type EvoMessageData = { key?: EvoKey; pushName?: string | null; message?: BaileysMessage | null; messageType?: string; messageTimestamp?: number; contextInfo?: CtxInfo | null; pollUpdates?: PollAggregate[] };
+type EvoConnectionData = { remoteJid?: string; fromMe?: boolean; state?: string; statusReason?: number; wuid?: string; keyId?: string; status?: string; senderPn?: string; remoteJidAlt?: string };
 export type EvoPayload = { event?: string; instance?: string; data?: (EvoMessageData & EvoConnectionData) | EvoMessageData[]; date_time?: string };
 
 /** Embrulhos do WhatsApp que só carregam outra mensagem dentro (temporária, visualização única, legenda de documento). */
@@ -146,6 +151,23 @@ function chatPhone(key?: EvoKey, senderPn?: string): string | null {
   return jid?.endsWith("@s.whatsapp.net") ? jid : null;
 }
 
+/**
+ * Voto de enquete, no formato real da Evolution 2.3.7 (conferido em dist/main.js):
+ *  - `messages.upsert` com `data.message.pollUpdateMessage` (enquete em `pollCreationMessageKey.id`; a Evolution troca
+ *    `vote.selectedOptions` pelos nomes das opções) e `data.pollUpdates = [{ name, voters }]`;
+ *  - `messages.update` com `data.keyId` = id da enquete e `data.pollUpdates` no mesmo formato agregado.
+ * `option` é a opção escolhida (null = voto retirado ou não decifrado).
+ */
+export function pollVoteOf(event: string, d: EvoMessageData & EvoConnectionData | undefined): { pollId: string; option: string | null } | null {
+  if (!d) return null;
+  const upd = d.message?.pollUpdateMessage;
+  const pollId = event === "messages.update" ? (d.pollUpdates ? d.keyId : undefined) : upd?.pollCreationMessageKey?.id;
+  if (!pollId) return null;
+  const named = (upd?.vote?.selectedOptions ?? []).find((o): o is string => typeof o === "string" && o.trim() !== "");
+  const aggregated = (d.pollUpdates ?? []).find((o) => o.name && (o.voters?.length ?? 0) > 0)?.name;
+  return { pollId, option: named ?? aggregated ?? null };
+}
+
 export async function handleEvolutionEvent(p: EvoPayload) {
   const event = eventName(p.event);
   const channelId = await channelIdFor(p.instance);
@@ -191,6 +213,8 @@ export async function handleEvolutionEvent(p: EvoPayload) {
     return { ok: true, kind: "qrcode" };
   }
   if (event === "messages.update") {
+    const vote = pollVoteOf(event, p.data as EvoMessageData & EvoConnectionData);
+    if (vote) return { ok: true, kind: "poll_vote", result: await applyPollVote({ channelId, pollExternalId: vote.pollId, option: vote.option }) };
     // Status de entrega: SERVER_ACK (enviada), DELIVERY_ACK (entregue), READ / PLAYED (lida), ERROR (falhou).
     const id = p.data?.keyId; const raw = String(p.data?.status ?? "").toUpperCase();
     const status = raw.includes("READ") || raw.includes("PLAYED") ? "read" : raw.includes("DELIVERY") ? "delivered" : raw.includes("ERROR") ? "failed" : raw.includes("SERVER") ? "sent" : null;
@@ -210,6 +234,9 @@ export async function handleEvolutionEvent(p: EvoPayload) {
   }
   if (event === "messages.upsert" || event === "send.message") {
     const d = p.data as EvoMessageData & EvoConnectionData;
+    // Voto na enquete de confirmação: não é conversa (e não precisa do número, só do id da enquete).
+    const vote = d?.message?.pollUpdateMessage && !d.key?.fromMe ? pollVoteOf(event, d) : null;
+    if (vote) return { ok: true, kind: "poll_vote", result: await applyPollVote({ channelId, pollExternalId: vote.pollId, option: vote.option, at: d.messageTimestamp ? new Date(d.messageTimestamp * 1000) : undefined }) };
     let jid = d?.key?.remoteJid;
     // Contatos com identificador anônimo (@lid): o número real vem em remoteJidAlt/senderPn.
     if (jid?.endsWith("@lid")) jid = d.key?.remoteJidAlt ?? d.key?.senderPn ?? d.senderPn ?? jid;
@@ -281,7 +308,9 @@ async function claimPendingSend(jid: string, externalId: string, content: { kind
 export async function ingestEvolution(p: EvoPayload) {
   const one = Array.isArray(p.data) ? undefined : p.data;
   const k = one?.key?.id ?? one?.keyId;
-  const key = k ? `${p.event}:${p.instance}:${k}:${one?.status ?? ""}` : `${p.event}:${p.instance}:${p.date_time ?? Date.now()}:${Math.random()}`;
+  // Troca de voto na mesma enquete tem o mesmo id e status: o hash do voto evita descartá-la como duplicada.
+  const poll = one?.pollUpdates ? `:${createHash("sha1").update(JSON.stringify(one.pollUpdates)).digest("hex").slice(0, 10)}` : "";
+  const key = k ? `${p.event}:${p.instance}:${k}:${one?.status ?? ""}${poll}` : `${p.event}:${p.instance}:${p.date_time ?? Date.now()}:${Math.random()}`;
   const [row] = await db.insert(webhookEvents).values({ provider: "evolution", externalId: key, event: p.event ?? "?", payload: p as Record<string, unknown> })
     .onConflictDoNothing().returning({ id: webhookEvents.id });
   if (!row) return { ok: true, duplicate: true };
