@@ -127,6 +127,9 @@ export const deals = pgTable("deals", {
   index("deals_stage_idx").on(t.stageId),
   index("deals_contact_idx").on(t.contactId),
   index("deals_owner_idx").on(t.ownerId),
+  // Relatórios por período (criados e fechados no intervalo).
+  index("deals_created_at_idx").on(t.createdAt),
+  index("deals_closed_at_idx").on(t.closedAt),
   // Nunca dois leads abertos para o mesmo contato.
   uniqueIndex("deals_one_open_per_contact").on(t.contactId).where(sql`${t.closedAt} is null and ${t.archivedAt} is null`),
 ]);
@@ -161,6 +164,9 @@ export const messages = pgTable("messages", {
 }, (t) => [
   uniqueIndex("messages_external_uq").on(sql`coalesce(${t.channelId}::text, '')`, t.externalId).where(sql`${t.externalId} is not null`),
   index("messages_deal_idx").on(t.dealId, t.createdAt),
+  // Relatórios por período e histórico do contato (a conversa unificada pelo número).
+  index("messages_created_at_idx").on(t.createdAt),
+  index("messages_contact_created_idx").on(t.contactId, t.createdAt),
 ]);
 
 export const dealEvents = pgTable("deal_events", {
@@ -279,7 +285,7 @@ export const tasks = pgTable("tasks", {
   doneAt: timestamp("done_at", { withTimezone: true }),
   createdBy: uuid("created_by").references(() => users.id),
   createdAt: createdAt(),
-}, (t) => [index("tasks_done_due_idx").on(t.doneAt, t.dueAt)]);
+}, (t) => [index("tasks_done_due_idx").on(t.doneAt, t.dueAt), index("tasks_deal_idx").on(t.dealId)]);
 
 export const pushSubscriptions = pgTable("push_subscriptions", {
   id: id(),
