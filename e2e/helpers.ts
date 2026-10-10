@@ -24,3 +24,21 @@ export function ageLead(phoneE164: string, minutes: number) {
   const url = (process.env.DATABASE_URL ?? "").replace(/\/crm(\?|$)/, "/crm_e2e$1");
   execSync(`npx tsx e2e/envelhecer.ts ${phoneE164} ${minutes}`, { stdio: "inherit", env: { ...process.env, DATABASE_URL: url } });
 }
+
+const e2eUrl = () => (process.env.DATABASE_URL ?? "").replace(/\/crm(\?|$)/, "/crm_e2e$1");
+
+/** SQL direto no banco de e2e (preparar estado que a tela não cria: canal em erro, modo quieto…). */
+export async function e2eSql(text: string, params: unknown[] = []) {
+  const { Client } = await import("pg");
+  const c = new Client({ connectionString: e2eUrl() });
+  await c.connect();
+  try { return (await c.query(text, params)).rows as Record<string, unknown>[]; } finally { await c.end(); }
+}
+
+/** Salva um print em CF_SHOTS_DIR (headless); sem a variável, não faz nada. */
+export async function shot(page: Page, name: string) {
+  const dir = process.env.CF_SHOTS_DIR;
+  if (!dir) return;
+  await page.waitForTimeout(700); // fim das animações de entrada
+  await page.screenshot({ path: `${dir}/${name}.png` });
+}

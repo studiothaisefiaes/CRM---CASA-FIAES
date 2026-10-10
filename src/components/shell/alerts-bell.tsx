@@ -1,16 +1,28 @@
 "use client";
 import { useEffect, useRef, useState, useSyncExternalStore, useTransition } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
-import { IconBell } from "@/components/icons";
+import { IconBell, IconClose } from "@/components/icons";
 import { markAlertsReadAction } from "@/app/(app)/funil/actions";
 import type { AlertItem } from "@/server/queries/alerts";
 import { isMuted, muteFor, unmute } from "./sound";
 import { SPRING, EASE } from "@/lib/motion";
 import { relTime } from "@/lib/format";
+import { leadHref } from "@/lib/lead-href";
+import { isTop, popModal, pushModal } from "@/components/ui/modal-stack";
+
+const FOCUSABLE = "a[href],button:not([disabled]),[tabindex]:not([tabindex='-1'])";
+const noopSubscribe = () => () => {};
 
 export function AlertsBell({ alerts }: { alerts: AlertItem[] }) {
   const [open, setOpen] = useState(false);
+  const [desktop, setDesktop] = useState(false);
+  const [anchor, setAnchor] = useState({ top: 0, left: 0 });
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  // O painel vive no <body>: dentro do header com backdrop-blur o `fixed` vira relativo ao header e o painel some/estoura.
+  const mounted = useSyncExternalStore(noopSubscribe, () => true, () => false);
   const [, start] = useTransition();
   const seen = useRef<Set<string> | null>(null);
   const unread = alerts.filter((a) => !a.read);
@@ -30,37 +42,60 @@ export function AlertsBell({ alerts }: { alerts: AlertItem[] }) {
     }
   }, [alerts]);
 
-  return (
-    <div className="relative">
-      <button type="button" onClick={() => setOpen((o) => !o)} aria-label={`Alertas, ${unread.length} não lidos`} aria-expanded={open}
-        className="relative size-9 grid place-items-center rounded-[var(--radius-control)] text-graphite hover:bg-paper-3 hover:text-ink transition-colors">
-        <IconBell />
-        <AnimatePresence>
-          {unread.length > 0 && (
-            <motion.span key={unread.length} initial={{ scale: 0.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.4, opacity: 0 }} transition={SPRING}
-              className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-alert text-white text-[10.5px] font-semibold grid place-items-center tabular">
-              {unread.length > 99 ? "99+" : unread.length}
-            </motion.span>
-          )}
-        </AnimatePresence>
-      </button>
-      <AnimatePresence>
-        {open && (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden />
-            <motion.div initial={{ opacity: 0, y: -6, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -4, scale: 0.98 }} transition={{ duration: 0.18, ease: EASE }}
-              className="fixed lg:absolute z-50 inset-x-0 bottom-0 lg:bottom-auto lg:inset-x-auto lg:left-0 lg:top-11 w-full lg:w-[360px] max-h-[75dvh] lg:max-h-[460px] overflow-auto scroll-thin bg-paper border border-line rounded-t-[var(--radius-panel)] lg:rounded-[var(--radius-card)] shadow-[var(--shadow-pop)] pb-[env(safe-area-inset-bottom)]" role="dialog" aria-label="Alertas">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-line sticky top-0 bg-paper">
-                <p className="font-semibold text-sm">Alertas</p>
-                <div className="flex items-center gap-3">
-                  <button className="text-sm text-graphite hover:text-ink" onClick={() => { if (muted || isMuted()) { unmute(); setMuted(false); } else { muteFor(30); setMuted(true); } }}>
-                    {muted ? "Som silenciado · ligar" : "Silenciar 30 min"}
-                  </button>
-                  {unread.length > 0 && <button className="text-sm text-gold-ink hover:underline" onClick={() => start(async () => { await markAlertsReadAction(unread.map((a) => a.id)); })}>Marcar como lidos</button>}
-                </div>
+  const toggle = () => {
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setDesktop(window.matchMedia("(min-width: 1024px)").matches);
+      setAnchor({ top: Math.round(r.bottom + 8), left: Math.max(8, Math.round(Math.min(r.left, window.innerWidth - 368))) });
+    }
+    setOpen((o) => !o);
+  };
+
+  // Esc fecha, Tab fica dentro do painel e o foco volta ao sino (mesma pilha de diálogos da Sheet).
+  useEffect(() => {
+    if (!open) return;
+    const trigger = btnRef.current;
+    const id = pushModal();
+    const t = setTimeout(() => { if (isTop(id)) panelRef.current?.querySelector<HTMLElement>("a[href],button:not([data-close])")?.focus(); }, 30);
+    const onKey = (e: KeyboardEvent) => {
+      if (!isTop(id)) return;
+      if (e.key === "Escape" && !e.defaultPrevented) { e.preventDefault(); e.stopImmediatePropagation(); setOpen(false); }
+      if (e.key === "Tab" && panelRef.current) {
+        const f = [...panelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE)];
+        if (!f.length) { e.preventDefault(); return; }
+        const a = document.activeElement;
+        if (!panelRef.current.contains(a)) { e.preventDefault(); f[0].focus(); }
+        else if (e.shiftKey && a === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
+        else if (!e.shiftKey && a === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => { clearTimeout(t); document.removeEventListener("keydown", onKey); popModal(id); trigger?.focus?.(); };
+  }, [open]);
+
+  const panel = (
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.div key="scrim" className="fixed inset-0 z-[60] bg-ink/25 backdrop-blur-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: EASE }} onClick={() => setOpen(false)} aria-hidden data-testid="alerts-scrim" />
+          <motion.div key="panel" ref={panelRef} role="dialog" aria-modal="true" aria-label="Alertas" data-testid="alerts-panel"
+            style={{ "--bell-top": `${anchor.top}px`, "--bell-left": `${anchor.left}px` } as React.CSSProperties}
+            initial={desktop ? { opacity: 0, y: -6, scale: 0.98 } : { y: "100%" }} animate={desktop ? { opacity: 1, y: 0, scale: 1 } : { y: 0 }} exit={desktop ? { opacity: 0, y: -4, scale: 0.98 } : { y: "100%" }}
+            transition={desktop ? { duration: 0.18, ease: EASE } : SPRING}
+            className="fixed z-[61] inset-x-0 bottom-0 lg:inset-x-auto lg:bottom-auto lg:top-[var(--bell-top)] lg:left-[var(--bell-left)] w-full lg:w-[360px] max-h-[80dvh] lg:max-h-[460px] flex flex-col bg-paper border border-line rounded-t-[var(--radius-panel)] lg:rounded-[var(--radius-card)] shadow-[var(--shadow-pop)] pb-[env(safe-area-inset-bottom)] lg:pb-0">
+            <div className="flex items-center justify-between gap-2 pl-4 pr-1 py-1.5 border-b border-line bg-paper rounded-t-[inherit] shrink-0">
+              <p className="font-semibold text-sm">Alertas</p>
+              <div className="flex items-center gap-1">
+                <button className="min-h-11 lg:min-h-9 px-2 text-sm text-graphite hover:text-ink" onClick={() => { if (muted || isMuted()) { unmute(); setMuted(false); } else { muteFor(30); setMuted(true); } }}>
+                  {muted ? "Som silenciado · ligar" : "Silenciar 30 min"}
+                </button>
+                {unread.length > 0 && <button className="min-h-11 lg:min-h-9 px-2 text-sm text-gold-ink hover:underline" onClick={() => start(async () => { await markAlertsReadAction(unread.map((a) => a.id)); })}>Marcar como lidos</button>}
+                <button data-close type="button" aria-label="Fechar alertas" onClick={() => setOpen(false)} className="lg:hidden size-11 grid place-items-center text-muted hover:text-ink"><IconClose size={16} /></button>
               </div>
+            </div>
+            <div className="overflow-y-auto scroll-thin min-h-0">
               {notifPerm === "default" && (
-                <button className="w-full text-left px-4 py-2.5 text-sm bg-gold-soft text-gold-ink" onClick={async () => { await Notification.requestPermission(); setPermTick((t) => t + 1); }}>
+                <button className="w-full text-left px-4 py-3 min-h-11 text-sm bg-gold-soft text-gold-ink" onClick={async () => { await Notification.requestPermission(); setPermTick((t) => t + 1); }}>
                   Ativar notificações do navegador para não perder nenhum lead
                 </button>
               )}
@@ -68,8 +103,8 @@ export function AlertsBell({ alerts }: { alerts: AlertItem[] }) {
                 <ul>
                   {alerts.map((a) => (
                     <li key={a.id}>
-                      <Link href={a.dealId ? `/funil?lead=${a.dealId}` : "/funil"} onClick={() => setOpen(false)}
-                        className={`flex gap-3 px-4 py-3 border-b border-line/70 hover:bg-paper-2 transition-colors ${a.read ? "opacity-60" : ""}`}>
+                      <Link href={leadHref(a.dealId)} onClick={() => setOpen(false)}
+                        className={`flex gap-3 px-4 py-3 min-h-11 border-b border-line/70 hover:bg-paper-2 transition-colors ${a.read ? "opacity-60" : ""}`}>
                         <span className={`mt-1.5 size-2 rounded-full shrink-0 ${a.resolved ? "bg-ok" : a.severity === "urgente" ? "bg-alert" : "bg-gold"}`} />
                         <span className="min-w-0">
                           <span className="block text-sm leading-snug">{a.message}</span>
@@ -80,10 +115,28 @@ export function AlertsBell({ alerts }: { alerts: AlertItem[] }) {
                   ))}
                 </ul>
               )}
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  );
+
+  return (
+    <div className="relative">
+      <button ref={btnRef} type="button" onClick={toggle} aria-label={`Alertas, ${unread.length} não lidos`} aria-expanded={open} aria-haspopup="dialog"
+        className="relative size-11 lg:size-9 grid place-items-center rounded-[var(--radius-control)] text-graphite hover:bg-paper-3 hover:text-ink transition-colors">
+        <IconBell />
+        <AnimatePresence>
+          {unread.length > 0 && (
+            <motion.span key={unread.length} initial={{ scale: 0.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.4, opacity: 0 }} transition={SPRING}
+              className="absolute top-0.5 right-0.5 lg:-top-0.5 lg:-right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-alert text-white text-[10.5px] font-semibold grid place-items-center tabular">
+              {unread.length > 99 ? "99+" : unread.length}
+            </motion.span>
+          )}
+        </AnimatePresence>
+      </button>
+      {mounted && createPortal(panel, document.body)}
     </div>
   );
 }
