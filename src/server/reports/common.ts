@@ -1,5 +1,6 @@
 import { sql, type SQL } from "drizzle-orm";
 import { db } from "../db";
+import { NOT_IDENTIFIED } from "../../lib/source-kinds";
 
 export type Period = "hoje" | "7d" | "mes" | "ano";
 export const PERIOD_LABEL: Record<Period, string> = { hoje: "Hoje", "7d": "7 dias", mes: "Este mês", ano: "Este ano" };
@@ -17,7 +18,7 @@ export type ReportFilter = {
   now?: Date;
 };
 
-export const NOT_IDENTIFIED = "Não identificada";
+export { NOT_IDENTIFIED };
 /** Tamanho mínimo de amostra para mostrar % ou comparar pessoas. */
 export { MIN_SAMPLE } from "../../lib/report-format";
 

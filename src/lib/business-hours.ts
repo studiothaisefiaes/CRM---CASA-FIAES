@@ -42,3 +42,14 @@ export function isOpen(atMs: number, hours: BusinessHours = DEFAULT_HOURS) {
   const m = d.getUTCHours() * 60 + d.getUTCMinutes();
   return m >= toMin(win[0]) && m < toMin(win[1]);
 }
+
+const WEEKDAY_NAME = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
+const stripZero = (hhmm: string) => hhmm.replace(/^0/, "");
+
+/** O expediente do dia de `atMs` para avisar quem agenda fora dele: "sábado, das 8:00 às 17:00" ou "domingo, a Casa não abre". */
+export function businessDayLabel(atMs: number, hours: BusinessHours = DEFAULT_HOURS): string {
+  const d = new Date(atMs - OFFSET_MS);
+  const dow = d.getUTCDay();
+  const win = hours[String(dow) as keyof BusinessHours];
+  return win ? `${WEEKDAY_NAME[dow]}, das ${stripZero(win[0])} às ${stripZero(win[1])}` : `${WEEKDAY_NAME[dow]}, a Casa não abre`;
+}

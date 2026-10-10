@@ -19,6 +19,7 @@ import { formatPhoneClient } from "@/lib/phone-client";
 import { relTime, money, PAYMENT_LABEL } from "@/lib/format";
 import { SPRING, EASE } from "@/lib/motion";
 import { FIELD_LABELS } from "@/lib/field-labels";
+import { isChannelOrigin, NOT_IDENTIFIED } from "@/lib/source-kinds";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const toLocal = (d: Date | string | null) => { if (!d) return ""; const x = new Date(d); return `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}T${pad(x.getHours())}:${pad(x.getMinutes())}`; };
@@ -28,7 +29,7 @@ const centsToInput = (c: number | null) => (c == null ? "" : (c / 100).toLocaleS
 const EVENT_TEXT = (e: DealDetail["events"][number]): string => {
   const p = e.payload as Record<string, unknown>;
   switch (e.type) {
-    case "lead_criado": return `Lead criado${p.origin ? ` (${p.origin})` : ""}`;
+    case "lead_criado": return `Lead criado${p.origin && !isChannelOrigin(String(p.origin)) ? ` (${p.origin})` : ""}`;
     case "etapa_alterada": return `Movido para ${String(p.para).replace("followup_", "Follow-up ").replace(/^\w/, (c) => c.toUpperCase())}${String(p.motivo ?? "").startsWith("automacao") ? " (automático)" : p.motivo === "respondido" ? " (respondido)" : p.motivo === "cliente_respondeu" ? " (cliente respondeu)" : ""}`;
     case "resposta": { const s = Number(p.waitedSeconds ?? 0); return `Respondido em ${s < 60 ? `${s}s` : `${Math.round(s / 60)} min`}${p.fromPhone ? " pelo celular" : ""}`; }
     case "campo_alterado": return `Alterou ${(p.campos as (string | { campo: string })[] | undefined)?.map((c) => (typeof c === "string" ? c : FIELD_LABELS[c.campo] ?? c.campo)).join(", ") ?? "dados"}`;
@@ -59,7 +60,8 @@ export function LeadDetails({ d, cols }: { d: DealDetail; cols: "grid-cols-1" | 
       <AutoField dealId={d.deal.id} name="email" label="E-mail" kind="email" value={d.contact.email ?? ""} placeholder="Adicionar e-mail" />
       <AutoField dealId={d.deal.id} name="instagram" label="Instagram" value={d.contact.instagram ? `@${d.contact.instagram}` : ""} placeholder="Adicionar @" />
       <AutoField dealId={d.deal.id} name="birthday" label="Aniversário" kind="birthday" value={birthday} placeholder="dd/mm" icon={<IconCake size={12} />} />
-      <AutoField dealId={d.deal.id} name="origin" label="Origem" kind="select" value={d.deal.origin} options={[...new Set([...d.origins.map((o) => o.label), d.deal.origin])].map((o) => ({ value: o, label: o }))} />
+      <AutoField dealId={d.deal.id} name="origin" label="Origem" kind="select" emptyLabel={NOT_IDENTIFIED} value={d.sourceLabel === NOT_IDENTIFIED ? "" : d.sourceLabel}
+        options={[...new Set([...d.origins.map((o) => o.label).filter((o) => !isChannelOrigin(o)), ...(d.sourceLabel === NOT_IDENTIFIED ? [] : [d.sourceLabel])])].map((o) => ({ value: o, label: o }))} />
       <AutoField dealId={d.deal.id} name="objectionId" label="Objeção" kind="select" value={d.deal.objectionId ?? ""} options={d.objections.map((o) => ({ value: o.id, label: o.label }))} />
       <AutoField dealId={d.deal.id} name="ownerId" label="Responsável" kind="select" value={d.deal.ownerId ?? ""} options={d.people.map((p) => ({ value: p.id, label: p.name }))} />
     </div>
@@ -206,7 +208,7 @@ export function LeadSheet({ d, nextId }: { d: DealDetail; nextId?: string | null
                   <h2 className="font-serif text-[28px] leading-tight font-light truncate">{name}</h2>
                   {d.contact.isClient && <Badge tone="ok">Cliente</Badge>}
                 </div>
-                <p className="text-sm text-graphite mt-0.5">{formatPhoneClient(d.contact.phoneE164)} · {d.deal.origin}{d.channelName ? ` · ${d.channelName}` : ""}</p>
+                <p className="text-sm text-graphite mt-0.5">{formatPhoneClient(d.contact.phoneE164)} · {d.sourceLabel}{d.channelName ? ` · ${d.channelName}` : ""}</p>
               </div>
             </div>
             <button onClick={close} className="size-9 pointer-coarse:size-11 grid place-items-center rounded-[var(--radius-control)] text-muted hover:bg-paper-2 hover:text-ink" aria-label="Fechar"><IconClose /></button>

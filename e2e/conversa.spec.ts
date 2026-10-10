@@ -51,7 +51,7 @@ test("fila (desktop): responder pela conversa move para Atendimento, oferece o p
   const [row] = await e2eSql("select d.awaiting_reply_since, d.owner_id from deals d where d.id = $1", [bianca]);
   expect(row.awaiting_reply_since).toBeNull();
   expect(row.owner_id).not.toBeNull();
-  await expect(lead.getByRole("combobox", { name: "Etapa" })).toHaveValue("atendimento");
+  await expect(lead.getByRole("list", { name: "Etapas" }).locator('[aria-current="step"]')).toContainText("Atendimento");
 
   // "Próximo da fila" leva a quem espera há mais tempo, sem o lead atual
   const proximo = lead.getByRole("button", { name: /Próximo da fila/ });
@@ -96,7 +96,7 @@ test("fila (desktop): abre na hora com os dados do item e a conversa chega depoi
   await shot(page, "04-abertura-instantanea-desktop");
   solta();
   await expect(lead.getByRole("log", { name: "Mensagens" })).not.toHaveAttribute("aria-busy", "true");
-  await expect(lead.getByRole("combobox", { name: "Etapa" })).toBeVisible();
+  await expect(lead.getByRole("list", { name: "Etapas" })).toBeVisible();
 });
 
 test("conversa: abre no fim, mensagem nova com a pessoa lá em cima vira aviso e descer limpa o aviso", async ({ page, browser, isMobile }) => {
@@ -147,7 +147,7 @@ test.describe("celular: conversa em 390 px", () => {
     await page.goto(`/atendimento/${id}`);
     const lead = page.getByRole("region", { name: /Lead Bianca Teles/ });
     await expect(lead).toBeVisible();
-    await expect(lead.getByRole("combobox", { name: "Etapa" })).toBeHidden(); // as ações moram no menu ⋯
+    await expect(lead.getByRole("button", { name: "Agendar" })).toBeHidden(); // as ações moram no menu ⋯ (e na aba Dados)
     const vp = page.viewportSize()!;
 
     // Conversa em tela cheia: sem barra de navegação inferior nem barra superior do app

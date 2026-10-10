@@ -4,7 +4,7 @@ import { db } from "../db";
 import { alerts, deals, stages } from "../db/schema";
 import { recordInbound } from "../domain/deals";
 import { resetDb } from "../../../test/db";
-import { getBoard } from "./board";
+import { getBoard, getOrigins } from "./board";
 
 const ids = (b: Awaited<ReturnType<typeof getBoard>>) => b.flatMap((s) => s.cards.map((c) => c.id));
 
@@ -43,5 +43,15 @@ describe("getBoard: filtros de drill-down dos relatórios", () => {
     await db.update(deals).set({ origin: "WhatsApp", sourceLabel: null }).where(eq(deals.id, calm));
     expect(ids(await getBoard({ filtro: "esperando", source: "Instagram" }))).toEqual([late]);
     expect(ids(await getBoard({ filtro: "esperando", source: "Não identificada" }))).toEqual([calm]);
+  });
+
+  it("o cartão e o filtro de origem mostram a origem real, nunca o canal (\"WhatsApp\")", async () => {
+    await db.update(deals).set({ origin: "Instagram", sourceLabel: "Instagram" }).where(eq(deals.id, late));
+    await db.update(deals).set({ origin: "WhatsApp", sourceLabel: null }).where(eq(deals.id, calm));
+    const cards = (await getBoard({})).flatMap((s) => s.cards);
+    expect(cards.find((c) => c.id === late)?.origin).toBe("Instagram");
+    expect(cards.find((c) => c.id === calm)?.origin).toBe("Não identificada");
+    expect(await getOrigins()).toEqual(["Instagram", "Não identificada"]);
+    expect(ids(await getBoard({ origin: "Não identificada" }))).toEqual([calm]);
   });
 });

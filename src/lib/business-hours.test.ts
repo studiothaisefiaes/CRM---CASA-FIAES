@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { businessMinutesBetween, isOpen } from "./business-hours";
+import { businessDayLabel, businessMinutesBetween, isOpen } from "./business-hours";
 
 const at = (iso: string) => new Date(iso).getTime(); // horários em UTC; Salvador = UTC-3
 
@@ -19,5 +19,13 @@ describe("horário de atendimento", () => {
     expect(isOpen(at("2026-10-09T13:00:00Z"))).toBe(true);  // sex 10h
     expect(isOpen(at("2026-10-11T13:00:00Z"))).toBe(false); // dom
     expect(isOpen(at("2026-10-10T02:00:00Z"))).toBe(false); // sex 23h
+  });
+});
+
+describe("businessDayLabel", () => {
+  it("diz o expediente do dia para avisar o agendamento fora do horário", () => {
+    expect(businessDayLabel(at("2026-10-10T21:00:00Z"))).toBe("sábado, das 8:00 às 17:00"); // sáb 18:00 local
+    expect(businessDayLabel(at("2026-10-11T15:00:00Z"))).toBe("domingo, a Casa não abre");
+    expect(businessDayLabel(at("2026-10-07T17:00:00Z"))).toBe("quarta, das 8:00 às 20:00");
   });
 });

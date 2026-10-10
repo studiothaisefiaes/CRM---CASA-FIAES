@@ -9,14 +9,14 @@ type Push = (text: string, tone?: Toast["tone"], action?: Action) => void;
 const Ctx = createContext<Push>(() => {});
 export const useToast = () => useContext(Ctx);
 
-/** Avisos curtos. Com "Desfazer", ficam 6 s; erros ficam 7 s. No desktop aparecem no topo (não cobrem o campo de mensagem). */
+/** Avisos curtos. Com "Desfazer", ficam 8 s; erros ficam 7 s. No desktop aparecem no topo (não cobrem o campo de mensagem). */
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<Toast[]>([]);
   const dismiss = useCallback((id: number) => setItems((l) => l.filter((t) => t.id !== id)), []);
   const push = useCallback<Push>((text, tone = "ok", action) => {
     const id = Date.now() + Math.random();
     setItems((l) => [...l.slice(-2), { id, tone, text, action }]);
-    setTimeout(() => dismiss(id), action ? 6000 : tone === "error" ? 7000 : 2800);
+    setTimeout(() => dismiss(id), action ? 8000 : tone === "error" ? 7000 : 2800);
   }, [dismiss]);
   return (
     <Ctx.Provider value={push}>
@@ -30,7 +30,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               {t.tone === "ok" && <span className="size-1.5 rounded-full bg-gold shrink-0" />}
               <span className="py-0.5">{t.text}</span>
               {t.action && (
-                <button className="h-7 px-2.5 rounded-[8px] bg-paper/10 hover:bg-paper/20 text-sm font-semibold text-gold" onClick={() => { t.action!.onClick(); dismiss(t.id); }}>
+                <button className="h-7 pointer-coarse:min-h-11 px-2.5 rounded-[8px] bg-paper/10 hover:bg-paper/20 text-sm font-semibold text-gold" onClick={() => { t.action!.onClick(); dismiss(t.id); }}>
                   {t.action.label}
                 </button>
               )}

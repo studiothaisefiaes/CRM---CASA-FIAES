@@ -5,16 +5,17 @@ import type { DealDetail } from "@/server/queries/deal";
 import type { QueueItem } from "@/server/queries/queue";
 import { Bubble, Conversation, quotePreview, WRAP, type Msg } from "@/components/lead/conversation";
 import { Composer, type QuoteTarget } from "@/components/lead/composer";
-import { LeadSide, useStageMove } from "@/components/lead/lead-sheet";
 import { Empty } from "@/components/ui/empty";
 import { useToast } from "@/components/ui/toast";
 import { IconArrowRight, IconCheck } from "@/components/icons";
 import { useLive } from "@/components/shell/live";
 import { markConversationReadAction } from "@/app/(app)/funil/actions";
-import { getConversationAction, nextWaitingAction } from "@/app/(app)/atendimento/actions";
+import { getConversationAction, nextWaitingAction, type Viewer } from "@/app/(app)/atendimento/actions";
 import { formatPhoneClient } from "@/lib/phone-client";
 import { DUR, EASE } from "@/lib/motion";
-import { PaneHeader, type PaneBack, type PaneTab } from "./pane-header";
+import { PaneHeader, type PaneBack, type PaneTab, type WaWarning } from "./pane-header";
+import { ClientPane } from "./client-pane";
+import { useLeadActions } from "./use-lead-actions";
 import { knownItem, useCloseLead, useCurrentLead, useOpenLead, ViewportRedirect } from "./open-lead";
 import { rememberLead } from "./use-queue-state";
 
@@ -75,10 +76,11 @@ function SideSkeleton() {
  * (o item da Fila) e o histórico e os dados chegam por Server Action. Depois de responder, oferece "Próximo da fila".
  * Fique com `key={dealId}`: trocar de lead monta uma conversa nova (estado limpo, "lido" marcado uma vez).
  */
-export function ConversationPane({ dealId, initial, initialTab = "conversa", back = "below-lg" }: {
-  dealId: string; initial: QueueItem | null; initialTab?: PaneTab; back?: PaneBack;
+export function ConversationPane({ dealId, initial, initialTab = "conversa", back = "below-lg", wa }: {
+  dealId: string; initial: QueueItem | null; initialTab?: PaneTab; back?: PaneBack; wa?: WaWarning;
 }) {
   const [detail, setDetail] = useState<DealDetail | null>(null);
+  const [viewer, setViewer] = useState<Viewer | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<PaneTab>(initialTab);
   const [answered, setAnswered] = useState(false);
@@ -97,7 +99,7 @@ export function ConversationPane({ dealId, initial, initialTab = "conversa", bac
     const mine = ++seq.current;
     return getConversationAction(dealId).then((r) => {
       if (mine !== seq.current) return true; // chegou uma resposta mais nova
-      if (r.ok) { setDetail(r.data); setError(null); return true; }
+      if (r.ok) { setDetail(r.data); setViewer(r.viewer); setError(null); return true; }
       setError((e) => e ?? r.error);
       return false;
     }, () => { if (mine === seq.current) setError((e) => e ?? "Não foi possível abrir a conversa. Tente de novo."); return false; });
@@ -148,14 +150,14 @@ export function ConversationPane({ dealId, initial, initialTab = "conversa", bac
   }, [dealId]);
   const onReply = useCallback((m: Msg) => setReplyTo({ id: m.id, text: quotePreview(m) }), []);
 
-  const { moveTo, dialogs } = useStageMove(detail, name);
+  const actions = useLeadActions({ d: detail, name, viewer, reload: load });
   const slaMinutes = detail ? detail.stage.slaMinutes : initial?.slaMinutes ?? null;
 
   return (
     <>
       <div role="region" aria-label={name ? `Lead ${name}` : "Lead"} className="min-h-0 h-full flex flex-col xl:col-span-2 xl:grid xl:grid-cols-subgrid xl:grid-rows-[auto_minmax(0,1fr)]">
         <header className="shrink-0 border-b border-line xl:col-start-1 xl:row-start-1 min-w-0">
-          <PaneHeader item={initial} d={detail} name={name} answered={answered} back={back} tab={tab} onTab={setTab} onMove={moveTo} onClose={closeLead} />
+          <PaneHeader item={initial} d={detail} name={name} answered={answered} back={back} tab={tab} onTab={setTab} actions={actions} viewer={viewer} wa={wa} onClose={closeLead} />
         </header>
         <section aria-label="Conversa" className={`min-h-0 min-w-0 flex-col flex-1 ${tab === "conversa" ? "flex" : "hidden"} xl:flex xl:col-start-1 xl:row-start-2`}>
           {detail ? <Conversation messages={msgs} onReply={onReply} forceEndKey={sentCount} visible={tab === "conversa"} /> : <ConversationSkeleton item={initial} error={error} onRetry={() => { setError(null); void load(); }} />}
@@ -177,10 +179,10 @@ export function ConversationPane({ dealId, initial, initialTab = "conversa", bac
             replyTo={replyTo} onClearReply={() => setReplyTo(null)} slaSeconds={slaMinutes ? slaMinutes * 60 : null} />
         </section>
         <section aria-label="Dados do cliente" className={`min-h-0 overflow-y-auto scroll-thin px-5 py-4 flex-1 ${tab === "conversa" ? "hidden" : "block"} xl:block xl:flex-none xl:col-start-2 xl:row-start-1 xl:row-span-2 xl:border-l border-line bg-paper-2/40`}>
-          {detail ? <LeadSide d={detail} tab={tab} bp="xl" cols="grid-cols-1" /> : <SideSkeleton />}
+          {detail ? <ClientPane d={detail} tab={tab} viewer={viewer} actions={actions} /> : <SideSkeleton />}
         </section>
       </div>
-      {dialogs}
+      {actions.sheets}
     </>
   );
 }

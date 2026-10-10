@@ -10,8 +10,9 @@ import type { DealPatch } from "@/server/domain/updates";
 type Kind = "text" | "email" | "textarea" | "select" | "datetime" | "date" | "money" | "birthday";
 
 /** Campo que salva sozinho ao sair (blur/troca). Mostra "salvo" por um instante. */
-export function AutoField({ dealId, name, label, value, kind = "text", options, placeholder, icon }: {
+export function AutoField({ dealId, name, label, value, kind = "text", options, placeholder, icon, emptyLabel = "—" }: {
   dealId: string; name: keyof DealPatch; label: string; value: string; kind?: Kind; options?: { value: string; label: string }[]; placeholder?: string; icon?: ReactNode;
+  /** Texto da opção vazia do select (ex.: "Não identificada" na origem). */ emptyLabel?: string;
 }) {
   const [v, setV] = useState(value);
   const [saved, setSaved] = useState(false);
@@ -57,7 +58,7 @@ export function AutoField({ dealId, name, label, value, kind = "text", options, 
         <textarea aria-invalid={err ? true : undefined} value={v} placeholder={placeholder} rows={3} onChange={(e) => setV(e.target.value)} onBlur={() => save()} className={`${cls} resize-y leading-relaxed`} />
       ) : kind === "select" ? (
         <select aria-invalid={err ? true : undefined} value={v} onChange={(e) => { setV(e.target.value); save(e.target.value); }} className={`${cls} appearance-none cursor-pointer`}>
-          <option value="">—</option>{options?.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          <option value="">{emptyLabel}</option>{options?.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
       ) : (
         <input aria-invalid={err ? true : undefined} value={v} placeholder={placeholder} type={kind === "datetime" ? "datetime-local" : kind === "date" ? "date" : kind === "email" ? "email" : "text"}

@@ -9,15 +9,17 @@ const SESSION_EXPIRED = "Sua sessão expirou. Entre de novo.";
 /** Texto fixo para a tela: nunca o `message` cru do erro nem o JSON do zod. */
 const failure = (e: unknown, fallback: string) => (e instanceof Error && e.message === SESSION_EXPIRED ? SESSION_EXPIRED : fallback);
 
-export type ConversationResult = { ok: true; data: DealDetail } | { ok: false; error: string };
+/** Quem está vendo: o painel decide por aqui se mostra "Assumir" ou "Transferir para…". */
+export type Viewer = { id: string; role: "gestor" | "atendente" };
+export type ConversationResult = { ok: true; data: DealDetail; viewer: Viewer } | { ok: false; error: string };
 
 /** A conversa e os dados do lead aberto na Fila. O cabeçalho já está na tela (vem do item da Fila); isto traz o resto. */
 export async function getConversationAction(dealId: string): Promise<ConversationResult> {
   try {
-    await assertUser();
+    const user = await assertUser();
     const detail = await getDealDetail(z.string().uuid().parse(dealId));
     if (!detail) return { ok: false, error: "Esse lead não existe mais." };
-    return { ok: true, data: detail };
+    return { ok: true, data: detail, viewer: { id: user.id, role: user.role } };
   } catch (e) { return { ok: false, error: failure(e, "Não foi possível abrir a conversa. Tente de novo.") }; }
 }
 

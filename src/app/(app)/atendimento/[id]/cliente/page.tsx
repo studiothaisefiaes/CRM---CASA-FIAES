@@ -2,18 +2,19 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/server/auth/session";
 import { getQueueItem } from "@/server/queries/queue";
+import { getShellBanners } from "@/server/queries/banners";
 import { ConversationPane } from "@/components/queue/conversation-pane";
 import { ViewportRedirect } from "@/components/queue/queue-route";
 import { IconArrowRight } from "@/components/icons";
 
 export const metadata = { title: "Cliente" };
 
-/** Celular, terceiro passo da sequência: lista → conversa → dados do cliente. A T17 refaz o conteúdo; aqui abre direto na aba Dados. */
+/** Celular, terceiro passo da sequência: lista → conversa → dados do cliente. Abre direto na aba Dados (o painel do cliente). */
 export default async function ClientePage({ params }: PageProps<"/atendimento/[id]/cliente">) {
-  await requireUser();
+  const user = await requireUser();
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
-  const item = await getQueueItem(id);
+  const [item, banners] = await Promise.all([getQueueItem(id), getShellBanners()]);
   if (!item) notFound();
   return (
     <main className="h-dvh flex flex-col overflow-hidden">
@@ -25,7 +26,7 @@ export default async function ClientePage({ params }: PageProps<"/atendimento/[i
         </Link>
       </div>
       <div className="flex-1 min-h-0 grid grid-cols-1 grid-rows-[minmax(0,1fr)]">
-        <ConversationPane key={id} dealId={id} initial={item} initialTab="dados" back={false} />
+        <ConversationPane key={id} dealId={id} initial={item} initialTab="dados" back={false} wa={{ down: banners.disconnected, href: user.role === "gestor" ? "/config/whatsapp" : "/atendimento" }} />
       </div>
     </main>
   );

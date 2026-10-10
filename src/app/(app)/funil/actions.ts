@@ -3,14 +3,23 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import { assertUser } from "@/server/auth/session";
-import { moveDeal } from "@/server/domain/deals";
-import { updateDeal, createManualLead, type DealPatch } from "@/server/domain/updates";
+import { moveDeal, ReopenConflict } from "@/server/domain/deals";
+import { claimDeal } from "@/server/domain/assign";
+import { archiveDeals, restoreDeals } from "@/server/domain/archive";
+import { updateDeal, createManualLead, closeSale, type DealPatch } from "@/server/domain/updates";
 import { MAX_MEDIA_BYTES, markConversationRead, sendFromCrm, sendMediaFromCrm } from "@/server/domain/send";
 import { db } from "@/server/db";
-import { alerts, deals } from "@/server/db/schema";
+import { alerts, deals, lists, users } from "@/server/db/schema";
 
 export type ActionResult<T = undefined> = { ok: true; data?: T } | { ok: false; error: string };
 const fail = (e: unknown): { ok: false; error: string } => ({ ok: false, error: e instanceof z.ZodError ? e.issues[0]?.message ?? "Dados inválidos" : e instanceof Error ? e.message : "Algo deu errado. Tente de novo." });
+
+/** Mensagens que o domínio escreve em texto fixo (pt-BR) e podem chegar à tela. Qualquer outro erro vira o texto da ação. */
+const KNOWN_ERRORS = new Set(["Sua sessão expirou. Entre de novo.", "Só a gestão pode fazer isso.", "Lead não encontrado", "Lead arquivado não pode fechar venda", "Serviço não encontrado"]);
+/** Erro para a tela: texto fixo. Nunca o `message` cru de um erro qualquer (SQL, rede) nem o JSON do zod. */
+const safe = (e: unknown, fallback: string): { ok: false; error: string } =>
+  ({ ok: false, error: e instanceof ReopenConflict || (e instanceof Error && KNOWN_ERRORS.has(e.message)) ? (e as Error).message : fallback });
+const revalidateLead = () => { revalidatePath("/funil"); revalidatePath("/atendimento"); revalidatePath("/"); };
 
 export async function moveDealAction(dealId: string, stageKey: string, extra?: DealPatch): Promise<ActionResult> {
   try {
@@ -18,9 +27,9 @@ export async function moveDealAction(dealId: string, stageKey: string, extra?: D
     z.string().uuid().parse(dealId);
     if (extra && Object.keys(extra).length) await updateDeal(dealId, extra, user.id);
     await moveDeal(dealId, z.string().min(1).max(40).parse(stageKey), user.id, "manual");
-    revalidatePath("/funil"); revalidatePath("/atendimento"); revalidatePath("/");
+    revalidateLead();
     return { ok: true };
-  } catch (e) { return fail(e); }
+  } catch (e) { return safe(e, "Não foi possível mudar a etapa. Tente de novo."); }
 }
 
 export async function updateDealAction(dealId: string, patch: DealPatch): Promise<ActionResult> {
@@ -94,4 +103,100 @@ export async function markAlertsReadAction(ids?: string[]): Promise<ActionResult
     await db.update(alerts).set({ readAt: now }).where(and(mine, isNull(alerts.readAt), valid.length ? inArray(alerts.id, valid) : undefined));
     return { ok: true };
   } catch (e) { return fail(e); }
+}
+
+// ---- Painel do cliente: assumir, agendar, fechar venda, perdido, "não é cliente" ----
+const uuid = z.string().uuid();
+
+/** "Assumir": a pessoa logada passa a ser a responsável. */
+export async function claimAction(dealId: string): Promise<ActionResult> {
+  try {
+    const user = await assertUser();
+    await claimDeal(uuid.parse(dealId), user.id);
+    revalidateLead();
+    return { ok: true };
+  } catch (e) { return safe(e, "Não foi possível assumir o lead. Tente de novo."); }
+}
+
+/** "Transferir para…": só a gestão passa o lead para outra pessoa (auditado como troca de responsável). */
+export async function transferAction(dealId: string, toUserId: string): Promise<ActionResult> {
+  try {
+    const user = await assertUser("gestor");
+    const id = uuid.parse(dealId), to = uuid.parse(toUserId);
+    const [target] = await db.select({ id: users.id }).from(users).where(and(eq(users.id, to), eq(users.active, true)));
+    if (!target) return { ok: false, error: "Essa pessoa não está mais na equipe." };
+    await updateDeal(id, { ownerId: to }, user.id);
+    revalidateLead();
+    return { ok: true };
+  } catch (e) { return safe(e, "Não foi possível transferir o lead. Tente de novo."); }
+}
+
+const scheduleSchema = z.object({ dealId: uuid, scheduledAt: z.string().datetime({ offset: true }) });
+/** Agendar (ou remarcar): o horário tem de ser futuro. Fora do expediente a tela avisa, mas a Casa decide. */
+export async function scheduleAction(dealId: string, scheduledAt: string): Promise<ActionResult> {
+  try {
+    const user = await assertUser();
+    const input = scheduleSchema.safeParse({ dealId, scheduledAt });
+    if (!input.success) return { ok: false, error: "Escolha a data e o horário." };
+    if (new Date(input.data.scheduledAt).getTime() <= Date.now()) return { ok: false, error: "Escolha um horário que ainda não passou." };
+    await updateDeal(input.data.dealId, { scheduledAt: input.data.scheduledAt }, user.id);
+    await moveDeal(input.data.dealId, "agendado", user.id, "manual");
+    revalidateLead();
+    return { ok: true };
+  } catch (e) { return safe(e, "Não foi possível agendar. Tente de novo."); }
+}
+
+const loseSchema = z.object({ dealId: uuid, reasonId: uuid, recontactAt: z.string().datetime({ offset: true }).nullable() });
+/** Perdido: o motivo é obrigatório e tem de ser da lista de motivos de perda. "Retomar contato em" é opcional. */
+export async function loseAction(dealId: string, reasonId: string, recontactAt: string | null): Promise<ActionResult> {
+  try {
+    const user = await assertUser();
+    const input = loseSchema.safeParse({ dealId, reasonId, recontactAt });
+    if (!input.success) return { ok: false, error: "Escolha o motivo da perda." };
+    if (input.data.recontactAt && new Date(input.data.recontactAt).getTime() <= Date.now()) return { ok: false, error: "A data para retomar o contato precisa ser futura." };
+    const [reason] = await db.select({ kind: lists.kind }).from(lists).where(eq(lists.id, input.data.reasonId));
+    if (reason?.kind !== "lost_reason") return { ok: false, error: "Esse motivo não existe mais. Escolha outro." };
+    await updateDeal(input.data.dealId, { lostReasonId: input.data.reasonId, recontactAt: input.data.recontactAt }, user.id);
+    await moveDeal(input.data.dealId, "perdido", user.id, "manual");
+    revalidateLead();
+    return { ok: true };
+  } catch (e) { return safe(e, "Não foi possível marcar como perdido. Tente de novo."); }
+}
+
+const closeSaleInput = z.object({
+  serviceId: uuid,
+  valueCents: z.number().int().min(0).max(1_000_000_000),
+  paymentMethod: z.enum(["pix", "cartao", "boleto", "dinheiro"]),
+  paidNow: z.boolean(),
+});
+/** Fechar venda numa transação só. `alreadyClosed`: outra pessoa já tinha fechado (nada foi duplicado). */
+export async function closeSaleAction(dealId: string, input: z.input<typeof closeSaleInput>): Promise<ActionResult<{ alreadyClosed: boolean }>> {
+  try {
+    const user = await assertUser();
+    const parsed = closeSaleInput.safeParse(input);
+    if (!parsed.success) return { ok: false, error: "Confira o serviço, o valor e a forma de pagamento." };
+    const { alreadyClosed } = await closeSale(uuid.parse(dealId), parsed.data, user.id);
+    revalidateLead();
+    return { ok: true, data: { alreadyClosed } };
+  } catch (e) { return safe(e, "Não foi possível fechar a venda. Tente de novo."); }
+}
+
+const ids = z.array(uuid).min(1).max(200);
+/** "Não é cliente" (um ou vários): sai da Fila, do Quadro e dos relatórios; nada é apagado. O Desfazer chama `restoreAction`. */
+export async function archiveAction(dealIds: string[]): Promise<ActionResult<{ archived: number }>> {
+  try {
+    const user = await assertUser();
+    const { archived } = await archiveDeals(ids.parse(dealIds), user.id);
+    revalidateLead();
+    return { ok: true, data: { archived } };
+  } catch (e) { return safe(e, "Não foi possível arquivar. Tente de novo."); }
+}
+
+export async function restoreAction(dealIds: string[]): Promise<ActionResult<{ restored: number; conflicts: string[] }>> {
+  try {
+    const user = await assertUser();
+    const r = await restoreDeals(ids.parse(dealIds), user.id);
+    revalidateLead();
+    return { ok: true, data: r };
+  } catch (e) { return safe(e, "Não foi possível desfazer. Tente de novo."); }
 }

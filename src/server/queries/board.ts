@@ -20,7 +20,8 @@ export async function getBoard(filter: BoardFilter = {}): Promise<BoardStage[]> 
   const since30 = new Date(Date.now() - 30 * 86_400_000);
   const conds = [or(isNull(deals.closedAt), gte(deals.closedAt, since30))!, isNull(deals.archivedAt)];
   if (filter.ownerId && /^[0-9a-f-]{36}$/i.test(filter.ownerId)) conds.push(eq(deals.ownerId, filter.ownerId));
-  if (filter.origin) conds.push(eq(deals.origin, filter.origin));
+  // A origem do Quadro é a mesma da Fila e dos relatórios (origem real; sem ela, "Não identificada"), nunca o canal.
+  if (filter.origin) conds.push(sql`${SOURCE_EXPR("deals")} = ${filter.origin}`);
   if (filter.q) {
     const like = `%${filter.q.trim().toLowerCase()}%`;
     const digits = filter.q.replace(/\D/g, "");
@@ -38,7 +39,7 @@ export async function getBoard(filter: BoardFilter = {}): Promise<BoardStage[]> 
   if (filter.source) conds.push(sql`${SOURCE_EXPR("deals")} = ${filter.source}`);
   if (filter.etapa && /^[a-z0-9_]{1,40}$/i.test(filter.etapa)) conds.push(sql`exists (select 1 from stages es where es.id = ${deals.stageId} and es.key = ${filter.etapa})`);
   const rows = await db.select({
-    id: deals.id, contactId: contacts.id, hasAvatar: sql<boolean>`(${contacts.avatarPath} is not null)`, contactName: contacts.name, phone: contacts.phoneE164, origin: deals.origin, ownerId: deals.ownerId, ownerName: users.name,
+    id: deals.id, contactId: contacts.id, hasAvatar: sql<boolean>`(${contacts.avatarPath} is not null)`, contactName: contacts.name, phone: contacts.phoneE164, origin: sql<string>`${SOURCE_EXPR("deals")}`, ownerId: deals.ownerId, ownerName: users.name,
     stageId: deals.stageId, awaitingReplySince: deals.awaitingReplySince, stageEnteredAt: deals.stageEnteredAt, isClient: contacts.isClient,
     scheduledAt: deals.scheduledAt, valueCents: deals.valueCents,
     lastMessage: sql<string | null>`lm.body`, lastMessageKind: sql<string | null>`lm.kind`, lastMessageAt: sql<Date | null>`lm.created_at`, lastDirection: sql<"in" | "out" | null>`lm.direction`,
@@ -60,7 +61,7 @@ export async function getBoard(filter: BoardFilter = {}): Promise<BoardStage[]> 
 }
 
 export async function getOrigins() {
-  const rows = await db.selectDistinct({ origin: deals.origin }).from(deals);
+  const rows = await db.selectDistinct({ origin: sql<string>`${SOURCE_EXPR("deals")}` }).from(deals);
   return rows.map((r) => r.origin).sort();
 }
 

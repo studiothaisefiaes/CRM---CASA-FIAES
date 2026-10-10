@@ -1,6 +1,8 @@
 import { and, asc, desc, eq, getTableColumns, sql } from "drizzle-orm";
 import { db } from "../db";
 import { contacts, dealEvents, deals, lists, messages, stages, users, channels } from "../db/schema";
+import { SOURCE_EXPR } from "../reports/common";
+import { NOT_IDENTIFIED } from "../../lib/source-kinds";
 
 // O nó de mídia (com miniatura) fica no servidor; a tela pede o arquivo em /api/media/[id].
 const { media: _media, ...msgCols } = getTableColumns(messages);
@@ -11,7 +13,7 @@ export async function getDealDetail(id: string) {
     .leftJoin(users, eq(users.id, deals.ownerId)).leftJoin(channels, eq(channels.id, deals.channelId))
     .where(eq(deals.id, id)).limit(1);
   if (!row) return null;
-  const [msgs, events, listRows, people, stageList, history] = await Promise.all([
+  const [msgs, events, listRows, people, stageList, history, [src]] = await Promise.all([
     db.select({ m: msgCols, sender: users.name, hasMedia: sql<boolean>`(${messages.media} is not null or ${messages.mediaPath} is not null)` })
       .from(messages).leftJoin(users, eq(users.id, messages.sentByUserId))
       .where(eq(messages.contactId, row.contact.id)).orderBy(desc(messages.createdAt)).limit(200),
@@ -23,6 +25,8 @@ export async function getDealDetail(id: string) {
     db.select({ id: deals.id, createdAt: deals.createdAt, closedAt: deals.closedAt, stage: stages.name, valueCents: deals.valueCents })
       .from(deals).innerJoin(stages, eq(stages.id, deals.stageId))
       .where(and(eq(deals.contactId, row.contact.id))).orderBy(desc(deals.createdAt)).limit(10),
+    // A mesma origem da Fila e dos relatórios: `source_label` (link/QR/evidência); sem ela, "Não identificada". Nunca o canal ("WhatsApp").
+    db.select({ label: sql<string>`${SOURCE_EXPR("deals")}` }).from(deals).where(eq(deals.id, id)),
   ]);
   return {
     ...row,
@@ -32,6 +36,8 @@ export async function getDealDetail(id: string) {
     lostReasons: listRows.filter((l) => l.kind === "lost_reason"),
     quickReplies: listRows.filter((l) => l.kind === "quick_reply"),
     origins: listRows.filter((l) => l.kind === "origin"),
+    services: listRows.filter((l) => l.kind === "service"),
+    sourceLabel: src?.label ?? NOT_IDENTIFIED,
     people, stages: stageList, history: history.filter((h) => h.id !== id),
   };
 }
