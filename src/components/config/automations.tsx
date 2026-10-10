@@ -101,7 +101,10 @@ function Editor({ item, stages, onClose }: { item: Item | "new" | null; stages: 
 
   const setTrigger = (type: Trigger["type"], n?: number) => {
     const u = unitOf(type); const val = n ?? (u === "minutos" ? 5 : u === "horas" ? 24 : u === "dias" ? 1 : 0);
-    setV({ ...v, trigger: (u === "minutos" ? { type, minutes: val } : u === "horas" ? { type, hours: val } : u === "dias" ? { type, days: val } : { type }) as Trigger });
+    // "Escalar para a gestão" só existe para lead sem resposta: ao trocar o gatilho vira um aviso à gestão comum.
+    const actions = type === "sem_resposta_minutos" ? v.actions
+      : v.actions.map((a): Action => (a.type === "escalar_gestao" ? { type: "alertar_gestao", message: "Atenção: {nome}" } : a));
+    setV({ ...v, actions, trigger: (u === "minutos" ? { type, minutes: val } : u === "horas" ? { type, hours: val } : u === "dias" ? { type, days: val } : { type }) as Trigger });
   };
   const setAction = (i: number, a: Action) => setV({ ...v, actions: v.actions.map((x, j) => (j === i ? a : x)) });
   const newAction = (type: Action["type"]): Action => type === "mover_para_etapa" ? { type, stage: "atendimento" } : type === "mover_para_proximo_followup" || type === "escalar_gestao" ? { type }
@@ -148,7 +151,7 @@ function Editor({ item, stages, onClose }: { item: Item | "new" | null; stages: 
             {v.actions.map((a, i) => (
               <div key={i} className="flex flex-wrap gap-2 items-center">
                 <Select className="w-auto" value={a.type} onChange={(e) => setAction(i, newAction(e.target.value as Action["type"]))}>
-                  {Object.entries(ACTION_LABELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                  {Object.entries(ACTION_LABELS).filter(([k]) => k !== "escalar_gestao" || v.trigger.type === "sem_resposta_minutos").map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                 </Select>
                 {"message" in a && (a.type === "enviar_mensagem"
                   ? <textarea className="flex-1 min-w-[220px] rounded-[var(--radius-control)] border border-control/70 px-3 py-2 text-base min-h-20" value={a.message} onChange={(e) => setAction(i, { ...a, message: e.target.value })} aria-label="Texto da mensagem" />

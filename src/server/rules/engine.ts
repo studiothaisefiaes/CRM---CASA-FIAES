@@ -118,16 +118,32 @@ function render(tpl: string, c: Candidate, stageName: string) {
     .replaceAll("{dias}", String(Math.max(1, c.days ?? 0)));
 }
 
+/** Sobe o alerta da mesma espera para a gestão (nível 2); sem alerta aberto, cria direto no nível 2. */
+async function escalate(tx: Tx, c: Candidate, trigger: Trigger, now: Date, message: string, dedupeKey: string) {
+  if (!c.awaitingSince) return null;
+  const waitKey = waitKeyOf(c.dealId, c.awaitingSince);
+  const [up] = await tx.update(alerts).set({ level: 2, audience: "gestao", escalatedAt: now, message, readAt: null })
+    .where(and(eq(alerts.waitKey, waitKey), isNull(alerts.resolvedAt))).returning({ id: alerts.id });
+  if (up) { await logEvent(tx, c.dealId, "alerta", { alertId: up.id, tipo: trigger.type, mensagem: message, para: "gestao", escalado: true }, c.ownerId); return "escalado"; }
+  const [row] = await tx.insert(alerts).values({
+    dealId: c.dealId, userId: null, audience: "gestao", type: trigger.type, severity: "urgente", message, dedupeKey,
+    createdAt: now, waitKey, level: 2, escalatedAt: now,
+  }).onConflictDoNothing().returning({ id: alerts.id });
+  if (row) await logEvent(tx, c.dealId, "alerta", { alertId: row.id, tipo: trigger.type, mensagem: message, para: "gestao", escalado: true }, c.ownerId);
+  return row ? "alerta" : null;
+}
+
 async function execute(tx: Tx, a: Action, c: Candidate, auto: Automation, trigger: Trigger, now: Date, ctx: { stageName: string; outbox: Outbox }) {
   const severity = trigger.type === "sem_resposta_minutos" ? "urgente" : "info";
   const dedupeBase = `${auto.id}:${c.dealId}:${c.windowKey}`;
   switch (a.type) {
     case "alertar_responsavel":
     case "alertar_gestao": {
+      // Espera: um alerta ativo por espera. Avisar a gestão é escalar o alerta da espera (nunca um no-op silencioso).
+      if (c.awaitingSince && a.type === "alertar_gestao") return escalate(tx, c, trigger, now, render(a.message, c, ctx.stageName), `${dedupeBase}:${a.type}`);
       const audience = a.type === "alertar_gestao" || !c.ownerId ? "gestao" : "responsavel";
       const message = render(a.message, c, ctx.stageName);
-      // Espera: um alerta ativo por espera (índice alerts_wait_uq); os demais gatilhos seguem só pela janela.
-      const waitKey = c.awaitingSince ? waitKeyOf(c.dealId, c.awaitingSince) : null;
+      const waitKey = c.awaitingSince ? waitKeyOf(c.dealId, c.awaitingSince) : null; // índice alerts_wait_uq
       const [row] = await tx.insert(alerts).values({
         dealId: c.dealId, userId: audience === "responsavel" ? c.ownerId : null, audience, type: trigger.type, severity, message,
         dedupeKey: `${dedupeBase}:${a.type}`, createdAt: now, ...(waitKey ? { waitKey, level: 1 } : {}),
@@ -135,21 +151,8 @@ async function execute(tx: Tx, a: Action, c: Candidate, auto: Automation, trigge
       if (row) await logEvent(tx, c.dealId, "alerta", { alertId: row.id, tipo: trigger.type, mensagem: message, para: audience }, c.ownerId);
       return row ? "alerta" : null;
     }
-    case "escalar_gestao": {
-      // Sobe o alerta da mesma espera para a gestão; sem alerta aberto, cria direto no nível 2.
-      if (!c.awaitingSince) return null;
-      const waitKey = waitKeyOf(c.dealId, c.awaitingSince);
-      const message = render("{nome} está sem resposta há {minutos} min", c, ctx.stageName);
-      const [up] = await tx.update(alerts).set({ level: 2, audience: "gestao", escalatedAt: now, message, readAt: null })
-        .where(and(eq(alerts.waitKey, waitKey), isNull(alerts.resolvedAt))).returning({ id: alerts.id });
-      if (up) { await logEvent(tx, c.dealId, "alerta", { alertId: up.id, tipo: trigger.type, mensagem: message, para: "gestao", escalado: true }, c.ownerId); return "escalado"; }
-      const [row] = await tx.insert(alerts).values({
-        dealId: c.dealId, userId: null, audience: "gestao", type: trigger.type, severity, message, dedupeKey: `${dedupeBase}:${a.type}`,
-        createdAt: now, waitKey, level: 2, escalatedAt: now,
-      }).onConflictDoNothing().returning({ id: alerts.id });
-      if (row) await logEvent(tx, c.dealId, "alerta", { alertId: row.id, tipo: trigger.type, mensagem: message, para: "gestao", escalado: true }, c.ownerId);
-      return row ? "alerta" : null;
-    }
+    case "escalar_gestao":
+      return escalate(tx, c, trigger, now, render("{nome} está sem resposta há {minutos} min", c, ctx.stageName), `${dedupeBase}:${a.type}`);
     case "mover_para_etapa": {
       await moveDealTx(tx, c.dealId, a.stage, null, `automacao:${auto.key ?? auto.id}`, now);
       const [s] = await tx.select({ name: stages.name }).from(stages).where(eq(stages.key, a.stage));

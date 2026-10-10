@@ -32,6 +32,9 @@ export const automationInputSchema = z.object({
   trigger: triggerSchema,
   conditions: z.array(conditionSchema).max(3),
   actions: z.array(actionSchema).min(1).max(4),
+}).superRefine((v, ctx) => {
+  if (v.trigger.type !== "sem_resposta_minutos" && v.actions.some((a) => a.type === "escalar_gestao"))
+    ctx.addIssue({ code: "custom", path: ["actions"], message: "Escalar para a gestão só vale quando o gatilho é lead sem resposta." });
 });
 
 export type Trigger = z.infer<typeof triggerSchema>;

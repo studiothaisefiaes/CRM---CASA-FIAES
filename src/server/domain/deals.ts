@@ -235,8 +235,8 @@ export async function recordOutbound(input: OutboundInput) {
     const resolvedNow = new Date(); // hora real da resolução (a mensagem pode ter chegado atrasada)
     await tx.update(alerts).set({ resolvedAt: resolvedNow, readAt: sql`coalesce(${alerts.readAt}, ${resolvedNow.toISOString()}::timestamptz)` })
       .where(and(sql`${alerts.resolvedAt} is null`, or(
-        sql`${alerts.waitKey} like ${dealId + ":%"}`,
-        // alertas anteriores à chave de espera
+        // alertas de espera deste lead (wait_key = "<dealId>:<desde>") e, por compatibilidade, os anteriores à chave
+        and(eq(alerts.dealId, dealId), isNotNull(alerts.waitKey)),
         and(eq(alerts.dealId, dealId), eq(alerts.type, "sem_resposta_minutos"), isNull(alerts.waitKey)),
       )));
 
@@ -264,6 +264,11 @@ export async function moveDealTx(tx: Tx, dealId: string, stageKey: string, userI
     stageId: to.id, stageEnteredAt: at, closedAt: closing ? at : null,
     awaitingReplySince: closing ? null : deal.awaitingReplySince,
   }).where(eq(deals.id, dealId)).returning();
+  if (closing) {
+    // Lead fechado ou perdido não espera mais resposta: os alertas abertos se resolvem.
+    await tx.update(alerts).set({ resolvedAt: at, readAt: sql`coalesce(${alerts.readAt}, ${at.toISOString()}::timestamptz)` })
+      .where(and(eq(alerts.dealId, dealId), isNull(alerts.resolvedAt)));
+  }
   await logEvent(tx, dealId, "etapa_alterada", { de: from?.key, para: to.key, motivo: reason }, userId);
   return updated;
 }
