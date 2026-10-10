@@ -30,7 +30,7 @@ export const actionSchema = z.discriminatedUnion("type", [
 
 /** Opções da enquete de confirmação: "Confirmo" marca o lead como confirmado; "Preciso remarcar" cria a tarefa de remarcar. */
 export const CONFIRMACAO_OPCOES = { confirmo: "Confirmo", remarcar: "Preciso remarcar" } as const;
-export const REMARCAR_TAREFA = "Remarcar horário";;
+export const REMARCAR_TAREFA = "Remarcar horário";
 
 export const automationInputSchema = z.object({
   name: z.string().trim().min(3).max(80),

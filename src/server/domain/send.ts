@@ -235,17 +235,24 @@ export async function markConversationRead(dealId: string, userId: string): Prom
 }
 
 export type AutomatedPayload = { kind: "text" | "poll"; text: string; options: string[] };
+/** `confirmError`: o provider JÁ enviou, mas o registro no CRM falhou. Nunca reenviar; só anotar o erro. */
+export type DeliverResult = { confirmError?: string };
 
 /**
  * Entrega UMA mensagem automática já conferida pela fila (`drainOutbox`). Mesmo caminho dos envios do CRM:
  * grava como pendente (sem autor: aparece como "automática"), chama o provider e confirma, fundindo o eco do WhatsApp.
- * Sem canal (só com DEV_TOOLS) a mensagem fica como "simulada". Em falha lança o erro; `keepFailed` decide se a linha
- * pendente vira "falhou" na conversa (última tentativa) ou é apagada (vai tentar de novo, sem encher a conversa).
+ * Sem canal (só com DEV_TOOLS) a mensagem fica como "simulada".
+ * Só o erro do PROVIDER é lançado (a mensagem não saiu; `keepFailed` decide se a linha pendente vira "falhou" na conversa
+ * ou é apagada para tentar de novo). Depois que o provider respondeu, o envio conta como feito: falha ao confirmar
+ * volta em `confirmError`, para a fila não reenviar.
  */
-export async function deliverAutomated(dealId: string, channel: Channel | null, p: AutomatedPayload, keepFailed: boolean) {
+export async function deliverAutomated(dealId: string, channel: Channel | null, p: AutomatedPayload, keepFailed: boolean): Promise<DeliverResult> {
   const row = await loadTarget(dealId);
   const body = p.kind === "poll" ? `Enquete: ${p.text}` : p.text; // igual ao que o eco do WhatsApp traz (parseContent)
-  if (!channel) return recordOutbound({ dealId, channelId: null, body, kind: p.kind, status: "simulado", automated: true });
+  if (!channel) {
+    try { await recordOutbound({ dealId, channelId: null, body, kind: p.kind, status: "simulado", automated: true }); return {}; }
+    catch (e) { return { confirmError: errMsg(e) }; }
+  }
   const prov = whatsapp();
   if (p.kind === "poll" && !prov.sendPoll) throw new SendError("Este WhatsApp ainda não envia enquetes.");
   const [pending] = await db.insert(messages).values({ dealId, contactId: row.deal.contactId, channelId: channel.id, direction: "out", kind: p.kind, body, status: "pending" }).returning({ id: messages.id });
@@ -255,15 +262,17 @@ export async function deliverAutomated(dealId: string, channel: Channel | null, 
       ? await prov.sendPoll!(channel.instanceName, row.phone, p.text, p.options)
       : await prov.sendText(channel.instanceName, row.phone, p.text));
   } catch (e) {
-    if (keepFailed) await db.update(messages).set({ status: "failed", error: (e instanceof Error ? e.message : String(e)).slice(0, 300) }).where(eq(messages.id, pending.id));
+    if (keepFailed) await db.update(messages).set({ status: "failed", error: errMsg(e).slice(0, 300) }).where(eq(messages.id, pending.id));
     else await db.delete(messages).where(eq(messages.id, pending.id));
     throw e;
   }
-  return confirmSent(pending.id, { dealId, channelId: channel.id, externalId, body, userId: null, automated: true });
+  try {
+    await confirmSent(pending.id, { dealId, channelId: channel.id, externalId, body, userId: null, automated: true });
+    return {};
+  } catch (e) {
+    // Já foi enviada: deixa a linha como enviada (o eco do WhatsApp ainda pode casar pelo id) e devolve o erro.
+    await db.update(messages).set({ status: "sent", ...(externalId ? { externalId } : {}) }).where(and(eq(messages.id, pending.id), eq(messages.status, "pending"))).catch(() => {});
+    return { confirmError: errMsg(e) };
+  }
 }
-
-/** Mensagem enviada por automação (ex.: lembrete): entra na fila com teto por hora e sai pelo worker (`drainOutbox`). */
-export async function sendAutomated(dealId: string, text: string, source?: string) {
-  const { enqueueAutomated } = await import("./outbox"); // import tardio: a fila usa este módulo para entregar
-  return enqueueAutomated({ dealId, kind: "text", text, source });
-}
+const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));

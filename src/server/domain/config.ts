@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { REMOVED_SUFFIX } from "@/server/whatsapp/channel-removed";
 import { z } from "zod";
-import { db } from "../db";
+import { db, type Tx } from "../db";
 import { automations, automationVersions, auditLog, channels, lists, settings, stages, users } from "../db/schema";
 import { automationInputSchema, type AutomationInput } from "../rules/types";
 import { whatsapp } from "../whatsapp/evolution";
@@ -45,9 +45,31 @@ export async function saveBusinessHours(input: unknown, userId: string) {
 }
 
 /* ---------- Automações (com versões) ---------- */
+type AutoShape = { enabled: boolean; trigger: unknown; actions: unknown };
+const actionTypes = (a: AutoShape) => (Array.isArray(a.actions) ? (a.actions as { type?: string }[]).map((x) => x.type) : []);
+const isAgendamento = (a: AutoShape) => (a.trigger as { type?: string } | null)?.type === "agendamento_em_horas";
+
+/**
+ * O lembrete de agendamento (texto) e a confirmação por enquete disparam no mesmo momento: ligados juntos, a cliente
+ * receberia duas mensagens. Recusa ligar um com o outro ligado.
+ */
+async function assertNoConfirmationConflict(tx: Tx, selfId: string | null, v: AutoShape) {
+  if (!v.enabled || !isAgendamento(v)) return;
+  await tx.execute(sql`select pg_advisory_xact_lock(7120013)`); // duas telas salvando ao mesmo tempo não furam a regra
+  const mine = actionTypes(v);
+  const poll = mine.includes("enviar_enquete_confirmacao"), text = mine.includes("enviar_mensagem");
+  if (!poll && !text) return;
+  const others = (await tx.select().from(automations).where(eq(automations.enabled, true))).filter((o) => o.id !== selfId && isAgendamento(o));
+  if (poll && others.some((o) => actionTypes(o).includes("enviar_mensagem")))
+    throw new Error("Desligue o lembrete de agendamento antes de ligar a confirmação por enquete");
+  if (text && others.some((o) => actionTypes(o).includes("enviar_enquete_confirmacao")))
+    throw new Error("Desligue a confirmação por enquete antes de ligar o lembrete de agendamento");
+}
+
 export async function saveAutomation(id: string | null, input: AutomationInput, userId: string) {
   const v = automationInputSchema.parse(input);
   return db.transaction(async (tx) => {
+    await assertNoConfirmationConflict(tx, id, v);
     if (!id) {
       const [a] = await tx.insert(automations).values({ ...v, updatedBy: userId }).returning();
       await tx.insert(automationVersions).values({ automationId: a.id, version: 1, snapshot: v, userId });
@@ -62,7 +84,11 @@ export async function saveAutomation(id: string | null, input: AutomationInput, 
   });
 }
 export async function toggleAutomation(id: string, enabled: boolean, userId: string) {
-  await db.update(automations).set({ enabled, updatedBy: userId, updatedAt: new Date() }).where(eq(automations.id, id));
+  await db.transaction(async (tx) => {
+    const [cur] = await tx.select().from(automations).where(eq(automations.id, id));
+    if (cur) await assertNoConfirmationConflict(tx, id, { ...cur, enabled });
+    await tx.update(automations).set({ enabled, updatedBy: userId, updatedAt: new Date() }).where(eq(automations.id, id));
+  });
   await audit(userId, enabled ? "ligou" : "desligou", "automation", id);
 }
 export async function restoreAutomation(id: string, version: number, userId: string) {

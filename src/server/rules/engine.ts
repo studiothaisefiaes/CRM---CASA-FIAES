@@ -132,6 +132,9 @@ async function escalate(tx: Tx, c: Candidate, trigger: Trigger, now: Date, messa
   return row ? "alerta" : null;
 }
 
+/** Corta em `max` caracteres com reticências. */
+const fit = (text: string, max: number) => (text.length > max ? text.slice(0, max - 1).trimEnd() + "…" : text);
+
 async function execute(tx: Tx, a: Action, c: Candidate, auto: Automation, trigger: Trigger, now: Date, ctx: { stageName: string }) {
   const severity = trigger.type === "sem_resposta_minutos" ? "urgente" : "info";
   const dedupeBase = `${auto.id}:${c.dealId}:${c.windowKey}`;
@@ -162,9 +165,11 @@ async function execute(tx: Tx, a: Action, c: Candidate, auto: Automation, trigge
     case "enviar_enquete_confirmacao": {
       // Só entra na fila, na mesma transação da execução: quem envia é o worker (teto por hora, reconferências na hora de enviar).
       const source = `automacao:${auto.id}`;
-      const text = render(a.message, c, ctx.stageName);
-      if (a.type === "enviar_mensagem") await enqueueAutomated({ dealId: c.dealId, kind: "text", text, source }, tx);
-      else await enqueueAutomated({ dealId: c.dealId, kind: "poll", text, options: [CONFIRMACAO_OPCOES.confirmo, CONFIRMACAO_OPCOES.remarcar], source }, tx);
+      // Lembrete de agendamento: guarda o horário e a etapa de agora; a fila cancela se mudarem até a hora de enviar.
+      const guard = trigger.type === "agendamento_em_horas" ? { scheduledAt: c.since ? new Date(c.since) : null, stage: c.stageKey } : undefined;
+      if (a.type === "enviar_mensagem") await enqueueAutomated({ dealId: c.dealId, kind: "text", text: fit(render(a.message, c, ctx.stageName), 4000), source, guard }, tx);
+      // Título da enquete: o WhatsApp aceita 255; depois das variáveis pode passar, então corta (nunca lança dentro da transação do motor).
+      else await enqueueAutomated({ dealId: c.dealId, kind: "poll", text: fit(render(a.message, c, ctx.stageName), 255), options: [CONFIRMACAO_OPCOES.confirmo, CONFIRMACAO_OPCOES.remarcar], source, guard }, tx);
       return "mensagem";
     }
     case "mover_para_proximo_followup": {

@@ -88,6 +88,8 @@ export type InboundInput = {
   quotedBody?: string | null;
   at?: Date;
   hasAdReferral?: boolean;
+  /** Relógio da resposta fora do horário (só testes); em produção é o horário real. */
+  now?: Date;
 };
 
 /** Nó de mídia do WhatsApp, guardado para baixar o arquivo depois. */
@@ -152,7 +154,7 @@ export async function recordInbound(input: InboundInput): Promise<InboundResult>
   if ("dealId" in result && "created" in result) {
     await emit(result.created ? "lead_criado" : "mensagem_recebida", { dealId: result.dealId });
     // Resposta fora do horário: depois do commit e sem nunca derrubar a ingestão da mensagem.
-    try { if (result.dealId) { const { maybeAutoReply } = await import("./auto-reply"); await maybeAutoReply(result.dealId, at); } }
+    try { if (result.dealId) { const { maybeAutoReply } = await import("./auto-reply"); await maybeAutoReply(result.dealId, at, input.now); } }
     catch (e) { console.error("[auto-resposta] não enfileirou", result.dealId, e instanceof Error ? e.message : e); }
   }
   return result;

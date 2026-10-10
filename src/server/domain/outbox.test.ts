@@ -1,14 +1,20 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { automations, channels, contacts, settings, outbox, deals, tasks, messages, alerts, users } from "../db/schema";
 import { enqueueAutomated, drainOutbox } from "./outbox";
-import { recordInbound } from "./deals";
+import { recordInbound as recordInboundReal } from "./deals";
 import { archiveDeals } from "./archive";
 import { ingestEvolution, type EvoPayload } from "../whatsapp/webhook";
 import { setWhatsappProvider } from "../whatsapp/evolution";
 import { runRules } from "../rules/engine";
+import { sendHooks } from "./send";
+import { pool } from "../db";
+import { OUTBOX_LOCK_KEY } from "./outbox";
 import { resetDb } from "../../../test/db";
+
+// Relógio do teste = hora da mensagem (a resposta fora do horário confere o relógio real; aqui ele é injetado).
+const recordInbound = (i: Parameters<typeof recordInboundReal>[0]) => recordInboundReal({ now: i.at, ...i });
 
 // Provider falso: nenhum teste fala com a Evolution nem envia mensagem real.
 const sent: string[] = [];
@@ -24,7 +30,7 @@ beforeEach(async () => {
   sent.length = 0; failNext = 0; await resetDb(); setWhatsappProvider(fake);
   [{ id: chId }] = await db.insert(channels).values({ name: "Rec", instanceName: "rec", status: "conectado", phone: "+557199990404" }).returning();
 });
-afterEach(() => setWhatsappProvider(null));
+afterEach(() => { setWhatsappProvider(null); sendHooks.beforeConfirm = undefined; });
 
 describe("fila de envios automáticos", () => {
   const t0 = new Date("2026-10-13T13:00:00Z"); // ter 10h em Salvador (aberto)
@@ -36,10 +42,10 @@ describe("fila de envios automáticos", () => {
     await drainOutbox(new Date(t0.getTime() + 61 * 60_000));
     expect(sent).toHaveLength(3);
   });
-  it("sem a configuração, o teto padrão é 20 por hora", async () => {
-    for (let i = 0; i < 22; i++) await enqueueAutomated({ dealId: await lead("719999902" + String(i).padStart(2, "0"), t0), kind: "text", text: "m" + i });
+  it("sem a configuração, o teto padrão é 30 por hora", async () => {
+    for (let i = 0; i < 32; i++) await enqueueAutomated({ dealId: await lead("719999902" + String(i).padStart(2, "0"), t0), kind: "text", text: "m" + i });
     await drainOutbox(t0);
-    expect(sent).toHaveLength(20);
+    expect(sent).toHaveLength(30);
   });
   it("grava como saída automática (sem autor) e o eco do WhatsApp não duplica", async () => {
     const id = await lead("71999990111", t0);
@@ -241,5 +247,175 @@ describe("confirmação por enquete", () => {
     await ingestEvolution({ ...upsertVote("V10", null), data: { ...(upsertVote("V10", null).data as object), pollUpdates: [{ name: "Talvez", voters: [voter] }] } } as EvoPayload);
     expect(await att()).toBeNull();
     expect(await remarcar()).toHaveLength(0);
+  });
+});
+
+describe("fix round 1: resposta fora do horário atrasada", () => {
+  const night = new Date("2026-10-14T02:00:00Z"); // ter 23h em Salvador
+  const min = (n: number) => new Date(night.getTime() + n * 60_000);
+  const setup = async (phone = "71999990401") => {
+    await db.insert(settings).values({ key: "auto_resposta", value: { enabled: true, text: "Oi! A Casa abre às 8h." } });
+    return lead(phone, night);
+  };
+  it("não enfileira se a mensagem já tem mais de 10 min ou se a Casa já abriu", async () => {
+    await db.insert(settings).values({ key: "auto_resposta", value: { enabled: true, text: "Oi!" } });
+    await recordInboundReal({ channelId: chId, externalId: "a1", phoneRaw: "71999990402", body: "oi", at: night, now: min(11) });
+    await recordInboundReal({ channelId: chId, externalId: "a2", phoneRaw: "71999990403", body: "oi", at: night, now: new Date("2026-10-14T13:00:00Z") });
+    expect(await db.select().from(outbox)).toHaveLength(0);
+    await recordInboundReal({ channelId: chId, externalId: "a3", phoneRaw: "71999990404", body: "oi", at: night, now: min(9) });
+    expect(await db.select().from(outbox)).toHaveLength(1);
+  });
+  it("sai se ainda é noite e a cliente continua esperando", async () => {
+    await setup();
+    await drainOutbox(min(5));
+    expect(sent).toEqual(["Oi! A Casa abre às 8h."]);
+  });
+  it("cancela se a Casa abriu, se passou de 30 min ou se a cliente já foi atendida", async () => {
+    const id = await setup("71999990411");
+    const open = new Date("2026-10-14T12:00:00Z"); // qua 9h
+    await drainOutbox(open);
+    expect(sent).toHaveLength(0);
+    expect((await db.select().from(outbox))[0]).toMatchObject({ status: "cancelled" });
+
+    await db.delete(outbox);
+    await db.update(contacts).set({ lastAutoReplyAt: null });
+    await db.update(deals).set({ awaitingReplySince: night }).where(eq(deals.id, id));
+    await enqueueAutomated({ dealId: id, kind: "text", text: "velha", source: "auto_resposta", guard: { awaitingSince: night }, at: night });
+    await drainOutbox(min(31));
+    expect((await db.select().from(outbox))[0]).toMatchObject({ status: "cancelled" });
+    expect(sent).toHaveLength(0);
+
+    await db.delete(outbox);
+    await enqueueAutomated({ dealId: id, kind: "text", text: "atendida", source: "auto_resposta", guard: { awaitingSince: night }, at: night });
+    await db.update(deals).set({ awaitingReplySince: null }).where(eq(deals.id, id));
+    await drainOutbox(min(5));
+    expect((await db.select().from(outbox))[0]).toMatchObject({ status: "cancelled" });
+    await db.delete(outbox);
+    await enqueueAutomated({ dealId: id, kind: "text", text: "outra espera", source: "auto_resposta", guard: { awaitingSince: night }, at: night });
+    await db.update(deals).set({ awaitingReplySince: min(2) }).where(eq(deals.id, id));
+    await drainOutbox(min(5));
+    expect((await db.select().from(outbox))[0]).toMatchObject({ status: "cancelled" });
+    expect(sent).toHaveLength(0);
+  });
+});
+
+describe("fix round 1: teto com drains concorrentes", () => {
+  const t0 = new Date("2026-10-13T13:00:00Z");
+  it("com o cadeado ocupado o drain não faz nada", async () => {
+    const id = await lead("71999990501", t0);
+    await enqueueAutomated({ dealId: id, kind: "text", text: "x" });
+    const c = await pool.connect();
+    try {
+      await c.query("select pg_advisory_lock($1::bigint)", [OUTBOX_LOCK_KEY]);
+      expect(await drainOutbox(t0)).toMatchObject({ skipped: true });
+      expect(sent).toHaveLength(0);
+    } finally { await c.query("select pg_advisory_unlock($1::bigint)", [OUTBOX_LOCK_KEY]); c.release(); }
+    await drainOutbox(t0);
+    expect(sent).toHaveLength(1);
+  });
+  it("dois drains ao mesmo tempo respeitam o teto", async () => {
+    await db.insert(settings).values({ key: "envio_teto_hora", value: 2 });
+    for (const p of ["71999990511", "71999990512", "71999990513", "71999990514"]) await enqueueAutomated({ dealId: await lead(p, t0), kind: "text", text: p });
+    await Promise.all([drainOutbox(t0), drainOutbox(t0), drainOutbox(t0)]);
+    expect(sent).toHaveLength(2);
+  });
+  it("item 'enviando' conta no teto", async () => {
+    await db.insert(settings).values({ key: "envio_teto_hora", value: 1 });
+    const a = await lead("71999990521", t0), b = await lead("71999990522", t0);
+    await enqueueAutomated({ dealId: a, kind: "text", text: "em curso" });
+    await db.update(outbox).set({ status: "sending", notBefore: new Date(t0.getTime() - 60_000) });
+    await enqueueAutomated({ dealId: b, kind: "text", text: "espera" });
+    await drainOutbox(t0);
+    expect(sent).toHaveLength(0);
+  });
+});
+
+describe("fix round 1: falha depois de a Evolution enviar", () => {
+  const t0 = new Date("2026-10-13T13:00:00Z");
+  it("não reenvia: fica 'sent' com a nota do erro", async () => {
+    const id = await lead("71999990601", t0);
+    await enqueueAutomated({ dealId: id, kind: "text", text: "uma vez só" });
+    sendHooks.beforeConfirm = async () => { throw new Error("banco caiu"); };
+    await drainOutbox(t0);
+    expect(sent).toEqual(["uma vez só"]);
+    const [row] = await db.select().from(outbox);
+    expect(row).toMatchObject({ status: "sent", attempts: 1 });
+    expect(row.error).toMatch(/banco caiu/);
+    sendHooks.beforeConfirm = undefined;
+    await drainOutbox(new Date(t0.getTime() + 3_600_000));
+    expect(sent).toEqual(["uma vez só"]);
+    const out = (await db.select().from(messages).where(eq(messages.dealId, id))).filter((m) => m.direction === "out");
+    expect(out).toHaveLength(1);
+    expect(out[0].status).toBe("sent");
+  });
+});
+
+describe("fix round 1: lembrete e enquete revalidam o agendamento", () => {
+  const t0 = new Date("2026-10-13T13:00:00Z");
+  const sched = new Date(t0.getTime() + 20 * 3_600_000); // qua 6h local
+  const prepare = async (key: "confirmacao_d1" | "lembrete_agendamento") => {
+    const id = await lead("71999990701", t0);
+    await db.update(deals).set({ scheduledAt: sched, stageId: sql`(select id from stages where key = 'agendado')` }).where(eq(deals.id, id));
+    await db.update(automations).set({ enabled: true }).where(eq(automations.key, key));
+    await runRules(t0);
+    expect(await db.select().from(outbox)).toHaveLength(1);
+    return id;
+  };
+  for (const key of ["confirmacao_d1", "lembrete_agendamento"] as const) {
+    it(`${key}: sai se nada mudou`, async () => {
+      await prepare(key);
+      await drainOutbox(new Date(t0.getTime() + 60_000));
+      expect(sent).toHaveLength(1);
+    });
+    it(`${key}: cancela se o agendamento mudou, passou, saiu da etapa ou o lead fechou`, async () => {
+      const id = await prepare(key);
+      const status = async () => (await db.select().from(outbox))[0];
+      await db.update(deals).set({ scheduledAt: new Date(sched.getTime() + 3_600_000) }).where(eq(deals.id, id));
+      await drainOutbox(new Date(t0.getTime() + 60_000));
+      expect((await status()).status).toBe("cancelled");
+
+      await db.update(outbox).set({ status: "pending", error: null, notBefore: new Date(0) });
+      await db.update(deals).set({ scheduledAt: sched }).where(eq(deals.id, id));
+      await drainOutbox(new Date("2026-10-14T14:00:00Z")); // depois do horário marcado, Casa aberta
+      expect((await status()).status).toBe("cancelled");
+
+      await db.update(outbox).set({ status: "pending", error: null, notBefore: new Date(0) });
+      await db.update(deals).set({ stageId: sql`(select id from stages where key = 'atendimento')` }).where(eq(deals.id, id));
+      await drainOutbox(new Date(t0.getTime() + 60_000));
+      expect((await status()).status).toBe("cancelled");
+
+      await db.update(outbox).set({ status: "pending", error: null, notBefore: new Date(0) });
+      await db.update(deals).set({ stageId: sql`(select id from stages where key = 'agendado')`, closedAt: new Date(t0.getTime() + 1000) }).where(eq(deals.id, id));
+      await drainOutbox(new Date(t0.getTime() + 60_000));
+      expect((await status()).status).toBe("cancelled");
+      expect(sent).toHaveLength(0);
+    });
+  }
+});
+
+describe("fix round 1: título da enquete e item preso", () => {
+  const t0 = new Date("2026-10-13T13:00:00Z");
+  it("título maior que 255 depois das variáveis é truncado com reticências, sem erro no motor", async () => {
+    const id = await lead("71999990801", t0);
+    await db.update(deals).set({ scheduledAt: new Date(t0.getTime() + 20 * 3_600_000), stageId: sql`(select id from stages where key = 'agendado')` }).where(eq(deals.id, id));
+    await db.update(automations).set({ enabled: true, actions: [{ type: "enviar_enquete_confirmacao", message: "{data} {hora} " + "{nome}".repeat(38) }] }).where(eq(automations.key, "confirmacao_d1"));
+    const s = await runRules(t0);
+    expect(s.errors).toEqual([]);
+    const [row] = await db.select().from(outbox);
+    expect(row.text).toHaveLength(255);
+    expect(row.text.endsWith("…")).toBe(true);
+  });
+  it("item preso em 'enviando': falha, mensagem da conversa vira 'falhou' e a gestão é avisada", async () => {
+    const id = await lead("71999990811", t0);
+    const [d] = await db.select().from(deals).where(eq(deals.id, id));
+    await enqueueAutomated({ dealId: id, kind: "text", text: "travou" });
+    await db.update(outbox).set({ status: "sending", attempts: 1, notBefore: new Date(t0.getTime() - 20 * 60_000) });
+    await db.insert(messages).values({ dealId: id, contactId: d.contactId, channelId: chId, direction: "out", kind: "text", body: "travou", status: "pending" });
+    await drainOutbox(t0);
+    expect((await db.select().from(outbox))[0].status).toBe("failed");
+    const m = (await db.select().from(messages).where(eq(messages.dealId, id))).find((x) => x.direction === "out")!;
+    expect(m).toMatchObject({ status: "failed", error: "Envio automático interrompido" });
+    expect((await db.select().from(alerts)).some((a) => a.type === "envio_automatico_falhou" && a.audience === "gestao")).toBe(true);
+    expect(sent).toHaveLength(0);
   });
 });
