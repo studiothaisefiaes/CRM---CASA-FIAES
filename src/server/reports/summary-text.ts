@@ -29,8 +29,8 @@ export async function dailySummaryText(user: Pick<SessionUser, "id" | "role" | "
     rows<{ id: string }>(sql`
       select d.id from deals d
       where d.closed_at is null and d.awaiting_reply_since is not null and d.awaiting_reply_since <= ${iso(now)}::timestamptz and ${dealScope(f)}`),
-    // "Atrasado" é uma definição só, a do motor e do shell: alerta de espera aberto (o mesmo número do sino e da lista /atendimento?filtro=atrasados).
-    countLateLeads(user),
+    // "Atrasado" é uma definição só, a do motor e do shell: alerta de espera aberto (a mesma condição do sino e da lista /atendimento?filtro=atrasados; aqui, para a atendente, só os dela).
+    countLateLeads(user, { onlyOwn: true }), // "os seus": o link filtro=atrasados da Fila (vindo do relatório) também fica só com os dela
     rows<{ n: number }>(sql`
       select count(*)::int as n from tasks t left join deals d on d.id = t.deal_id
       where t.done_at is null and t.due_at < ${iso(now)}::timestamptz

@@ -8,12 +8,18 @@ export const VIEW_LABEL: Record<QueueView, string> = {
 };
 export const parseQueueView = (v: unknown): QueueView => ((QUEUE_VIEWS as readonly unknown[]).includes(v) ? (v as QueueView) : "todos");
 
-export type QueueSectionKey = "atrasados" | "perto" | "aguardando" | "acoes-hoje" | "parados" | "aguardando-cliente";
-export const SECTION_ORDER: QueueSectionKey[] = ["atrasados", "perto", "aguardando", "acoes-hoje", "parados", "aguardando-cliente"];
+export type QueueSectionKey = "atrasados" | "perto" | "aguardando" | "acoes-hoje" | "parados" | "aguardando-cliente" | "reengajar";
+export const SECTION_ORDER: QueueSectionKey[] = ["atrasados", "perto", "aguardando", "acoes-hoje", "parados", "aguardando-cliente", "reengajar"];
 export const SECTION_LABEL: Record<QueueSectionKey, string> = {
   atrasados: "Atrasados", perto: "Perto do prazo", aguardando: "Aguardando resposta", "acoes-hoje": "Próximas ações de hoje",
-  parados: "Parados", "aguardando-cliente": "Aguardando a cliente",
+  parados: "Parados", "aguardando-cliente": "Aguardando a cliente", reengajar: "Para reengajar",
 };
+
+/** Os números do resumo da Fila (chips). Parâmetro da própria Fila, não o `filtro` dos relatórios: mesmo escopo dos `counts`, sem "só os seus". */
+export const QUEUE_FOCOS = ["aguardando", "atrasados"] as const;
+export type QueueFoco = (typeof QUEUE_FOCOS)[number];
+export const parseQueueFoco = (v: unknown): QueueFoco | null => ((QUEUE_FOCOS as readonly unknown[]).includes(v) ? (v as QueueFoco) : null);
+export const FOCO_LABEL: Record<QueueFoco, string> = { aguardando: "Leads esperando resposta", atrasados: "Leads atrasados" };
 
 /** A partir de quanto do prazo da etapa o lead conta como "perto do prazo". */
 export const NEAR_SLA_RATIO = 0.5;
@@ -36,12 +42,12 @@ export function ringState(opts: { awaiting: boolean; late: boolean; waitSeconds:
   return slaProgress(opts.waitSeconds, opts.slaMinutes) >= NEAR_SLA_RATIO ? "near" : "ok";
 }
 
-export type QueueParams = { view?: string | null; filtro?: string | null; etapa?: string | null; dono?: string | null; fonte?: string | null; q?: string | null; lead?: string | null };
+export type QueueParams = { view?: string | null; foco?: string | null; filtro?: string | null; etapa?: string | null; dono?: string | null; fonte?: string | null; q?: string | null; lead?: string | null };
 
 /** Query string da Fila (sem o `?`), na ordem estável da URL; parâmetros vazios saem. */
 export function queueQuery(p: QueueParams): string {
   const qs = new URLSearchParams();
-  for (const k of ["view", "filtro", "etapa", "dono", "fonte", "q", "lead"] as const) if (p[k]) qs.set(k, p[k]!);
+  for (const k of ["view", "foco", "filtro", "etapa", "dono", "fonte", "q", "lead"] as const) if (p[k]) qs.set(k, p[k]!);
   return qs.toString();
 }
 export const queueHref = (p: QueueParams) => { const q = queueQuery(p); return q ? `/atendimento?${q}` : "/atendimento"; };

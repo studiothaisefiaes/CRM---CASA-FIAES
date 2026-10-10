@@ -27,7 +27,7 @@ test("clicar em 'Ver atrasados' abre a lista filtrada", async ({ page }) => {
   await expect(page.getByText("Larissa Prado").first()).toBeVisible();
   await expect(page.getByText("Helena Duarte")).toHaveCount(0); // respondida: não está atrasada
   await page.getByRole("link", { name: "Mostrar todos" }).click();
-  await page.getByRole("button", { name: "Mostrar" }).click(); // a Casa já respondeu: fica em "Aguardando a cliente", seção recolhida
+  await page.getByRole("button", { name: /Aguardando a cliente/ }).click(); // a Casa já respondeu: fica em "Aguardando a cliente", seção recolhida
   await expect(page.getByText("Helena Duarte").first()).toBeVisible();
 });
 

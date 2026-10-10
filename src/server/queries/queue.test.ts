@@ -4,7 +4,7 @@ import { db } from "../db";
 import { alerts, contacts, deals, messages, stages, tasks, users } from "../db/schema";
 import { resetDb } from "../../../test/db";
 import { countLateLeads } from "./late-count";
-import { getQueue, type QueueResult } from "./queue";
+import { getQueue, nextWaitingId, type QueueResult } from "./queue";
 import type { QueueView } from "../../lib/queue";
 
 beforeEach(async () => { await resetDb(); });
@@ -152,11 +152,22 @@ describe("getQueue: atrasados batem com o sino", () => {
     for (const u of [ana, bia, gestora]) {
       const q = await getQueue(asUser(u), { now: NOW });
       expect(ids(q, "atrasados").length).toBe(await countLateLeads(asUser(u)));
-      const f = await getQueue(asUser(u), { now: NOW, filtro: "atrasados" });
-      expect(all(f).length).toBe(await countLateLeads(asUser(u)));
       expect(q.counts.atrasados).toBe(await countLateLeads(asUser(u)));
+      // vindo de um relatório (filtro) a atendente vê só os dela, e o número é o da variante "só os dela"
+      const f = await getQueue(asUser(u), { now: NOW, filtro: "atrasados" });
+      expect(all(f).length).toBe(await countLateLeads(asUser(u), { onlyOwn: true }));
     }
     expect(ids(await getQueue(asUser(gestora), { now: NOW }), "atrasados")).toHaveLength(3);
+  });
+
+  it("lead sem dono atrasado aparece em Atrasados para a atendente e entra na contagem", async () => {
+    const { ana, lead, lateAlert } = await setup();
+    const sem = await lead({ ownerId: null, awaitingReplySince: ago(30) });
+    await lateAlert(sem.id);
+    const q = await getQueue(asUser(ana), { now: NOW });
+    expect(ids(q, "atrasados")).toEqual([sem.id]);
+    expect(q.counts.atrasados).toBe(1);
+    expect(await countLateLeads(asUser(ana))).toBe(1);
   });
 });
 
@@ -185,7 +196,7 @@ describe("getQueue: escopo, views e filtros", () => {
     const agendado = await lead({ ownerId: ana.id, stage: "agendado", scheduledAt: new Date("2026-10-07T20:00:00Z"), last: { direction: "out" } }); // 17h em Salvador
     const amanha = await lead({ ownerId: ana.id, stage: "agendado", scheduledAt: new Date("2026-10-08T14:00:00Z"), last: { direction: "out" } });
     const cliente = await lead({ ownerId: ana.id, client: true, last: { direction: "out" } });
-    const antigo = await lead({ ownerId: ana.id, last: { direction: "out", at: days(120) } });
+    const antigo = await lead({ ownerId: ana.id, createdAt: days(150), last: { direction: "out", at: days(120) } });
     const run = async (view: QueueView) => all(await getQueue(asUser(gestora), { now: NOW, view })).sort();
     expect(await run("meus")).toEqual([]); // a gestora não tem lead no nome dela
     expect(all(await getQueue(asUser(ana), { now: NOW, view: "meus" })).sort()).toEqual([meu.id, parado.id, agendado.id, amanha.id, cliente.id, antigo.id].sort());
@@ -215,6 +226,68 @@ describe("getQueue: escopo, views e filtros", () => {
     expect(await f("agendados-amanha")).toEqual([amanha.id]);
     expect(await f("novos")).not.toContain(velho.id);
     expect((await f("novos")).length).toBe(5 - 1);
+  });
+
+  it("chips do resumo (foco): mesmo escopo e mesmo número dos counts, inclusive para a atendente", async () => {
+    const { ana, bia, lead, lateAlert } = await setup();
+    const minha = await lead({ ownerId: ana.id, awaitingReplySince: ago(30) });
+    const sem = await lead({ ownerId: null, awaitingReplySince: ago(30) });
+    await lead({ ownerId: bia.id, awaitingReplySince: ago(30) });
+    const calma = await lead({ ownerId: ana.id, awaitingReplySince: ago(0.2) });
+    await lead({ ownerId: ana.id, last: { direction: "out" } });
+    await lateAlert(minha.id); await lateAlert(sem.id);
+    const q = await getQueue(asUser(ana), { now: NOW });
+    const aguardando = await getQueue(asUser(ana), { now: NOW, foco: "aguardando" });
+    const atrasados = await getQueue(asUser(ana), { now: NOW, foco: "atrasados" });
+    expect(all(aguardando)).toHaveLength(q.counts.aguardando);
+    expect(all(aguardando).sort()).toEqual([minha.id, sem.id, calma.id].sort());
+    expect(all(atrasados)).toHaveLength(q.counts.atrasados);
+    expect(all(atrasados).sort()).toEqual([minha.id, sem.id].sort()); // com o sem dono, como no sino
+    const hoje = await getQueue(asUser(ana), { now: NOW, view: "agendados-hoje" });
+    expect(all(hoje)).toHaveLength(q.counts.agendadosHoje);
+  });
+
+  it("sem contato há 90 dias lista contatos para reengajar: último lead (aberto ou fechado), não arquivado, contato não ignorado", async () => {
+    const { ana, gestora, lead } = await setup();
+    const velhoFechado = await lead({ stage: "fechado", closedAt: days(100), createdAt: days(200), last: { direction: "out", at: days(120) } });
+    const velhoAberto = await lead({ ownerId: ana.id, createdAt: days(150), last: { direction: "in", at: days(95) } });
+    const semMensagem = await lead({ stage: "perdido", closedAt: days(100), createdAt: days(100) });
+    await lead({ stage: "fechado", closedAt: days(10), last: { direction: "out", at: days(20) } }); // falou há 20 dias
+    await lead({ stage: "fechado", closedAt: days(100), createdAt: days(200), archivedAt: days(1), last: { direction: "out", at: days(120) } }); // arquivado
+    await lead({ stage: "fechado", closedAt: days(100), createdAt: days(200), ignored: true, last: { direction: "out", at: days(120) } }); // contato ignorado
+    // contato com dois leads: vale o último, que é recente
+    const antigo = await lead({ stage: "fechado", closedAt: days(300), createdAt: days(400), last: { direction: "out", at: days(300) } });
+    await db.insert(deals).values({ contactId: antigo.contactId, stageId: antigo.stageId, createdAt: days(2), stageEnteredAt: days(2) });
+    const q = await getQueue(asUser(gestora), { now: NOW, view: "sem-contato-90d" });
+    expect(all(q).sort()).toEqual([velhoFechado.id, velhoAberto.id, semMensagem.id].sort());
+    expect(q.sections.map((s) => s.key)).toEqual(["reengajar"]);
+    expect(q.counts.views["sem-contato-90d"]).toBe(3);
+    expect(all(await getQueue(asUser(gestora), { now: NOW }))).not.toContain(velhoFechado.id); // não polui a Fila principal
+    // atendente: os dela e os sem dono
+    const ana2 = await getQueue(asUser(ana), { now: NOW, view: "sem-contato-90d" });
+    expect(all(ana2).sort()).toEqual([velhoFechado.id, velhoAberto.id, semMensagem.id].sort());
+    expect(q.sections[0].items.find((i) => i.dealId === velhoFechado.id)).toMatchObject({ stageKey: "fechado", awaitingSince: null });
+  });
+
+  it("limite de leads mostrados: counts valem para todos e vem o aviso de corte", async () => {
+    const { gestora, lead } = await setup();
+    for (let i = 0; i < 5; i++) await lead({ awaitingReplySince: ago(1 + i) });
+    const q = await getQueue(asUser(gestora), { now: NOW, limit: 3 });
+    expect(all(q)).toHaveLength(3);
+    expect(q.truncated).toEqual({ shown: 3, total: 5 });
+    expect(q.counts.total).toBe(5);
+    expect(q.counts.aguardando).toBe(5);
+    expect((await getQueue(asUser(gestora), { now: NOW })).truncated).toBeNull();
+  });
+
+  it("nextWaitingId: quem espera há mais tempo no escopo, sem o lead atual", async () => {
+    const { ana, bia, lead } = await setup();
+    const a = await lead({ ownerId: ana.id, awaitingReplySince: ago(5) });
+    const b = await lead({ ownerId: null, awaitingReplySince: ago(9) });
+    await lead({ ownerId: bia.id, awaitingReplySince: ago(20) });
+    expect(await nextWaitingId(asUser(ana), a.id)).toBe(b.id);
+    expect(await nextWaitingId(asUser(ana), b.id)).toBe(a.id);
+    expect(await nextWaitingId(asUser(ana), "00000000-0000-4000-8000-000000000000")).toBe(b.id);
   });
 
   it("busca por nome e por telefone; contagens do resumo ignoram a busca", async () => {

@@ -2,10 +2,14 @@ import { test, expect, type Page } from "@playwright/test";
 import { login, simulate, ageLead, e2eSql, shot } from "./helpers";
 
 /** Seis leads em seis seções da Fila (a Casa fica aberta 24 h no banco de e2e, então a espera conta o tempo todo). */
-async function cenario(page: Page) {
-  // Isola o cenário do que os outros specs deixaram no banco de e2e: avisos antigos resolvidos e leads de fora arquivados.
+/** Isola o cenário do que os outros specs deixaram no banco de e2e: avisos antigos resolvidos e leads de fora arquivados. */
+async function isola(prefixo: string) {
   await e2eSql("update alerts set resolved_at = now() where resolved_at is null");
-  await e2eSql("update deals set archived_at = now() where archived_at is null and contact_id not in (select id from contacts where phone_e164 like '+5571997101%')");
+  await e2eSql("update deals set archived_at = now() where archived_at is null and contact_id not in (select id from contacts where phone_e164 like $1)", [`${prefixo}%`]);
+}
+
+async function cenario(page: Page) {
+  await isola("+5571997101");
   const phone = (n: number) => `+55719971${String(n).padStart(5, "0")}`;
   const entra = (n: number, name: string, text: string, fromMe = false) => simulate(page, { phone: `71 99710-${String(n).slice(-4)}`, name, text, fromMe });
   await entra(1001, "Valéria Nogueira", "Oi, tem horário amanhã?");
@@ -38,7 +42,7 @@ test("fila (desktop): seções por urgência, conversa no painel do meio e tecla
 
   // Ordem por urgência: atrasados, perto do prazo, aguardando, ações de hoje, parados, aguardando a cliente.
   const ids = await fila.locator("[role=group]").evaluateAll((els) => els.map((e) => e.getAttribute("aria-labelledby")));
-  expect(ids).toEqual(["fila-atrasados", "fila-perto", "fila-aguardando", "fila-acoes-hoje", "fila-parados", "fila-aguardando-cliente"]);
+  expect(ids).toEqual(["fila-atrasados", "fila-perto", "fila-aguardando", "fila-acoes-hoje", "fila-parados"]); // a sexta, aguardando a cliente, começa recolhida
   const carla = fila.getByRole("group", { name: "Atrasados" }).getByRole("option", { name: /Valéria Nogueira/ });
   await expect(carla).toContainText(/atrasado( \d+ min)?/);
   await expect(fila.getByRole("group", { name: "Perto do prazo" }).getByRole("option", { name: /Rosana Tavares/ })).toContainText(/perto do prazo/);
@@ -48,8 +52,9 @@ test("fila (desktop): seções por urgência, conversa no painel do meio e tecla
   await shot(page, "02-desktop-sem-lead");
   // "Aguardando a cliente" começa recolhida
   const recolhida = fila.getByRole("group", { name: "Aguardando a cliente" });
-  await expect(recolhida.getByRole("option")).toHaveCount(0);
-  await recolhida.getByRole("button", { name: "Mostrar" }).click();
+  await expect(recolhida).toHaveCount(0);
+  await expect(fila.getByRole("button")).toHaveCount(0); // nada interativo dentro do listbox além dos itens
+  await page.getByRole("button", { name: /Aguardando a cliente/ }).click();
   await expect(recolhida.getByRole("option", { name: /Elaine Pacheco/ })).toContainText("Cliente");
   // resumo: cada número filtra
   const resumo = page.getByLabel("Resumo da fila");
@@ -85,8 +90,55 @@ test("fila (desktop): seções por urgência, conversa no painel do meio e tecla
   const alvo = await segundo.getAttribute("data-deal-id");
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(new RegExp(`lead=${alvo}`));
+  // Roving tabindex: só o item com o foco fica no Tab
+  await expect(segundo).toHaveAttribute("tabindex", "0");
+  await expect(fila.getByRole("option").first()).toHaveAttribute("tabindex", "-1");
   await page.keyboard.press("End");
   await expect(fila.getByRole("option").last()).toBeFocused();
+});
+
+test("fila (desktop): o resumo cabe nos 340 px sem estourar", async ({ page, isMobile }) => {
+  test.skip(isMobile, "desktop");
+  await login(page);
+  await cenario(page);
+  await page.goto("/atendimento");
+  const col = page.getByRole("region", { name: "Fila de atendimento" });
+  await expect(col.getByLabel("Resumo da fila")).toBeVisible();
+  expect(await col.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  await expect(col.getByLabel("Resumo da fila")).not.toContainText("·");
+});
+
+test("fila (desktop): atendente vê no chip o mesmo número que a lista (inclusive lead sem dono atrasado)", async ({ page, isMobile }) => {
+  test.skip(isMobile, "desktop");
+  await login(page);
+  await isola("+5571997102");
+  const ent = (n: number, nome: string) => simulate(page, { phone: `71 99710-${2000 + n}`, name: nome, text: "Oi, tudo bem?" });
+  await ent(1, "Joana Meireles"); await ent(2, "Sônia Vasconcelos"); await ent(3, "Luzia Tamires"); await ent(4, "Noemi Falcão");
+  const fone = (n: number) => `+5571997102${String(n).padStart(3, "0")}`;
+  const dono = (email: string | null, n: number) => e2eSql(`update deals set owner_id = ${email ? "(select id from users where email = $2)" : "null"} where contact_id = (select id from contacts where phone_e164 = $1)`, email ? [fone(n), email] : [fone(n)]);
+  await dono("ana@e2e.local", 1); await dono(null, 2); await dono("ana@e2e.local", 3); await dono("gestao@e2e.local", 4);
+  ageLead(fone(1), 11); ageLead(fone(2), 11); ageLead(fone(4), 11); // 1 da Ana, 1 sem dono e 1 da gestão passam do prazo
+  await page.context().clearCookies();
+  await login(page, "ana@e2e.local");
+  await page.goto("/atendimento");
+  const resumo = page.getByLabel("Resumo da fila");
+  const fila = page.getByRole("listbox", { name: "Fila" });
+  const numero = async (re: RegExp) => Number((await resumo.getByRole("link", { name: re }).innerText()).match(/^\d+/)![0]);
+  expect(await numero(/atrasad/)).toBe(2); // o dela e o sem dono; o da gestão não é dela
+  expect(await numero(/aguardando/)).toBe(3);
+  await resumo.getByRole("link", { name: /atrasad/ }).click();
+  await expect(page).toHaveURL(/foco=atrasados/);
+  await expect(fila.getByRole("option")).toHaveCount(2);
+  await expect(fila.getByRole("option", { name: /Sônia Vasconcelos/ })).toBeVisible();
+  await expect(page.getByText("só os seus")).toHaveCount(0);
+  await resumo.getByRole("link", { name: /atrasad/ }).click(); // clicar de novo tira o filtro
+  await resumo.getByRole("link", { name: /aguardando/ }).click();
+  await expect(page).toHaveURL(/foco=aguardando/);
+  await expect(fila.getByRole("option")).toHaveCount(3);
+  // O link dos relatórios (filtro) continua sendo "só os seus"
+  await page.goto("/atendimento?filtro=atrasados");
+  await expect(fila.getByRole("option")).toHaveCount(1);
+  await expect(page.getByRole("status").filter({ hasText: "só os seus" })).toBeVisible();
 });
 
 test("fila (desktop): filtro vem do resumo, volta pela barra lateral e /funil?lead= segue valendo", async ({ page, isMobile }) => {
@@ -95,15 +147,16 @@ test("fila (desktop): filtro vem do resumo, volta pela barra lateral e /funil?le
   await cenario(page);
   await page.goto("/atendimento");
   await page.getByLabel("Resumo da fila").getByRole("link", { name: /atrasado/ }).click();
-  await expect(page).toHaveURL(/filtro=atrasados/);
+  await expect(page).toHaveURL(/foco=atrasados/);
   const fila = page.getByRole("listbox", { name: "Fila" });
   await expect(fila.getByRole("option")).toHaveCount(1);
-  await expect(page.getByRole("status").filter({ hasText: "Mostrando: leads atrasados" })).toBeVisible();
   // O estado fica guardado: a barra lateral leva de volta ao mesmo filtro
   await page.goto("/relatorios");
   await page.getByRole("navigation", { name: "Principal" }).first().getByRole("link", { name: "Atendimento" }).click();
-  await expect(page).toHaveURL(/filtro=atrasados/);
-  // Mostrar todos limpa de forma explícita
+  await expect(page).toHaveURL(/foco=atrasados/);
+  // Link de relatório (filtro) mostra o aviso e "Mostrar todos" limpa de forma explícita
+  await page.goto("/atendimento?filtro=atrasados");
+  await expect(page.getByRole("status").filter({ hasText: "Mostrando: leads atrasados" })).toBeVisible();
   await page.getByRole("link", { name: "Mostrar todos" }).click();
   await expect(page).toHaveURL(/view=todos/);
   await expect(fila.getByRole("option").nth(4)).toBeVisible(); // 5 visíveis; a sexta seção (aguardando a cliente) segue recolhida
@@ -134,6 +187,20 @@ test("fila (celular): abrir conversa e voltar preserva filtro e rolagem", async 
   expect(await page.getByRole("listbox", { name: "Fila" }).evaluate((el) => el.scrollTop)).toBeGreaterThan(300);
 });
 
+test("fila (celular): na visão padrão (sem ?view=) a rolagem também volta", async ({ page, isMobile }) => {
+  test.skip(!isMobile, "celular");
+  await login(page);
+  for (let i = 0; i < 12; i++) await simulate(page, { phone: `7198801${String(i).padStart(4, "0")}`, name: `Padrão ${i}`, text: "oi" });
+  await page.goto("/atendimento");
+  expect(page.url()).not.toContain("view=");
+  await page.getByRole("listbox", { name: "Fila" }).evaluate((el) => (el.scrollTop = 400));
+  await page.getByRole("option").nth(8).click();
+  await expect(page).toHaveURL(/\/atendimento\/[0-9a-f-]{36}/);
+  await page.getByRole("link", { name: "Voltar para a fila" }).click();
+  await expect(page).toHaveURL(/\/atendimento$/);
+  await expect.poll(() => page.getByRole("listbox", { name: "Fila" }).evaluate((el) => el.scrollTop)).toBeGreaterThan(300);
+});
+
 test.describe("celular: lista em 390 px", () => {
   test.use({ deviceScaleFactor: 2 });
   test("sem rolagem lateral, alvos de 44 px, campos de 16 px e /atendimento?lead= leva à conversa", async ({ page, isMobile }) => {
@@ -153,11 +220,16 @@ test.describe("celular: lista em 390 px", () => {
     await page.addStyleTag({ content: "nextjs-portal { display: none !important }" });
     await shot(page, "03-celular-lista-390");
     const id = await fila.getByRole("option", { name: /Valéria Nogueira/ }).getAttribute("data-deal-id");
-    await page.goto(`/atendimento?lead=${id}`);
+    await page.goto(`/atendimento?lead=${id}`); // o servidor já manda para a conversa (User-Agent de celular), sem montar o lead na Fila
     await expect(page).toHaveURL(new RegExp(`/atendimento/${id}$`));
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
     await expect(page.getByRole("region", { name: /Lead Valéria Nogueira/ })).toBeVisible();
     await page.addStyleTag({ content: "nextjs-portal { display: none !important }" });
     await shot(page, "04-celular-conversa-390");
+    // O Quadro acende "Atendimento" na barra de baixo, não "Mais"
+    await page.goto("/funil");
+    const nav = page.getByRole("navigation", { name: "Principal" }).last();
+    await expect(nav.getByRole("link", { name: "Atendimento" })).toHaveAttribute("aria-current", "page");
+    await expect(nav.getByRole("button", { name: "Mais" })).not.toHaveClass(/text-ink/);
   });
 });

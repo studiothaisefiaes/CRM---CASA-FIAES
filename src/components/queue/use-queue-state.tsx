@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
 /**
  * Estado da Fila que sobrevive a abrir uma conversa e voltar: filtros (a query da URL, sem `lead`), a rolagem da lista e o último lead aberto.
@@ -43,14 +43,15 @@ export function useSavedQueueQuery(): string {
 export function useQueueState(query: string) {
   const [el, ref] = useState<HTMLDivElement | null>(null);
   useLayoutEffect(() => {
-    if (!query) return; // sem parâmetros na URL: ainda vai restaurar o que foi salvo (QueueRestore), então não apaga
     const saved = readQueueState();
     if (saved.query === query) {
+      // Mesma visão da última vez, inclusive a padrão (query vazia): devolve a rolagem.
       if (el && saved.scrollTop > 0) scrollTo(el, saved.scrollTop);
-    } else {
+    } else if (query) {
       writeQueueState({ query, scrollTop: 0 });
       if (el) scrollTo(el, 0);
     }
+    // query vazia com outra salva: o QueueRestore leva ao filtro salvo, então aqui não apaga nada.
     notify();
   }, [query, el]);
   // Ao sair da tela o navegador mexe na rolagem da lista que está sendo trocada (scroll que não é do usuário). `freeze()` guarda a posição
@@ -59,6 +60,9 @@ export function useQueueState(query: string) {
   const onScroll = useCallback((e: { currentTarget: { scrollTop: number } }) => {
     if (!frozen.current) writeQueueState({ scrollTop: Math.round(e.currentTarget.scrollTop) });
   }, []);
-  const freeze = useCallback(() => { frozen.current = true; }, []);
+  const thaw = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // Se a navegação não desmontar a lista (clique cancelado, rota que falhou), a rolagem volta a ser salva depois de alguns segundos.
+  const freeze = useCallback(() => { frozen.current = true; clearTimeout(thaw.current); thaw.current = setTimeout(() => { frozen.current = false; }, 5000); }, []);
+  useEffect(() => () => clearTimeout(thaw.current), []);
   return { ref, onScroll, freeze };
 }

@@ -36,7 +36,7 @@ export function QueueFilters({ view, q, counts }: { view: QueueView; q: string; 
       </label>
       <Menu label="Visão da fila" align="left" className="block w-full" triggerClassName="w-full h-11 lg:h-9 pl-3 pr-3 justify-between border border-control bg-paper text-ink text-[16px] lg:text-sm font-medium"
         trigger={<><span className="truncate">{VIEW_LABEL[view]} ({counts.views[view]})</span><span aria-hidden className="text-muted text-[10px]">▼</span></>}
-        items={QUEUE_VIEWS.map((v) => ({ label: `${VIEW_LABEL[v]} (${counts.views[v]})`, current: v === view, onSelect: () => go({ view: v, filtro: null, etapa: null, dono: null, fonte: null }) }))} />
+        items={QUEUE_VIEWS.map((v) => ({ label: `${VIEW_LABEL[v]} (${counts.views[v]})`, current: v === view, onSelect: () => go({ view: v, foco: null, filtro: null, etapa: null, dono: null, fonte: null }) }))} />
     </div>
   );
 }

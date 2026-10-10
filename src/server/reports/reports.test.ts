@@ -429,8 +429,8 @@ describe("relatórios: correções da T13a (T13b)", () => {
     expect(sg.links.find((l) => l.href.includes("atrasados"))!.label).toBe("Ver atrasados (2)");
     expect(await countLateLeads(g)).toBe(2);
     const sa = await dailySummaryText(ana, T(12)); // atendente: só os dela, igual ao sino dela
-    expect(sa.links.find((l) => l.href.includes("atrasados"))!.label).toBe(`Ver atrasados (${await countLateLeads(ana)})`);
-    expect(await countLateLeads(ana)).toBe(1);
+    expect(sa.links.find((l) => l.href.includes("atrasados"))!.label).toBe(`Ver atrasados (${await countLateLeads(ana, { onlyOwn: true })})`);
+    expect(await countLateLeads(ana, { onlyOwn: true })).toBe(1);
     await db.update(alerts).set({ resolvedAt: new Date() });
     expect((await dailySummaryText(g, T(12))).links.some((l) => l.href.includes("atrasados"))).toBe(false);
   });

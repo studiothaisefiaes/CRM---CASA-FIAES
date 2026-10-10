@@ -48,14 +48,17 @@ describe("countLateLeads", () => {
     await alert(arq.id); await alert(ign.id); await alert(ok.id);
     expect(await countLateLeads(asUser(gestora))).toBe(1);
   });
-  it("atendente só vê os leads dela; gestor vê todos", async () => {
+  it("atendente conta os leads dela e os sem dono (o mesmo escopo da Fila); gestor conta todos", async () => {
     const { gestora, ana, bia, lead, alert } = await setup();
     const da = await lead(ana.id), db_ = await lead(bia.id), sem = await lead(null);
     await alert(da.id, { userId: ana.id });
     await alert(db_.id, { userId: bia.id });
     await alert(sem.id, { userId: null, audience: "gestao" });
-    expect(await countLateLeads(asUser(ana))).toBe(1);
-    expect(await countLateLeads(asUser(bia))).toBe(1);
+    expect(await countLateLeads(asUser(ana))).toBe(2); // o dela + o sem dono
+    expect(await countLateLeads(asUser(bia))).toBe(2);
     expect(await countLateLeads(asUser(gestora))).toBe(3);
+    // variante "só os dela" (resumo do dia e links vindos dos relatórios)
+    expect(await countLateLeads(asUser(ana), { onlyOwn: true })).toBe(1);
+    expect(await countLateLeads(asUser(gestora), { onlyOwn: true })).toBe(3);
   });
 });

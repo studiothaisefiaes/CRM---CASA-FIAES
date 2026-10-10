@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import type { QueueItem, QueueSection } from "@/server/queries/queue";
 import { SECTION_LABEL, type QueueSectionKey } from "@/lib/queue";
 import { Empty } from "@/components/ui/empty";
-import { EASE } from "@/lib/motion";
+import { DUR, EASE } from "@/lib/motion";
 import { cn } from "@/lib/cn";
 import { QueueRow } from "./queue-item";
 
@@ -15,12 +15,14 @@ const HEAD: Record<QueueSectionKey, string> = {
   "acoes-hoje": "bg-paper-2 text-graphite py-1.5 text-xs font-semibold",
   parados: "bg-paper-2 text-graphite py-1.5 text-xs font-semibold",
   "aguardando-cliente": "bg-paper-2 text-graphite py-1.5 text-xs font-semibold",
+  reengajar: "bg-paper-2 text-graphite py-1.5 text-xs font-semibold",
 };
 
 export const defaultHref = (i: QueueItem) => `/atendimento/${i.dealId}`;
 
 /**
- * A lista da Fila: um `listbox` com as seções em `group` e cada lead como `option` (um link). Setas, Home e End movem o foco; Enter abre.
+ * A lista da Fila: um `listbox` com as seções em `group` e cada lead como `option` (um link). Setas, Home e End movem o foco (roving tabindex); Enter abre.
+ * O listbox só tem grupos e opções: o estado vazio e o botão que recolhe "Aguardando a cliente" ficam do lado de fora.
  * Só recebe dados e callbacks (nada de next/navigation), para poder ser testada sozinha; `QueueListRoute` liga à rota.
  */
 export function QueueList({ sections, selectedId, hrefFor = defaultHref, onOpen, listRef, onScroll, className }: {
@@ -29,9 +31,13 @@ export function QueueList({ sections, selectedId, hrefFor = defaultHref, onOpen,
 }) {
   const inner = useRef<HTMLDivElement | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [activeId, setActiveId] = useState<string | null>(null);
   const total = sections.reduce((n, s) => n + s.items.length, 0);
-  const firstId = sections.find((s) => s.key !== "aguardando-cliente" || expanded || sections.length === 1)?.items[0]?.dealId ?? null;
-  const tabId = selectedId && sections.some((s) => s.items.some((i) => i.dealId === selectedId)) ? selectedId : firstId;
+  const collapsible = sections.find((s) => s.key === "aguardando-cliente" && sections.length > 1) ?? null;
+  const isOpen = (s: QueueSection) => s !== collapsible || expanded || s.items.some((i) => i.dealId === selectedId);
+  const visible = sections.filter(isOpen).flatMap((s) => s.items.map((i) => i.dealId));
+  // Roving tabindex: o item que recebeu o foco pela última vez (setas ou clique); sem isso, o aberto ou o primeiro.
+  const tabId = [activeId, selectedId].find((id) => id && visible.includes(id)) ?? visible[0] ?? null;
 
   // Lead aberto por link de fora (sino, push): traz o item para a área visível.
   useEffect(() => {
@@ -49,40 +55,46 @@ export function QueueList({ sections, selectedId, hrefFor = defaultHref, onOpen,
     opts[next].focus();
     opts[next].scrollIntoView({ block: "nearest" });
   };
+  const onFocus = (e: React.FocusEvent<HTMLDivElement>) => {
+    const id = (e.target as HTMLElement).closest<HTMLElement>("[role=option]")?.dataset.dealId;
+    if (id) setActiveId(id);
+  };
 
   const setRefs = useCallback((el: HTMLDivElement | null) => { inner.current = el; listRef?.(el); }, [listRef]);
 
+  if (total === 0) return <div className={cn("min-h-0 overflow-y-auto", className)}><Empty title="Nenhuma conversa por aqui">Quando uma cliente escrever, ela aparece nesta lista na hora.</Empty></div>;
+
   return (
-    <div ref={setRefs} role="listbox" aria-label="Fila" aria-orientation="vertical" onKeyDown={onKeyDown} onScroll={onScroll}
-      className={cn("overflow-y-auto overscroll-contain scroll-thin min-h-0", className)}>
-      {total === 0 && <Empty title="Nenhuma conversa por aqui">Quando uma cliente escrever, ela aparece nesta lista na hora.</Empty>}
-      {sections.map((s) => {
-        const collapsible = s.key === "aguardando-cliente" && sections.length > 1;
-        const open = !collapsible || expanded || s.items.some((i) => i.dealId === selectedId);
-        const headId = `fila-${s.key}`;
-        return (
-          <div key={s.key} role="group" aria-labelledby={headId}>
-            <div className={cn("sticky top-0 z-[1] flex items-center justify-between gap-3 px-4", HEAD[s.key])}>
-              <span id={headId} role="presentation">{SECTION_LABEL[s.key]}</span>
-              <span className="flex items-center gap-2">
-                <span className="tabular opacity-90">{s.items.length}</span>
-                {collapsible && (
-                  <button type="button" aria-expanded={open} onClick={() => setExpanded((v) => !v)} className="min-h-8 pointer-coarse:min-h-11 px-2 -mr-2 rounded-[var(--radius-control)] hover:bg-ink/5 font-medium">
-                    {open ? "Recolher" : "Mostrar"}
-                  </button>
-                )}
-              </span>
+    <div className={cn("flex flex-col min-h-0", className)}>
+      <div ref={setRefs} role="listbox" aria-label="Fila" aria-orientation="vertical" onKeyDown={onKeyDown} onFocus={onFocus} onScroll={onScroll}
+        className="flex-1 min-h-0 overflow-y-auto overscroll-contain scroll-thin">
+        {sections.map((s) => {
+          if (!isOpen(s)) return null; // recolhida: só a barra de baixo, fora do listbox
+          const headId = `fila-${s.key}`;
+          return (
+            <div key={s.key} role="group" aria-labelledby={headId}>
+              <div className={cn("sticky top-0 z-[1] flex items-center justify-between gap-3 px-4", HEAD[s.key])}>
+                <span id={headId} role="presentation">{SECTION_LABEL[s.key]}</span>
+                <span className="tabular opacity-90" role="presentation">{s.items.length}</span>
+              </div>
+              <AnimatePresence initial={false}>
+                {s.items.map((item) => (
+                  <motion.div key={item.dealId} role="none" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: DUR.base, ease: EASE }}>
+                    <QueueRow item={item} section={s.key} selected={item.dealId === selectedId} href={hrefFor(item)} tabIndex={item.dealId === tabId ? 0 : -1} onOpen={onOpen} />
+                  </motion.div>
+                ))}
+              </AnimatePresence>
             </div>
-            <AnimatePresence initial={false}>
-              {open && s.items.map((item) => (
-                <motion.div key={item.dealId} role="none" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: EASE }}>
-                  <QueueRow item={item} section={s.key} selected={item.dealId === selectedId} href={hrefFor(item)} tabIndex={item.dealId === tabId ? 0 : -1} onOpen={onOpen} />
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
+      {collapsible && (
+        <button type="button" aria-expanded={isOpen(collapsible)} onClick={() => setExpanded((v) => !v)}
+          className="shrink-0 flex items-center justify-between gap-3 px-4 min-h-11 border-t border-line bg-paper-2 text-sm font-medium text-graphite hover:text-ink">
+          <span>{SECTION_LABEL["aguardando-cliente"]} <span className="tabular">({collapsible.items.length})</span></span>
+          <span>{isOpen(collapsible) ? "Recolher" : "Mostrar"}</span>
+        </button>
+      )}
     </div>
   );
 }

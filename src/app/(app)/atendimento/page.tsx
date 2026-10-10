@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { requireUser } from "@/server/auth/session";
 import { getQueue } from "@/server/queries/queue";
 import { getDealDetail } from "@/server/queries/deal";
@@ -10,7 +12,8 @@ import { QueueSummary } from "@/components/queue/queue-summary";
 import { QueueFilters } from "@/components/queue/queue-filters";
 import { ViewSwitch } from "@/components/queue/view-switch";
 import { FILTER_LABEL, parseQueueFilter } from "@/lib/report-links";
-import { parseQueueView, queueQuery } from "@/lib/queue";
+import { parseQueueFoco, parseQueueView, queueQuery } from "@/lib/queue";
+import { isMobileUserAgent } from "@/lib/device";
 
 export const metadata = { title: "Atendimento" };
 
@@ -23,11 +26,14 @@ export default async function AtendimentoPage({ searchParams }: PageProps<"/aten
   const q = str("q"), dono = str("dono"), etapa = str("etapa"), fonte = str("fonte");
   const lead = str("lead");
   const leadId = lead && /^[0-9a-f-]{36}$/i.test(lead) ? lead : null;
+  // Celular: a conversa é uma tela própria. Decide aqui, antes de carregar e montar o lead; o ViewportRedirect cobre o resto (janela estreita no desktop).
+  if (leadId && isMobileUserAgent((await headers()).get("user-agent"))) redirect(`/atendimento/${leadId}`);
+  const foco = parseQueueFoco(sp.foco);
   const [queue, detail] = await Promise.all([
-    getQueue(user, { view, q, filtro, dono, etapa, fonte }),
+    getQueue(user, { view, foco, q, filtro, dono, etapa, fonte }),
     leadId ? getDealDetail(leadId) : Promise.resolve(null),
   ]);
-  const query = queueQuery({ view: str("view") ? view : null, filtro, etapa, dono, fonte, q });
+  const query = queueQuery({ view: str("view") ? view : null, foco, filtro, etapa, dono, fonte, q });
   // Depois de responder, o botão leva a quem espera há mais tempo (a fila já vem pela maior espera).
   const nextId = queue.sections.filter((s) => ["atrasados", "perto", "aguardando"].includes(s.key)).flatMap((s) => s.items).find((i) => i.dealId !== leadId)?.dealId ?? null;
   return (
@@ -41,7 +47,7 @@ export default async function AtendimentoPage({ searchParams }: PageProps<"/aten
             <h1 className="font-serif text-[28px] leading-none font-light tracking-[-0.01em]">Atendimento</h1>
             <ViewSwitch current="fila" />
           </div>
-          <QueueSummary counts={queue.counts} view={view} filtro={filtro} />
+          <QueueSummary counts={queue.counts} view={view} foco={foco} filtro={filtro} />
           {filtro && (
             <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm" role="status">
               <span className="rounded-full bg-gold-soft text-gold-ink px-3 py-1 font-medium">Mostrando: {FILTER_LABEL[filtro].toLowerCase()}{user.role !== "gestor" ? " (só os seus)" : ""}{fonte ? ` · origem ${fonte}` : ""}</span>
@@ -49,6 +55,7 @@ export default async function AtendimentoPage({ searchParams }: PageProps<"/aten
             </p>
           )}
           <QueueFilters view={view} q={q ?? ""} counts={queue.counts} />
+          {queue.truncated && <p role="status" className="mt-2 text-xs text-muted">Mostrando {queue.truncated.shown} de {queue.truncated.total} conversas. Use a busca ou uma visão para ver as outras.</p>}
         </div>
         <QueueListRoute sections={queue.sections} query={query} selectedId={leadId} className="flex-1" />
       </section>

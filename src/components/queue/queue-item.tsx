@@ -37,6 +37,7 @@ const WEIGHT: Record<QueueSectionKey, { row: string; avatar: number; name: strin
   "acoes-hoje": { row: "border-l-[3px] border-l-transparent py-2.5", avatar: 36, name: "text-base font-medium", time: "text-sm text-graphite" },
   parados: { row: "border-l-[3px] border-l-transparent py-2.5", avatar: 36, name: "text-base font-medium text-graphite", time: "text-sm text-graphite" },
   "aguardando-cliente": { row: "border-l-[3px] border-l-transparent py-2", avatar: 32, name: "text-sm font-medium text-graphite", time: "text-sm text-graphite" },
+  reengajar: { row: "border-l-[3px] border-l-transparent py-2.5", avatar: 36, name: "text-base font-medium", time: "text-sm text-graphite" },
 };
 
 function statusOf(section: QueueSectionKey, ring: RingState, waitSec: number, sla: number | null, item: QueueItem, now: number): { text: string; tone: string } | null {
@@ -53,6 +54,10 @@ function statusOf(section: QueueSectionKey, ring: RingState, waitSec: number, sl
     const due = new Date(item.nextAction.dueAt);
     const hora = due.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Bahia" });
     return { text: `${item.nextAction.title} · ${due.getTime() < now ? "venceu" : "hoje"} ${hora}`, tone: "text-gold-ink font-medium" };
+  }
+  if (section === "reengajar") {
+    const days = item.lastAt ? Math.max(0, Math.floor((now - new Date(item.lastAt).getTime()) / 86_400_000)) : null;
+    return { text: days == null ? "sem mensagens ainda" : `sem contato há ${days} d`, tone: "text-graphite" };
   }
   if (section === "parados") return { text: "parado, sem próxima ação", tone: "text-graphite" };
   if (section === "aguardando-cliente") return { text: item.nextAction ? `próxima ação: ${item.nextAction.title}` : "esperando a cliente", tone: "text-muted" };

@@ -29,7 +29,7 @@ export function Sidebar({ user, alerts: initialAlerts }: { user: { name: string;
   const gestor = user.role === "gestor";
   const items = gestor ? [...NAV, { href: "/config", label: "Configurações", icon: IconSettings }] : NAV;
   const isActive = (href: string) => (href === "/" ? path === "/" : (MATCH[href] ?? [href]).some((p) => path.startsWith(p)));
-  const moreActive = path.startsWith("/funil") || path.startsWith("/config");
+  const moreActive = path.startsWith("/config"); // /funil (Quadro) acende Atendimento, não "Mais"
   return (
     <>
       <aside className="hidden lg:flex fixed inset-y-0 left-0 w-[232px] flex-col bg-paper-2 border-r border-line z-30">

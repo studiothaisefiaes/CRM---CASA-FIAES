@@ -3,8 +3,8 @@ import { findSessionUser } from "@/server/auth/sessions-store";
 import { getMyAlerts } from "@/server/queries/alerts";
 
 /**
- * Os avisos do sino de quem pediu (os mesmos que o layout entrega ao abrir a tela), sempre frescos. O sino busca aqui nos eventos ao vivo
- * (alerts, queue, deal), sem router.refresh, então o número e a lista andam sem recarregar a página inteira.
+ * Os avisos do sino de quem pediu (`getMyAlerts`: até 30, dos últimos 7 dias), sempre frescos e no escopo dele. O sino busca aqui quando chega
+ * um evento ao vivo dos escopos `alerts` ou `queue` (todo evento de lead passa por `queue`), com debounce e sem router.refresh.
  */
 export async function GET(req: NextRequest) {
   const user = await findSessionUser(req.cookies.get("cf_session")?.value);
