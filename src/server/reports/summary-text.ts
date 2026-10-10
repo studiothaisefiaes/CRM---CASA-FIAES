@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import type { SessionUser } from "../auth/sessions-store";
+import { summaryMode } from "../../lib/daily-summary";
 import { countLateLeads } from "../queries/late-count";
 import { dealScope, iso, MIN_SAMPLE, periodStart, periodWindow, rows, type ReportFilter } from "./common";
 import { firstResponse, funnelMilestones, REMAINING, salesAgg, staleNow } from "./queries";
@@ -45,7 +46,6 @@ export async function dailySummaryText(user: Pick<SessionUser, "id" | "role" | "
   const parados = stale.reduce((a, s) => a + s.parados, 0);
   const tasksLate = tk?.n ?? 0;
   const day = now.toLocaleDateString("pt-BR", { timeZone: "America/Bahia", weekday: "long", day: "2-digit", month: "2-digit" });
-  const hourLocal = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "America/Bahia", hour: "2-digit", hour12: false }).format(now)) % 24;
 
   const lines = [`Resumo de hoje (${day})`];
   lines.push(mi.leads ? `• ${plural(mi.leads, "lead novo", "leads novos")}: ${mi.respondidos} com resposta, ${plural(mi.agendados, "agendado", "agendados")}` : "• Nenhum lead novo hoje");
@@ -68,5 +68,5 @@ export async function dailySummaryText(user: Pick<SessionUser, "id" | "role" | "
   if (amanhaCobrancas) links.push({ label: "Ver cobranças de amanhã", href: "/atendimento?filtro=cobrancas-amanha" });
   if (parados) links.push({ label: "Ver parados", href: "/atendimento?filtro=parados" });
   if (gestor) links.push({ label: "Abrir relatórios de hoje", href: "/relatorios?periodo=hoje" });
-  return { text: lines.join("\n"), links, highlight: hourLocal >= 19 };
+  return { text: lines.join("\n"), links, highlight: summaryMode(now).highlight };
 }
