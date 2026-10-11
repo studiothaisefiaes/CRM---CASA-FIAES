@@ -37,12 +37,16 @@ export async function findInvite(token: string) {
   return rows[0] ?? null;
 }
 
+const INVITE_GONE = "Este convite expirou ou já foi usado. Peça um novo à gestão.";
+
 export async function acceptInvite(token: string, password: string) {
   if (!isValidPassword(password)) throw new Error("A senha precisa ter pelo menos 8 caracteres.");
+  // Confere o token antes do argon2 (caro): token inválido ou vencido não gasta CPU.
+  if (!(await findInvite(token))) throw new Error(INVITE_GONE);
   const passwordHash = await hashPassword(password);
   // Atômico: só um aceite por convite, mesmo com dois cliques simultâneos.
   const [u] = await db.update(users).set({ passwordHash, inviteTokenHash: null, inviteExpiresAt: null })
     .where(and(eq(users.inviteTokenHash, hashToken(token)), gt(users.inviteExpiresAt, new Date()))).returning();
-  if (!u) throw new Error("Este convite expirou ou já foi usado. Peça um novo à gestão.");
+  if (!u) throw new Error(INVITE_GONE);
   return u;
 }
