@@ -15,19 +15,26 @@ export async function login(page: Page, email = "gestao@e2e.local") {
   await expect(page).toHaveURL(/\/$/);
 }
 
+/** O servidor recusou o login (senha errada, limite de tentativas): tentar de novo só gasta o limite, que é por IP e vale para a suíte toda. */
+class LoginRecusado extends Error {}
+
 /** Login de verdade pelo formulário. Conta no limite de tentativas: só o setup e o spec de login usam. */
 export async function loginReal(page: Page, email = "gestao@e2e.local", password = "senha-e2e-123") {
-  // Até 3 tentativas: se o dev server recarregar a página no meio (compilação), o formulário some e a tentativa recomeça do /login.
+  // Até 3 tentativas, só quando o formulário some no meio (o dev server recarrega a página ao compilar): a tentativa recomeça do /login.
+  // Se o servidor responde com erro (senha errada, limite), falha na hora, com a mensagem da tela.
   for (let attempt = 1; ; attempt++) {
     try {
       await page.goto("/login");
       await page.getByLabel("E-mail").fill(email, { timeout: 8000 });
       await page.getByLabel("Senha").fill(password, { timeout: 8000 });
       await page.getByRole("button", { name: "Entrar" }).click({ timeout: 8000 });
-      await expect(page).toHaveURL(/\/$/, { timeout: 8000 });
+      const erro = page.locator("form").getByRole("alert"); // o aviso do formulário (senha errada, muitas tentativas)
+      const entrou = () => new URL(page.url()).pathname === "/";
+      await expect.poll(async () => entrou() || (await erro.count()) > 0, { timeout: 8000 }).toBe(true);
+      if (!entrou()) throw new LoginRecusado(`login recusado para ${email}: ${(await erro.first().innerText()).trim()}`);
       return;
     } catch (e) {
-      if (attempt >= 3) throw e;
+      if (e instanceof LoginRecusado || attempt >= 3) throw e;
     }
   }
 }

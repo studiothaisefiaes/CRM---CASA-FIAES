@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { login, simulate, ageLead, e2eSql, shot } from "./helpers";
+import { login, simulate, ageLead, e2eSql, shot, usaQuadroIsolado } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 
@@ -7,8 +7,12 @@ test.describe.configure({ mode: "serial" });
 const countBeeps = `(() => { window.__beeps = 0; const C = window.AudioContext;
   window.AudioContext = class extends C { createOscillator() { window.__beeps++; return super.createOscillator(); } }; })();`;
 
+// O motor (ageLead) roda para o banco todo: lead esperando que outro spec deixou para trás também vira "atrasado" e muda a contagem do título.
+// Cada teste começa só com os leads dele (os de fora ficam arquivados e voltam no fim do arquivo).
+const isola = usaQuadroIsolado();
+
 test.beforeEach(async () => {
-  await e2eSql("update alerts set resolved_at = now() where resolved_at is null");
+  await isola(); // resolve os avisos abertos e arquiva os leads dos testes anteriores
   await e2eSql("delete from channels where instance_name like 'e2e-banner-%'");
 });
 test.afterEach(async () => { await e2eSql("delete from channels where instance_name like 'e2e-banner-%'"); });

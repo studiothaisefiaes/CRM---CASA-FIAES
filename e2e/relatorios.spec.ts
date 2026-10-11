@@ -33,9 +33,11 @@ test("clicar em 'Ver atrasados' abre a lista filtrada", async ({ page }) => {
 
 test("valores em R$ não quebram nem estouram a célula em 1280 e 1440 px", async ({ page }) => {
   await login(page);
-  // Uma venda com centavos e milhar (o pior caso de largura) para o ticket médio e o total.
-  await e2eSql(`update deals set stage_id = (select id from stages where kind = 'fechado' limit 1), closed_at = now(), value_cents = 1234567, payment_method = 'pix'
-    where contact_id = (select id from contacts where phone_e164 = '+5571997007002')`);
+  // Uma venda com centavos e milhar (o pior caso de largura) para o ticket médio e o total. O lead é deste teste: rodando sozinho
+  // (sem o teste de cima) ou depois de outros specs, a venda existe do mesmo jeito.
+  await simulate(page, { phone: "71 99700-7003", name: "Bruna Teles", text: "Oi, quero fechar o pacote." });
+  await e2eSql(`update deals set stage_id = (select id from stages where kind = 'fechado' limit 1), closed_at = now(), value_cents = 1234567, payment_method = 'pix',
+    awaiting_reply_since = null where contact_id = (select id from contacts where phone_e164 = '+5571997007003') and archived_at is null`);
   for (const width of [1280, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/relatorios?periodo=hoje");
