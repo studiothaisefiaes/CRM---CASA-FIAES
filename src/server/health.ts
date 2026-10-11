@@ -15,7 +15,10 @@ const WORKER_MAX_AGE_MS = 3 * 60_000;
 
 export async function getHealth(now = Date.now()): Promise<Health> {
   try { await pool.query("select 1"); }
-  catch { return { status: "down", db: false, worker: { ok: false, lastBeatAt: null }, whatsapp: [] }; }
+  catch (e) {
+    console.error("[health] banco fora do ar", e instanceof Error ? e.message : e);
+    return { status: "down", db: false, worker: { ok: false, lastBeatAt: null }, whatsapp: [] };
+  }
 
   const [beat] = await db.select().from(settings).where(eq(settings.key, "worker_heartbeat"));
   const raw = typeof beat?.value === "string" ? beat.value : null;
