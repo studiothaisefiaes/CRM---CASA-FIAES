@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { inArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import { contacts } from "../db/schema";
 import { normalizePhone } from "./phone";
@@ -38,6 +38,52 @@ function parseDate(s: string | undefined): Date | null {
   const [a, b, c] = m.slice(1).map(Number);
   const d = m[0].includes("-") ? new Date(Date.UTC(a, b - 1, c, 12)) : new Date(Date.UTC(c < 100 ? 2000 + c : c, b - 1, a, 12));
   return Number.isNaN(d.getTime()) ? null : d;
+}
+
+export const IMPORT_MAX_BYTES = 5 * 1024 * 1024;
+export const IMPORT_MAX_ROWS = 5000;
+/** Limites do arquivo, com mensagem clara; null quando está dentro. */
+export function importLimitError(bytes: number, csv?: string): string | null {
+  if (bytes > IMPORT_MAX_BYTES) return "Arquivo grande demais (máximo 5 MB). Divida a planilha em partes.";
+  if (csv != null) { const n = parseCsv(csv).length - 1; if (n > IMPORT_MAX_ROWS) return `Planilha com ${n.toLocaleString("pt-BR")} linhas (máximo ${IMPORT_MAX_ROWS.toLocaleString("pt-BR")}). Divida em partes.`; }
+  return null;
+}
+
+export type ImportPreview = {
+  /** Contatos distintos que seriam gravados (telefone válido, sem repetir). */
+  rows: number; /** Linhas repetidas dentro do arquivo (mesmo telefone normalizado). */ duplicates: number;
+  invalid: { line: number; value: string }[]; total: number; missingPhoneColumn?: boolean;
+  /** Primeiras linhas válidas, para conferir. */ sample: { name: string | null; phone: string }[];
+  /** Preenchido por `previewImportWithDb`: quantos já existem no banco (seriam só atualizados). */ existing?: number;
+};
+
+/** Prévia sem gravar nada: telefone normalizado, duplicado pelo telefone normalizado dentro do arquivo, inválidos com linha e valor. */
+export function previewImport(csv: string): ImportPreview {
+  const rows = parseCsv(csv);
+  if (rows.length < 2) return { rows: 0, duplicates: 0, invalid: [], total: 0, sample: [] };
+  const header = rows[0].map(norm);
+  const find = (k: keyof typeof HEAD) => header.findIndex((h) => HEAD[k].includes(h));
+  const phoneIx = find("phone"), nameIx = find("name");
+  if (phoneIx < 0) return { rows: 0, duplicates: 0, invalid: [], total: rows.length - 1, missingPhoneColumn: true, sample: [] };
+  const seen = new Map<string, { name: string | null; phone: string }>(); const invalid: { line: number; value: string }[] = []; let duplicates = 0;
+  rows.slice(1).forEach((r, i) => {
+    const phone = normalizePhone(r[phoneIx]);
+    if (!phone) { invalid.push({ line: i + 2, value: r[phoneIx] ?? "" }); return; }
+    if (seen.has(phone)) duplicates++;
+    seen.set(phone, { name: nameIx >= 0 ? r[nameIx]?.trim() || null : null, phone });
+  });
+  return { rows: seen.size, duplicates, invalid, total: rows.length - 1, sample: [...seen.values()].slice(0, 5) };
+}
+
+/** A prévia mais quantos desses telefones já existem no banco. */
+export async function previewImportWithDb(csv: string): Promise<ImportPreview> {
+  const p = previewImport(csv);
+  if (p.missingPhoneColumn || !p.rows) return p;
+  const rows = parseCsv(csv); const header = rows[0].map(norm); const ix = header.findIndex((h) => HEAD.phone.includes(h));
+  const phones = [...new Set(rows.slice(1).map((r) => normalizePhone(r[ix])).filter((x): x is string => !!x))];
+  let existing = 0;
+  for (let i = 0; i < phones.length; i += 1000) existing += (await db.select({ id: contacts.id }).from(contacts).where(inArray(contacts.phoneE164, phones.slice(i, i + 1000)))).length;
+  return { ...p, existing };
 }
 
 export type ImportReport = { total: number; imported: number; updated: number; invalid: { line: number; value: string }[]; missingPhoneColumn?: boolean };

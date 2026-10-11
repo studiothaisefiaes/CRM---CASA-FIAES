@@ -107,6 +107,20 @@ describe("mídia do WhatsApp", () => {
     expect(res.headers.get("content-disposition")).toMatch(/^attachment/);
   });
 
+  it("mídia expirada pela retenção responde 410 e não baixa de novo", async () => {
+    await ingestEvolution(photo("IMG6"));
+    let calls = 0;
+    setWhatsappProvider(fake({ downloadMedia: async () => { calls++; return { base64: JPEG.toString("base64"), mimetype: "image/jpeg", fileName: null }; } }));
+    const [m] = await db.select().from(messages);
+    await db.update(messages).set({ mediaPurgedAt: new Date() });
+    const [u] = await db.insert(users).values({ name: "Ana", email: "ana410@t.local", role: "atendente", passwordHash: "x" }).returning();
+    const { token } = await insertSession(u.id);
+    const res = await getMedia(new NextRequest(`http://localhost/api/media/${m.id}`, { headers: { cookie: `cf_session=${token}` } }), { params: Promise.resolve({ id: m.id }) });
+    expect(res.status).toBe(410);
+    expect(await downloadPendingMedia()).toEqual({ tried: 0, ok: 0 });
+    expect(calls).toBe(0);
+  });
+
   const session = async (email: string) => {
     const [u] = await db.insert(users).values({ name: "Ana", email, role: "atendente", passwordHash: "x" }).returning();
     return `cf_session=${(await insertSession(u.id)).token}`;

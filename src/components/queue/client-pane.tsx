@@ -1,4 +1,5 @@
 "use client";
+import { signalsOf, signalLabels, SIGNAL_WINDOW } from "@/server/domain/signals";
 import type { ReactNode } from "react";
 import type { DealDetail } from "@/server/queries/deal";
 import type { Viewer } from "@/app/(app)/atendimento/actions";
@@ -99,6 +100,7 @@ export function ClientPane({ d, tab, viewer, actions }: { d: DealDetail; tab: Pa
   const source = d.sourceLabel === NOT_IDENTIFIED || isChannelOrigin(d.sourceLabel) ? NOT_IDENTIFIED : d.sourceLabel;
   const svc = d.services.find((s) => s.id === d.deal.serviceId)?.label;
   const last = d.messages.at(-1);
+  const sinais = signalLabels(signalsOf(d.messages.slice(-SIGNAL_WINDOW).map((m) => ({ direction: m.direction, body: m.body, createdAt: m.createdAt }))));
   // Celular: a aba Histórico mostra só a linha do tempo; no painel largo tudo fica visível.
   const top = tab === "historico" ? "hidden xl:flex" : "flex";
   const notIdentified = d.sourceLabel === NOT_IDENTIFIED || isChannelOrigin(d.sourceLabel);
@@ -114,6 +116,12 @@ export function ClientPane({ d, tab, viewer, actions }: { d: DealDetail; tab: Pa
           </div>
           {d.contact.isClient && <Badge tone="ok" className="self-start">Cliente</Badge>}
         </div>
+
+        {sinais.length > 0 && (
+          <div data-testid="sinais" className="flex flex-wrap gap-1.5" aria-label="Sinais da conversa">
+            {sinais.map((l) => <span key={l} className="rounded-full bg-gold-soft px-2 py-0.5 text-xs font-medium text-gold-ink">{l}</span>)}
+          </div>
+        )}
 
         <Owner d={d} viewer={viewer} actions={actions} />
 

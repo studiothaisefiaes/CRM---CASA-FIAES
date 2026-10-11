@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { db } from "../db";
 import { contacts } from "../db/schema";
-import { importClients, parseCsv } from "./import";
+import { importClients, parseCsv, previewImport, previewImportWithDb, importLimitError } from "./import";
 import { recordInbound } from "./deals";
 import { resetDb } from "../../../test/db";
 
@@ -44,5 +44,27 @@ describe("importação do histórico de clientes", () => {
 
   it("sem coluna de telefone avisa", async () => {
     expect(await importClients("Nome;Cidade\nAna;Salvador")).toMatchObject({ missingPhoneColumn: true });
+  });
+});
+
+describe("prévia da importação", () => {
+  beforeEach(resetDb);
+  it("prévia aponta duplicado pelo telefone normalizado e linha inválida", () => {
+    expect(previewImport("nome;telefone\nAna;71 99999-0001\nAna B;(71)999990001\nX;123")).toMatchObject({ rows: 1, duplicates: 1, invalid: [{ line: 4, value: "123" }] });
+  });
+  it("lê vírgula e BOM, avisa sem coluna de telefone e não grava nada", async () => {
+    expect(previewImport("\ufeffNome,Celular\nAna,71988880000")).toMatchObject({ rows: 1, duplicates: 0, invalid: [] });
+    expect(previewImport("Nome;Cidade\nAna;Salvador")).toMatchObject({ missingPhoneColumn: true });
+    await previewImportWithDb("nome;telefone\nAna;71 99999-0001");
+    expect(await db.select().from(contacts)).toHaveLength(0);
+  });
+  it("conta quem já existe no banco", async () => {
+    await db.insert(contacts).values({ phoneE164: "+5571999990001" });
+    expect(await previewImportWithDb("nome;telefone\nAna;71 99999-0001\nBia;71 99999-0002")).toMatchObject({ rows: 2, existing: 1 });
+  });
+  it("limites: 5 MB e 5.000 linhas, com mensagem clara", () => {
+    expect(importLimitError(6 * 1024 * 1024)).toMatch(/5 MB/);
+    expect(importLimitError(100, "telefone\n" + Array(5001).fill("71999990001").join("\n"))).toMatch(/5\.000/);
+    expect(importLimitError(100, "telefone\n71999990001")).toBeNull();
   });
 });

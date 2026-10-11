@@ -8,6 +8,8 @@ import { pool, db } from "../src/server/db";
 import { settings } from "../src/server/db/schema";
 import { downloadPendingMedia, refreshAvatars } from "../src/server/whatsapp/media";
 import { checkConnections } from "../src/server/whatsapp/watchdog";
+import { purgeExpiredMedia } from "../src/server/whatsapp/retention";
+import { getMediaRetentionMonths } from "../src/server/domain/messaging-settings";
 import { remindDueTasks } from "../src/server/domain/tasks";
 import { drainOutbox } from "../src/server/domain/outbox";
 import { sendPushForPendingAlerts } from "../src/server/push";
@@ -15,7 +17,7 @@ import { vapidConfig } from "../src/server/env";
 
 // Worker do CRM: automações (a cada minuto), reprocessamento de webhooks e limpeza.
 // Roda separado do app: `npm run worker` (no Contabo, sob pm2).
-const QUEUES = { rules: "regras", webhooks: "webhooks-reprocessar", history: "historico-whatsapp", media: "midia-whatsapp", cleanup: "limpeza", reminders: "lembretes", outbox: "fila-envios", push: "push-alertas" } as const;
+const QUEUES = { rules: "regras", webhooks: "webhooks-reprocessar", history: "historico-whatsapp", media: "midia-whatsapp", cleanup: "limpeza", retention: "retencao-midia", reminders: "lembretes", outbox: "fila-envios", push: "push-alertas" } as const;
 
 async function main() {
   const boss = new PgBoss({ connectionString: process.env.DATABASE_URL!, schema: "pgboss" });
@@ -32,6 +34,8 @@ async function main() {
   if (pushOn) await boss.schedule(QUEUES.push, "* * * * *", null, { tz: "America/Bahia", singletonKey: "push" });
   else await boss.unschedule(QUEUES.push).catch(() => {});
   await boss.schedule(QUEUES.cleanup, "15 4 * * *", null, { tz: "America/Bahia" });
+  // Retenção de mídia: todo dia às 04:00 de Salvador (America/Bahia, UTC-3 fixo; equivale a "0 7 * * *" em UTC). Lê a configuração a cada rodada; "nunca" não apaga nada.
+  await boss.schedule(QUEUES.retention, "0 4 * * *", null, { tz: "America/Bahia", singletonKey: "retencao-midia" });
 
   // Batida do worker: gravada ao fim de cada rodada das regras (todo minuto), o que prova que o motor roda.
   // O /api/health lê daqui para saber se as automações estão funcionando.
@@ -64,6 +68,7 @@ async function main() {
   await boss.work(QUEUES.outbox, { batchSize: 1 }, async () => { const r = await drainOutbox(); if (r.sent || r.cancelled || r.retry || r.failed) console.log("[fila de envios]", r); });
   // Push no celular: só com as chaves VAPID no .env (sem elas o job nem é agendado).
   if (pushOn) await boss.work(QUEUES.push, { batchSize: 1 }, async () => { const r = await sendPushForPendingAlerts(); if (r.sent || r.failed) console.log("[push]", r); });
+  await boss.work(QUEUES.retention, { batchSize: 1 }, async () => { const r = await purgeExpiredMedia(new Date(), await getMediaRetentionMonths()); if (r.purged) console.log("[retenção de mídia]", r); });
   await boss.work(QUEUES.cleanup, async () => { await purgeExpiredSessions(); await purgeOldWebhookEvents(); });
 
   // Primeira rodada imediata (sem esperar o próximo minuto cheio).

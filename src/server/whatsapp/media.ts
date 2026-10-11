@@ -40,6 +40,7 @@ export async function ensureMedia(messageId: string): Promise<{ file: string; mi
     .leftJoin(channels, eq(channels.id, messages.channelId)).where(eq(messages.id, messageId));
   if (!row) return null;
   const m = row.m;
+  if (m.mediaPurgedAt) return null; // apagada pela retenção: não baixa de novo
   // Nome para o download: o nome original do documento, senão a legenda, senão o do arquivo salvo.
   // A extensão certa (pelo tipo detectado) é garantida em mediaHeaders.
   const nameFor = (saved: string) => (m.kind === "document" && (originalFileName(m.media?.message) || m.body)) || saved;
@@ -68,7 +69,7 @@ export async function ensureMedia(messageId: string): Promise<{ file: string; mi
 /** Worker: baixa fotos, áudios e figurinhas recentes enquanto o link do WhatsApp ainda vale. */
 export async function downloadPendingMedia(limit = 20) {
   const rows = await db.select({ id: messages.id }).from(messages)
-    .where(and(isNotNull(messages.media), isNull(messages.mediaPath), inArray(messages.kind, AUTO_KINDS), lt(messages.mediaAttempts, MAX_ATTEMPTS),
+    .where(and(isNotNull(messages.media), isNull(messages.mediaPath), isNull(messages.mediaPurgedAt), inArray(messages.kind, AUTO_KINDS), lt(messages.mediaAttempts, MAX_ATTEMPTS),
       sql`${messages.createdAt} > now() - interval '30 days'`))
     .orderBy(desc(messages.createdAt)).limit(limit);
   let ok = 0;

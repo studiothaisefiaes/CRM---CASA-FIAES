@@ -360,3 +360,22 @@ describe("getQueueItem: o item de um lead só, com as mesmas exclusões da Fila"
     expect(await getQueueItem("00000000-0000-4000-8000-000000000001")).toBeNull();
   });
 });
+
+describe("getQueue: etiquetas de sinal", () => {
+  it("mostra as etiquetas pelas últimas mensagens, no máximo 2 por item", async () => {
+    const { gestora, lead } = await setup();
+    const d = await lead({ awaitingReplySince: ago(5) });
+    const ins = (direction: "in" | "out", body: string, at: Date) => db.insert(messages).values({ dealId: d.id, contactId: d.contactId, direction, body, kind: "text", createdAt: at });
+    await ins("in", "Quanto custa? E tem horário sábado?", ago(30)); await ins("out", "Fica R$ 150", ago(29)); await ins("in", "Ok", ago(5));
+    const q = await getQueue(asUser(gestora), { now: NOW });
+    const item = q.sections.flatMap((s) => s.items).find((i) => i.dealId === d.id)!;
+    const sinais = item.signals.filter((s) => ["Pediu preço", "Pediu horário", "Sumiu após preço", "Responde rápido"].includes(s));
+    expect(sinais).toEqual(["Pediu preço", "Pediu horário"]);
+  });
+  it("sumiu depois do preço aparece primeiro", async () => {
+    const { gestora, lead } = await setup();
+    const d = await lead({ awaitingReplySince: null, last: { direction: "out", body: "O valor é R$ 90", at: days(3) } });
+    const q = await getQueue(asUser(gestora), { now: NOW });
+    expect(q.sections.flatMap((s) => s.items).find((i) => i.dealId === d.id)!.signals).toContain("Sumiu após preço");
+  });
+});

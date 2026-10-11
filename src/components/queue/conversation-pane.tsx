@@ -133,7 +133,7 @@ export function ConversationPane({ dealId, initial, initialTab = "conversa", bac
   const firstName = (detail?.contact.name ?? (initial && initial.name !== initial.phone ? initial.name : "")).trim().split(/\s+/)[0] ?? "";
   const msgs: Msg[] = useMemo(() => {
     if (!detail) return [];
-    const base = detail.messages.map((m) => ({ id: m.id, externalId: m.externalId, direction: m.direction, kind: m.kind, body: m.body, status: m.status, createdAt: new Date(m.createdAt).toISOString(), sender: m.sender, fromPhone: m.fromPhone, error: m.error, hasMedia: m.hasMedia, quotedBody: m.quotedBody, edited: !!m.editedAt, deleted: !!m.deletedAt }));
+    const base = detail.messages.map((m) => ({ id: m.id, externalId: m.externalId, direction: m.direction, kind: m.kind, body: m.body, status: m.status, createdAt: new Date(m.createdAt).toISOString(), sender: m.sender, fromPhone: m.fromPhone, error: m.error, hasMedia: m.hasMedia, quotedBody: m.quotedBody, edited: !!m.editedAt, deleted: !!m.deletedAt, expiredMonths: m.mediaPurgedAt ? detail.mediaRetentionMonths : undefined }));
     // A mensagem que acabou de ser enviada já chegou do servidor: não mostra o balão provisório junto.
     const arrived = !!optimistic && base.some((m) => m.direction === "out" && m.body === optimistic.text && new Date(m.createdAt).getTime() >= optimistic.at - 2000);
     return optimistic && !arrived ? [...base, { id: "optimistic", direction: "out" as const, kind: "text", body: optimistic.text, status: "pending", createdAt: new Date(optimistic.at).toISOString(), sender: null, fromPhone: false }] : base;

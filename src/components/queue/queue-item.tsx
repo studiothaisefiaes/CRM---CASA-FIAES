@@ -13,6 +13,7 @@ import { seconds } from "@/lib/format";
 import { formatPhoneClient } from "@/lib/phone-client";
 import { ringState, slaProgress, slaStatus, type QueueSectionKey, type RingState } from "@/lib/queue";
 import { cn } from "@/lib/cn";
+import { SIGNAL_LABELS } from "@/server/domain/signals";
 
 const KIND: Record<string, string> = { audio: "Áudio", image: "Foto", sticker: "Figurinha", video: "Vídeo", document: "Documento", location: "Localização", contact: "Contato", poll: "Enquete", event: "Evento", other: "Mensagem" };
 const RING_COLOR: Record<Exclude<RingState, "none">, string> = { ok: "var(--color-graphite)", near: "var(--color-gold)", late: "var(--color-alert)" };
@@ -164,7 +165,7 @@ export const QueueRow = memo(function QueueRow({ item, section, selected, href, 
           <span>{item.stageName}</span><span aria-hidden>·</span><span className="truncate max-w-[16ch]">{item.sourceLabel}</span><span aria-hidden>·</span>
           <span className={item.ownerName ? "" : "text-gold-ink font-medium"}>{item.ownerName ? item.ownerName.split(/\s+/)[0] : "Sem dono"}</span>
           {pills.map((s) => (
-            <span key={s} className={cn("rounded-full px-1.5 py-px font-medium", s === "Tarefa atrasada" ? "bg-alert-soft text-alert" : s === "Cliente" ? "bg-ok-soft text-ok" : "bg-paper-2 text-graphite")}>{s}</span>
+            <span key={s} data-signal={SIGNAL_LABELS.has(s) ? "" : undefined} className={cn("rounded-full px-1.5 py-px font-medium", s === "Tarefa atrasada" ? "bg-alert-soft text-alert" : s === "Cliente" ? "bg-ok-soft text-ok" : SIGNAL_LABELS.has(s) ? "bg-gold-soft text-gold-ink" : "bg-paper-2 text-graphite")}>{s}</span>
           ))}
         </span>
       </span>

@@ -9,6 +9,7 @@ import { NEAR_SLA_RATIO, SECTION_ORDER, type QueueFoco, type QueueSectionKey, ty
 import type { QueueFilter } from "../../lib/report-links";
 import { lateDealIds } from "./late-count";
 import { isUuid } from "../../lib/uuid";
+import { signalsOf, signalLabels, SIGNAL_WINDOW, type SignalMessage } from "../domain/signals";
 
 export type QueueItem = {
   dealId: string; contactId: string; name: string; phone: string; hasAvatar: boolean;
@@ -113,6 +114,19 @@ async function details(ids: string[]) {
     .leftJoin(sql`lateral (select t.title from tasks t where t.deal_id = ${deals.id} and t.done_at is null and t.kind in ('proxima_acao', 'retorno', 'comparecimento') order by t.due_at asc limit 1) nt`, sql`true`)
     .where(inArray(deals.id, ids));
   return new Map(rows.map((r) => [r.id, r]));
+}
+
+/** Etiquetas de sinal: UMA consulta com as últimas ~30 mensagens de cada lead da tela (sem N+1). */
+async function signalLabelsFor(ids: string[], now: Date): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  if (!ids.length) return out;
+  const rows = (await db.execute(sql`select deal_id, direction, body, created_at from (
+      select m.deal_id, m.direction, m.body, m.created_at, row_number() over (partition by m.deal_id order by m.created_at desc) as rn
+      from messages m where m.deal_id in (${sql.join(ids.map((i) => sql`${i}::uuid`), sql`, `)})) t where rn <= ${SIGNAL_WINDOW}`)).rows as { deal_id: string; direction: "in" | "out"; body: string | null; created_at: Date }[];
+  const by = new Map<string, SignalMessage[]>();
+  for (const r of rows) { const l = by.get(r.deal_id) ?? []; l.push({ direction: r.direction, body: r.body, createdAt: r.created_at }); by.set(r.deal_id, l); }
+  for (const [id, msgs] of by) { const labels = signalLabels(signalsOf(msgs, now)); if (labels.length) out.set(id, labels); }
+  return out;
 }
 
 export const ATTENDANCE_DUE_LIMIT = 20;
@@ -267,7 +281,8 @@ export async function getQueue(user: Who, opts: QueueOptions = {}): Promise<Queu
     : SECTION_ORDER.flatMap((key) => wanted.filter((e) => e.section === key).sort(order[key]));
   const total = picked.length;
   const shown = picked.slice(0, limit);
-  const det = await details(shown.map((p) => p.r.id));
+  const ids = shown.map((p) => p.r.id);
+  const [det, sinais] = await Promise.all([details(ids), signalLabelsFor(ids, now)]);
   const sections: QueueSection[] = [];
   for (const p of shown) {
     const d = det.get(p.r.id);
@@ -278,7 +293,7 @@ export async function getQueue(user: Who, opts: QueueOptions = {}): Promise<Queu
       lastMessage: d?.lastMessage ?? null, lastKind: d?.lastKind ?? null, lastDirection: r.lastDirection, lastAt: r.lastAt ? new Date(r.lastAt).toISOString() : null,
       stageKey: r.stageKey, stageName: r.stageName, sourceLabel: d?.sourceLabel ?? "", ownerName: r.ownerName,
       ...(r.taskDueAt && d?.taskTitle && p.section !== "reengajar" ? { nextAction: { title: d.taskTitle, dueAt: new Date(r.taskDueAt).toISOString() } } : {}),
-      signals: p.signals,
+      signals: [...p.signals, ...(sinais.get(r.id) ?? [])],
     };
     const last = sections.at(-1);
     if (last && last.key === p.section) last.items.push(item); else sections.push({ key: p.section, items: [item] });
