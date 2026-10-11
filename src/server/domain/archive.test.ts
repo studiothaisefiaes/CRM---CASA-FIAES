@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
-import { deals, messages, contacts, users, channels, alerts, dealEvents, stages } from "../db/schema";
+import { deals, messages, contacts, users, channels, alerts, dealEvents } from "../db/schema";
 import { recordInbound, ignoreContact, unignoreContact, importHistoryChat, moveDeal } from "./deals";
 import { archiveDeals, restoreDeals } from "./archive";
 import { startQuiet, endQuiet, isQuiet } from "./quiet";

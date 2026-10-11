@@ -58,7 +58,6 @@ try {
     const items = await page.locator(ready).count();
     await page.waitForTimeout(3000); // regime: passada a hidratação e as animações de entrada
     await page.evaluate(() => { window.__lt.length = 0; });
-    const m0 = await cdp.send("Performance.getMetrics").catch(() => null);
     await page.waitForTimeout(SECONDS * 1000);
     const lt = await page.evaluate(() => window.__lt.slice());
     out[name] = { itens: items, tarefasLongas: lt.length, duracoesMs: lt.map((x) => x[1]), porSegundo: +(lt.length / SECONDS).toFixed(2) };

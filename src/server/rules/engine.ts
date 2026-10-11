@@ -1,7 +1,7 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { db, type Tx } from "../db";
-import { alerts, automationRuns, automations, deals, settings, stages, type Automation } from "../db/schema";
-import { businessMinutesBetween, isOpen, DEFAULT_HOURS, type BusinessHours } from "../../lib/business-hours";
+import { alerts, automationRuns, automations, deals, stages, type Automation } from "../db/schema";
+import { businessMinutesBetween, isOpen, type BusinessHours } from "../../lib/business-hours";
 import { formatPhone } from "../domain/phone";
 import { logEvent, emit } from "../domain/events";
 import { moveDealTx } from "../domain/deals";

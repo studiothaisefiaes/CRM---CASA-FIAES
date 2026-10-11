@@ -15,7 +15,7 @@ export function Toolbar({ people, origins }: { people: { id: string; name: strin
   const [filters, setFilters] = useState(false);
   const activeFilters = (sp.get("dono") ? 1 : 0) + (sp.get("origem") ? 1 : 0);
   const set = (k: string, v: string) => { const p = new URLSearchParams(sp.toString()); if (v) p.set(k, v); else p.delete(k); p.delete("lead"); router.replace(`/funil${p.size ? `?${p}` : ""}`, { scroll: false }); };
-  useEffect(() => { const t = setTimeout(() => { if ((sp.get("q") ?? "") !== q) set("q", q); }, 280); return () => clearTimeout(t); }); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { const t = setTimeout(() => { if ((sp.get("q") ?? "") !== q) set("q", q); }, 280); return () => clearTimeout(t); });
   const sel = "h-9 rounded-[var(--radius-control)] border border-line-strong bg-paper px-3 pr-7 text-sm appearance-none cursor-pointer";
   return (
     <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">

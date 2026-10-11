@@ -129,7 +129,7 @@ export function Conversation({ messages, onReply, label = "Mensagens", forceEndK
     const at = prev.lastId ? real.findIndex((m) => m.id === prev.lastId) : -1;
     const fresh = at >= 0 ? real.slice(at + 1) : prev.lastId === lastId ? [] : real; // lista trocada por inteiro: tudo conta como novo
     const mine = optimistic && !prev.optimistic; // o balão provisório da própria atendente
-    if (mine || (fresh.length && stuck.current)) { toEnd(); setUnseen(0); } // eslint-disable-line react-hooks/set-state-in-effect -- o aviso zera junto com a rolagem
+    if (mine || (fresh.length && stuck.current)) { toEnd(); setUnseen(0); } // o aviso zera junto com a rolagem
     else if (fresh.length) setUnseen((n) => n + fresh.length);
   }, [messages, toEnd]);
 
@@ -138,7 +138,7 @@ export function Conversation({ messages, onReply, label = "Mensagens", forceEndK
   useLayoutEffect(() => {
     if (endKey.current === forceEndKey) return;
     endKey.current = forceEndKey;
-    toEnd(); setUnseen(0); // eslint-disable-line react-hooks/set-state-in-effect -- zera o aviso junto com a rolagem
+    toEnd(); setUnseen(0); // zera o aviso junto com a rolagem
   }, [forceEndKey, toEnd]);
 
   // Aba que reexibe a conversa (o navegador perde a rolagem de um elemento escondido).
