@@ -71,6 +71,13 @@
       "when": 1791655764622,
       "tag": "0009_indices",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791695283201,
+      "tag": "0010_wait_key_legado",
+      "breakpoints": true
     }
   ]
 }
