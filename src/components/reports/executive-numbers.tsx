@@ -7,7 +7,8 @@ import { money } from "@/lib/format";
 import type { ExecutiveView } from "@/server/reports/screen";
 import { Delta } from "./delta";
 
-type Cell = { key: string; label: string; value: ReactNode; sub: ReactNode; cmp: Comparison | null; prevText?: string };
+/** `long`: valor em R$ com milhar (ex.: "R$ 12.345,67"), que em 18cqw passava da célula de 1280 px; ganha uma escala menor. */
+type Cell = { key: string; label: string; value: ReactNode; sub: ReactNode; cmp: Comparison | null; prevText?: string; long?: boolean };
 
 /** R2: os 5 números do período, com o n por trás e a comparação com o período anterior. Atendente não recebe os valores em R$. */
 export function ExecutiveNumbers({ numbers: x, slaHit, slaN, previousLabel }: { numbers: ExecutiveView; slaHit: number; slaN: number; previousLabel: string }) {
@@ -27,7 +28,7 @@ export function ExecutiveNumbers({ numbers: x, slaHit, slaN, previousLabel }: { 
   ];
   if (x.ticketMedio) {
     const t = x.ticketMedio;
-    cells.push({ key: "ticket", label: "Ticket médio", value: t.atual == null ? <>—</> : <>{money(t.atual)}</>, sub: `n = ${t.n} ${t.n === 1 ? "venda com valor" : "vendas com valor"}`,
+    cells.push({ key: "ticket", label: "Ticket médio", value: t.atual == null ? <>—</> : <>{money(t.atual)}</>, long: t.atual != null && money(t.atual).length > 9, sub: `n = ${t.n} ${t.n === 1 ? "venda com valor" : "vendas com valor"}`,
       cmp: compareMetric(t.atual, t.anterior, { kind: "cents", n: t.n, nPrev: t.nAnterior }), prevText: t.anterior == null ? undefined : `antes: ${money(t.anterior)}` });
   }
   return (
@@ -38,7 +39,7 @@ export function ExecutiveNumbers({ numbers: x, slaHit, slaN, previousLabel }: { 
             initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 + i * 0.06, duration: 0.5, ease: EASE }}>
             <dt className="text-[13px] text-graphite leading-snug min-h-[2.5em]">{c.label}</dt>
             <dd className="mt-1">
-              <p className="font-serif text-[clamp(24px,18cqw,40px)] leading-none font-light tabular whitespace-nowrap">{c.value}</p>
+              <p className={`font-serif leading-none font-light tabular whitespace-nowrap ${c.long ? "text-[clamp(22px,15cqw,36px)]" : "text-[clamp(24px,18cqw,40px)]"}`}>{c.value}</p>
               <p className="text-[13px] text-muted mt-2 tabular">{c.sub}</p>
               {c.cmp && <div className="mt-1.5"><Delta c={c.cmp} prevText={c.prevText} /></div>}
             </dd>

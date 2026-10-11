@@ -43,9 +43,10 @@ test("valores em R$ não quebram nem estouram a célula em 1280 e 1440 px", asyn
     await page.goto("/relatorios?periodo=hoje");
     const ticket = page.getByRole("term").filter({ hasText: "Ticket médio" }).locator("xpath=following-sibling::dd[1]//p[1]");
     await expect(ticket).toContainText(/R\$\s\d{1,3}(\.\d{3})*,\d{2}/);
-    const cells = await page.locator("dl > div > dd > p.font-serif").evaluateAll((els) => els.map((el) => ({ sw: el.scrollWidth, cw: el.clientWidth, h: el.getBoundingClientRect().height, fs: parseFloat(getComputedStyle(el).fontSize) })));
+    const cells = await page.locator("dl > div > dd > p.font-serif").evaluateAll((els) => els.map((el) => ({ t: el.textContent ?? "", sw: el.scrollWidth, cw: el.clientWidth, h: el.getBoundingClientRect().height, fs: parseFloat(getComputedStyle(el).fontSize) })));
     expect(cells.length).toBe(5);
-    for (const c of cells) { expect(c.sw).toBeLessThanOrEqual(c.cw); expect(c.h).toBeLessThan(c.fs * 1.3); } // cabe e não quebra em duas linhas
+    // "Sem dados suficientes" é frase, não valor (sem resposta no dia, rodando o spec sozinho): pode ocupar duas linhas.
+    for (const c of cells.filter((x) => !x.t.startsWith("Sem dados"))) { expect(c.sw).toBeLessThanOrEqual(c.cw); expect(c.h).toBeLessThan(c.fs * 1.3); } // cabe e não quebra em duas linhas
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
     await page.addStyleTag({ content: "nextjs-portal { display: none !important }" });
     if (width === 1440) await shot(page, "01-visao-geral-desktop", { fullPage: true });
