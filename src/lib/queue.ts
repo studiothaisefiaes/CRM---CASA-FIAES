@@ -10,10 +10,10 @@ export const VIEW_LABEL: Record<QueueView, string> = {
 };
 export const parseQueueView = (v: unknown): QueueView => ((QUEUE_VIEWS as readonly unknown[]).includes(v) ? (v as QueueView) : "todos");
 
-export type QueueSectionKey = "atrasados" | "perto" | "aguardando" | "acoes-hoje" | "parados" | "aguardando-cliente" | "reengajar";
-export const SECTION_ORDER: QueueSectionKey[] = ["atrasados", "perto", "aguardando", "acoes-hoje", "parados", "aguardando-cliente", "reengajar"];
+export type QueueSectionKey = "atrasados" | "estourado" | "perto" | "aguardando" | "acoes-hoje" | "parados" | "aguardando-cliente" | "reengajar";
+export const SECTION_ORDER: QueueSectionKey[] = ["atrasados", "estourado", "perto", "aguardando", "acoes-hoje", "parados", "aguardando-cliente", "reengajar"];
 export const SECTION_LABEL: Record<QueueSectionKey, string> = {
-  atrasados: "Atrasados", perto: "Perto do prazo", aguardando: "Aguardando resposta", "acoes-hoje": "Próximas ações de hoje",
+  atrasados: "Atrasados", estourado: "Prazo estourado", perto: "Perto do prazo", aguardando: "Aguardando resposta", "acoes-hoje": "Próximas ações de hoje",
   parados: "Parados", "aguardando-cliente": "Aguardando a cliente", reengajar: "Para reengajar",
 };
 

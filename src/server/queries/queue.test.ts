@@ -55,6 +55,30 @@ describe("getQueue: seções por urgência", () => {
     expect(ids(q, "aguardando")).toEqual([aguardando.id]);
   });
 
+  it("prazo já estourado sem alerta ainda: seção 'Prazo estourado' (não 'Perto do prazo'); 'Atrasados' segue só o alerta", async () => {
+    const { gestora, lead, lateAlert } = await setup();
+    const perto = await lead({ awaitingReplySince: ago(1.2) }); // 60% do prazo de 2 min
+    const estourado = await lead({ awaitingReplySince: ago(5) }); // passou do prazo; o motor ainda não gerou o alerta
+    const atrasado = await lead({ awaitingReplySince: ago(30) });
+    await lateAlert(atrasado.id);
+    const q = await getQueue(asUser(gestora), { now: NOW });
+    expect(keys(q)).toEqual(["atrasados", "estourado", "perto"]);
+    expect(ids(q, "estourado")).toEqual([estourado.id]);
+    expect(ids(q, "perto")).toEqual([perto.id]);
+    expect(q.counts.atrasados).toBe(1); // o mesmo número do sino (alerta)
+    expect(q.counts.atrasados).toBe(await countLateLeads(asUser(gestora)));
+  });
+
+  it("canal em modo quieto: lead além do prazo não aparece como estourado nem atrasado (o modo quieto suspende os avisos)", async () => {
+    const { gestora, lead } = await setup();
+    const { channels } = await import("../db/schema");
+    const [ch] = await db.insert(channels).values({ name: "Rec", instanceName: "rec-q", status: "conectado", quietUntil: new Date(NOW.getTime() + 3_600_000) }).returning();
+    const quieto = await lead({ awaitingReplySince: ago(30), channelId: ch.id });
+    const q = await getQueue(asUser(gestora), { now: NOW });
+    expect(keys(q)).toEqual(["aguardando"]);
+    expect(ids(q, "aguardando")).toEqual([quieto.id]);
+  });
+
   it("perto do prazo é acima de 50% do prazo da etapa, contado só no expediente", async () => {
     const { gestora, lead } = await setup();
     const abaixo = await lead({ awaitingReplySince: ago(0.9) }); // 45% de 2 min

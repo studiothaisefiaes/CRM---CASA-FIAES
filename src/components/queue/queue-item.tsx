@@ -68,6 +68,7 @@ function RowTime({ section, since, slaMinutes, className }: { section: QueueSect
 
 const WEIGHT: Record<QueueSectionKey, { row: string; avatar: number; name: string; time: string }> = {
   atrasados: { row: "bg-alert-soft border-l-[5px] border-l-alert py-3.5", avatar: 44, name: "text-base font-semibold", time: "text-[18px] font-semibold text-alert" },
+  estourado: { row: "border-l-[4px] border-l-gold py-3", avatar: 40, name: "text-base font-semibold", time: "text-base font-semibold text-gold-ink" },
   perto: { row: "border-l-[4px] border-l-gold py-3", avatar: 40, name: "text-base font-semibold", time: "text-base font-semibold text-gold-ink" },
   aguardando: { row: "border-l-[3px] border-l-transparent py-3", avatar: 40, name: "text-base font-medium", time: "text-base font-medium text-ink" },
   "acoes-hoje": { row: "border-l-[3px] border-l-transparent py-2.5", avatar: 36, name: "text-base font-medium", time: "text-sm text-graphite" },

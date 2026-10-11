@@ -1,6 +1,6 @@
-import { and, asc, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import { db } from "../db";
-import { contacts, deals, stages, users } from "../db/schema";
+import { channels, contacts, deals, stages, users } from "../db/schema";
 import type { SessionUser } from "../auth/sessions-store";
 import { getBusinessHours } from "../domain/hours";
 import { SOURCE_EXPR } from "../reports/common";
@@ -80,6 +80,7 @@ type Light = {
   id: string; contactId: string; name: string | null; phone: string; isClient: boolean; ownerId: string | null; ownerName: string | null;
   stageKey: string; stageName: string; slaMinutes: number | null; staleDays: number | null; stageEnteredAt: Date; awaitingReplySince: Date | null;
   scheduledAt: Date | null; createdAt: Date; imported: boolean; lastAt: Date | null; lastDirection: "in" | "out" | null; taskDueAt: Date | null;
+  channelId: string | null;
 };
 const LAST_OF_CONTACT = sql`(select max(m2.created_at) from messages m2 where m2.contact_id = ${contacts.id})`;
 
@@ -90,7 +91,7 @@ async function lightRows(conds: SQL[], opts: { lastOfContact?: boolean; limit?: 
     stageEnteredAt: deals.stageEnteredAt, awaitingReplySince: deals.awaitingReplySince, scheduledAt: deals.scheduledAt, createdAt: deals.createdAt,
     imported: sql<boolean>`exists (select 1 from deal_events he where he.deal_id = ${deals.id} and he.type = 'lead_criado' and he.payload->>'historico' = 'true')`,
     lastAt: opts.lastOfContact ? sql<Date | null>`${LAST_OF_CONTACT}` : sql<Date | null>`lm.created_at`, lastDirection: sql<"in" | "out" | null>`lm.direction`,
-    taskDueAt: sql<Date | null>`nt.due_at`,
+    taskDueAt: sql<Date | null>`nt.due_at`, channelId: deals.channelId,
   }).from(deals)
     .innerJoin(contacts, eq(contacts.id, deals.contactId))
     .innerJoin(stages, eq(stages.id, deals.stageId))
@@ -174,7 +175,8 @@ const qCond = (q: string): SQL => {
 
 /**
  * A Fila: os leads abertos de quem pediu, em seções por urgência. Cada lead cai em UMA seção, na primeira que valer:
- * atrasados (alerta de espera aberto, a mesma condição do sino) → perto do prazo (≥ NEAR_SLA_RATIO do prazo da etapa, em horas de expediente)
+ * atrasados (alerta de espera aberto, a mesma condição do sino) → prazo estourado (passou do prazo da etapa, mas o motor ainda não gerou o alerta)
+ * → perto do prazo (≥ NEAR_SLA_RATIO do prazo da etapa, em horas de expediente). Canal em modo quieto não tem prazo (o motor não avisa): fica em aguardando.
  * → aguardando resposta → próximas ações de hoje → parados (sem próxima ação e além do `stale_days` da etapa) → aguardando a cliente (o resto: a bola não está com a Casa).
  * Ninguém some: o que não é nada disso fica em "aguardando a cliente". Fora da Fila: arquivados, contatos ignorados e leads fechados/perdidos.
  * A view "Sem contato há 90 dias" é outra lista: contatos para reengajar (ver `reengageConds`).
@@ -186,7 +188,9 @@ export async function getQueue(user: Who, opts: QueueOptions = {}): Promise<Queu
   const limit = opts.limit ?? QUEUE_LIMIT;
   const gestor = user.role === "gestor";
   const onlyOwn = !gestor && !!opts.filtro; // "só os seus" vale só para o link vindo de relatório
-  const [hours, lateIds] = await Promise.all([getBusinessHours(), lateDealIds(user, { onlyOwn })]);
+  const [hours, lateIds, quietRows] = await Promise.all([getBusinessHours(), lateDealIds(user, { onlyOwn }),
+    db.select({ id: channels.id }).from(channels).where(gt(channels.quietUntil, now))]);
+  const quietChannels = new Set(quietRows.map((c) => c.id));
 
   const conds: SQL[] = [isNull(deals.closedAt), isNull(deals.archivedAt), eq(contacts.ignored, false)];
   const sc = scopeCond(user, onlyOwn);
@@ -212,11 +216,14 @@ export async function getQueue(user: Who, opts: QueueOptions = {}): Promise<Queu
     const awaiting = r.awaitingReplySince;
     const waitSec = awaiting ? businessSecondsBetween(awaiting.getTime(), nowMs, hours) : 0;
     const late = lateIds.has(r.id);
-    const near = !late && !!awaiting && !!r.slaMinutes && waitSec >= r.slaMinutes * 60 * NEAR_SLA_RATIO;
+    // Modo quieto suspende os avisos do canal: sem prazo correndo, o lead não aparece como estourado nem perto.
+    const timed = !late && !!awaiting && !!r.slaMinutes && !(r.channelId && quietChannels.has(r.channelId));
+    const over = timed && waitSec >= r.slaMinutes! * 60;
+    const near = timed && !over && waitSec >= r.slaMinutes! * 60 * NEAR_SLA_RATIO;
     const taskDue = r.taskDueAt ? new Date(r.taskDueAt) : null;
     const actionToday = !!taskDue && taskDue.getTime() < today1;
     const stale = r.staleDays != null && r.stageEnteredAt.getTime() <= nowMs - r.staleDays * DAY_MS;
-    const section: QueueSectionKey = late ? "atrasados" : near ? "perto" : awaiting ? "aguardando" : actionToday ? "acoes-hoje" : stale && !taskDue ? "parados" : "aguardando-cliente";
+    const section: QueueSectionKey = late ? "atrasados" : over ? "estourado" : near ? "perto" : awaiting ? "aguardando" : actionToday ? "acoes-hoje" : stale && !taskDue ? "parados" : "aguardando-cliente";
     const scheduledToday = within(r.scheduledAt, today0, today1);
     const scheduledTomorrow = within(r.scheduledAt, today1, tomorrow1);
     const overdueTask = !!taskDue && taskDue.getTime() < nowMs;
@@ -270,7 +277,7 @@ export async function getQueue(user: Who, opts: QueueOptions = {}): Promise<Queu
 
   // Dentro da seção: quem espera há mais tempo primeiro; ações pelo vencimento; parados pelo mais antigo; o resto pela conversa mais recente.
   const order: Record<QueueSectionKey, (a: Entry, b: Entry) => number> = {
-    atrasados: (a, b) => b.waitSec - a.waitSec, perto: (a, b) => b.waitSec - a.waitSec, aguardando: (a, b) => b.waitSec - a.waitSec,
+    atrasados: (a, b) => b.waitSec - a.waitSec, estourado: (a, b) => b.waitSec - a.waitSec, perto: (a, b) => b.waitSec - a.waitSec, aguardando: (a, b) => b.waitSec - a.waitSec,
     "acoes-hoje": (a, b) => time(a.r.taskDueAt) - time(b.r.taskDueAt),
     parados: (a, b) => time(a.r.stageEnteredAt) - time(b.r.stageEnteredAt),
     "aguardando-cliente": (a, b) => time(b.r.lastAt) - time(a.r.lastAt),

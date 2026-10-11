@@ -14,6 +14,7 @@ export { __itemRenderCount } from "./queue-item";
 
 const HEAD: Record<QueueSectionKey, string> = {
   atrasados: "bg-alert text-white py-2.5 font-serif text-[18px]",
+  estourado: "bg-gold-soft text-gold-ink py-2 text-sm font-semibold border-b border-gold/40",
   perto: "bg-gold-soft text-gold-ink py-2 text-sm font-semibold",
   aguardando: "bg-paper text-ink py-2 text-sm font-semibold border-b border-line",
   "acoes-hoje": "bg-paper-2 text-graphite py-1.5 text-xs font-semibold",
