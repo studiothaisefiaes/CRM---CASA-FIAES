@@ -125,3 +125,22 @@ describe("fluxo do lead", () => {
     expect(detectOrigin({ body: "oi" })).toBe("WhatsApp");
   });
 });
+
+describe("tempo de espera mostrado ao responder ('Respondido em X')", () => {
+  beforeEach(resetDb);
+  it("conta só o expediente, igual ao SLA: sábado 16h59 → segunda 8h02 = 3 min, não 39 h", async () => {
+    const { waitedBusinessSeconds } = await import("./deals");
+    const r = await recordInbound({ channelId: null, externalId: "W1", phoneRaw: "71999995151", body: "oi" });
+    if (!("dealId" in r)) throw new Error();
+    const since = new Date("2026-10-17T19:59:00Z"); // sáb 16h59 em Salvador (fecha às 17h; domingo fechado)
+    await db.update(deals).set({ awaitingReplySince: since }).where(eq(deals.id, r.dealId));
+    expect(await waitedBusinessSeconds(r.dealId, new Date("2026-10-19T11:02:00Z"))).toBe(180); // 1 min sábado + 2 min segunda
+  });
+  it("sem espera aberta: null", async () => {
+    const { waitedBusinessSeconds } = await import("./deals");
+    const r = await recordInbound({ channelId: null, externalId: "W2", phoneRaw: "71999995152", body: "oi" });
+    if (!("dealId" in r)) throw new Error();
+    await db.update(deals).set({ awaitingReplySince: null }).where(eq(deals.id, r.dealId));
+    expect(await waitedBusinessSeconds(r.dealId)).toBeNull();
+  });
+});

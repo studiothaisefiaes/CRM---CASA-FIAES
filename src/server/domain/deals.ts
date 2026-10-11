@@ -384,3 +384,13 @@ export async function unignoreContact(contactId: string, userId: string) {
   await db.insert(auditLog).values({ userId, action: "voltou_a_acompanhar", entity: "contact", entityId: contactId, data: {} });
   return { restored: 0, conflicts: dealId ? [dealId] : [] };
 }
+
+/**
+ * Há quanto tempo o lead espera resposta, em segundos de EXPEDIENTE (mesma conta do SLA e dos relatórios: `businessSecondsBetween`).
+ * Usado no "Respondido em X ✓ dentro da meta" ao enviar. `null` se não há espera aberta.
+ */
+export async function waitedBusinessSeconds(dealId: string, now = new Date()): Promise<number | null> {
+  const [d] = await db.select({ since: deals.awaitingReplySince }).from(deals).where(eq(deals.id, dealId));
+  if (!d?.since) return null;
+  return businessSecondsBetween(d.since.getTime(), now.getTime(), await getBusinessHours());
+}

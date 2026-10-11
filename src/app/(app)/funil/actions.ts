@@ -4,7 +4,7 @@ import { z } from "zod";
 import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import { SALE_VALUE_REQUIRED } from "@/lib/money";
 import { assertUser } from "@/server/auth/session";
-import { moveDeal, ReopenConflict } from "@/server/domain/deals";
+import { moveDeal, ReopenConflict, waitedBusinessSeconds } from "@/server/domain/deals";
 import { claimDeal } from "@/server/domain/assign";
 import { assertDirectMove } from "@/server/domain/stage-move";
 import { BULK_MAX, bulkArchive, bulkAssign, bulkMove, bulkRestore } from "@/server/domain/bulk";
@@ -12,7 +12,7 @@ import { completeTask, setNextAction } from "@/server/domain/tasks";
 import { updateDeal, createManualLead, closeSale, scheduleDeal, loseDeal, markAttendance, UserFacingError, type DealPatch } from "@/server/domain/updates";
 import { MAX_MEDIA_BYTES, markConversationRead, sendFromCrm, sendMediaFromCrm } from "@/server/domain/send";
 import { db } from "@/server/db";
-import { alerts, deals, leadSources, tasks, users } from "@/server/db/schema";
+import { alerts, leadSources, tasks, users } from "@/server/db/schema";
 
 export type ActionResult<T = undefined> = { ok: true; data?: T } | { ok: false; error: string };
 const fail = (e: unknown): { ok: false; error: string } => ({ ok: false, error: e instanceof z.ZodError ? e.issues[0]?.message ?? "Dados inválidos" : e instanceof Error ? e.message : "Algo deu errado. Tente de novo." });
@@ -50,10 +50,8 @@ export async function updateDealAction(dealId: string, patch: DealPatch): Promis
   } catch (e) { return fail(e); }
 }
 
-const waited = async (id: string) => {
-  const [before] = await db.select({ since: deals.awaitingReplySince }).from(deals).where(eq(deals.id, id));
-  return before?.since ? Math.round((Date.now() - before.since.getTime()) / 1000) : null;
-};
+/** Espera em horário de expediente (igual ao SLA e aos relatórios), não em tempo corrido. */
+const waited = (id: string) => waitedBusinessSeconds(id);
 
 export async function sendMessageAction(dealId: string, text: string, quoteMessageId?: string | null): Promise<ActionResult<{ waitedSeconds: number | null }>> {
   try {
