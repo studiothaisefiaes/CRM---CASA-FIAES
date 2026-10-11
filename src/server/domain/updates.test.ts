@@ -14,6 +14,7 @@ it("auditoria guarda de/para", async () => {
   const ev = (await db.select().from(dealEvents).where(eq(dealEvents.type, "campo_alterado"))).at(-1)!;
   expect(ev.payload).toEqual({ campos: [{ campo: "observations", de: "quer luzes", para: "quer luzes e corte" }] });
   expect(ev.userId).toBe(bia);
+  expect(Date.now() - ev.createdAt.getTime()).toBeLessThan(60_000); // e a data da mudança
 });
 it("auditoria ignora campos que não mudaram", async () => {
   const id = await lead();
