@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { updateStageAction, moveStageAction } from "@/app/(app)/config/actions";
-import { SPRING } from "@/lib/motion";
+import { SPRING_UI } from "@/lib/motion";
 
 type S = { id: string; key: string; name: string; kind: string; slaMinutes: number | null; staleDays: number | null; color: string };
 const KIND: Record<string, string> = { lead: "Entrada", atendimento: "Atendimento", agendado: "Agendado", followup: "Follow-up", fechado: "Ganho", perdido: "Perda" };
@@ -33,7 +33,7 @@ function Row({ s, first, last }: { s: S; first: boolean; last: boolean }) {
     toast(r.ok ? `Etapa "${v.name}" salva` : r.error, r.ok ? "ok" : "error");
   });
   return (
-    <motion.div layout transition={SPRING} className="flex flex-wrap lg:grid lg:grid-cols-[64px_1.4fr_110px_130px_120px_70px_90px] gap-3 px-4 py-3 lg:py-2.5 items-center border-b border-line/70 last:border-0">
+    <motion.div layout transition={SPRING_UI} className="flex flex-wrap lg:grid lg:grid-cols-[64px_1.4fr_110px_130px_120px_70px_90px] gap-3 px-4 py-3 lg:py-2.5 items-center border-b border-line/70 last:border-0">
       <div className="flex gap-1">
         <button disabled={first || pending} aria-label="Subir" onClick={() => start(async () => { await moveStageAction(s.id, -1); })} className="size-7 rounded-[7px] border border-line disabled:opacity-30 hover:bg-paper-2">↑</button>
         <button disabled={last || pending} aria-label="Descer" onClick={() => start(async () => { await moveStageAction(s.id, 1); })} className="size-7 rounded-[7px] border border-line disabled:opacity-30 hover:bg-paper-2">↓</button>

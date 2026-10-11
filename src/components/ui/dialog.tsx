@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { SPRING } from "@/lib/motion";
+import { SPRING_UI } from "@/lib/motion";
 import { IconClose } from "@/components/icons";
 import { isTop, popModal, pushModal } from "@/components/ui/modal-stack";
 
@@ -43,7 +43,7 @@ export function Dialog({ open, onClose, title, description, children, footer, wi
         <div className="fixed inset-0 z-[70] grid place-items-center p-4">
           <motion.div className="absolute inset-0 bg-ink/35" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} />
           <motion.div ref={ref} role="dialog" aria-modal="true" aria-labelledby="dlg-title" style={{ maxWidth: width }}
-            initial={{ opacity: 0, y: 18, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10, scale: 0.98 }} transition={SPRING}
+            initial={{ opacity: 0, y: 18, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10, scale: 0.98 }} transition={SPRING_UI}
             className="relative w-full bg-paper rounded-[var(--radius-panel)] shadow-[var(--shadow-pop)] border border-line">
             <div className="px-6 pt-5 pb-4">
               <div className="flex items-start justify-between gap-4">

@@ -1,7 +1,7 @@
 "use client";
 import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { SPRING } from "@/lib/motion";
+import { SPRING_UI } from "@/lib/motion";
 import { pushToast } from "./toast-queue";
 
 type Action = { label: string; onClick: () => void };
@@ -25,7 +25,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       <div className="fixed z-[80] bottom-20 left-1/2 -translate-x-1/2 lg:bottom-auto lg:top-5 lg:left-auto lg:right-6 lg:translate-x-0 flex flex-col items-center lg:items-end gap-2 pointer-events-none" aria-live="polite">
         <AnimatePresence initial={false}>
           {items.map((t) => (
-            <motion.div key={t.id} layout initial={{ opacity: 0, y: -10, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, scale: 0.97 }} transition={SPRING}
+            <motion.div key={t.id} layout initial={{ opacity: 0, y: -10, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, scale: 0.97 }} transition={SPRING_UI}
               role={t.tone === "error" ? "alert" : "status"}
               className={`pointer-events-auto pl-4 pr-2 py-2 rounded-[var(--radius-control)] text-sm shadow-[var(--shadow-pop)] flex items-center gap-3 ${t.tone === "error" ? "bg-alert text-white" : "bg-ink text-paper"}`}>
               {t.tone === "ok" && <span className="size-1.5 rounded-full bg-gold shrink-0" />}

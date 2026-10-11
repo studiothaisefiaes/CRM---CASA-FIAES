@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { addListItemAction, updateListItemAction } from "@/app/(app)/config/actions";
-import { SPRING } from "@/lib/motion";
+import { SPRING_UI } from "@/lib/motion";
 
 type Item = { id: string; kind: "objection" | "lost_reason" | "quick_reply" | "origin" | "service"; label: string; body: string | null; active: boolean };
 const TABS = [["quick_reply", "Respostas prontas", "Aparecem ao digitar / no card. Use {nome} para o primeiro nome da cliente."], ["objection", "Objeções", "O que a cliente diz quando hesita. Viram relatório."], ["lost_reason", "Motivos de perda", "Pedidos ao marcar um lead como perdido."], ["origin", "Origens", "De onde vêm os leads."], ["service", "Serviços", "Serviços oferecidos pela Casa."]] as const;
@@ -22,7 +22,7 @@ export function ListsEditor({ items }: { items: Item[] }) {
       <div className="flex flex-wrap gap-1 bg-paper-2 border border-line rounded-[var(--radius-control)] p-1 w-fit" role="tablist">
         {TABS.map(([k, l]) => (
           <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`relative h-8 px-3 text-sm rounded-[9px] ${tab === k ? "text-ink font-medium" : "text-graphite"}`}>
-            {tab === k && <motion.span layoutId="list-tab" transition={SPRING} className="absolute inset-0 bg-paper rounded-[9px] shadow-[var(--shadow-card)]" />}<span className="relative">{l}</span>
+            {tab === k && <motion.span layoutId="list-tab" transition={SPRING_UI} className="absolute inset-0 bg-paper rounded-[9px] shadow-[var(--shadow-card)]" />}<span className="relative">{l}</span>
           </button>
         ))}
       </div>

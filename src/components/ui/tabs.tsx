@@ -1,7 +1,7 @@
 "use client";
 import { useId, useRef, type KeyboardEvent } from "react";
 import { motion } from "motion/react";
-import { SPRING } from "@/lib/motion";
+import { SPRING_UI } from "@/lib/motion";
 import { cn } from "@/lib/cn";
 
 export type TabItem<T extends string = string> = { value: T; label: string; count?: number };
@@ -36,7 +36,7 @@ export function Tabs<T extends string = string>({ value, onChange, items, label,
             aria-selected={on} tabIndex={on ? 0 : -1} onClick={() => onChange(t.value)} onKeyDown={(e) => onKey(e, i)}
             className={cn("relative flex-1 h-8 px-3 text-sm font-medium rounded-[8px] transition-colors pointer-coarse:min-h-11", on ? "text-ink" : "text-graphite hover:text-ink")}
           >
-            {on && <motion.span layoutId={`${id}-pill`} transition={SPRING} className="absolute inset-0 rounded-[8px] bg-paper shadow-[var(--shadow-card)] border border-line" />}
+            {on && <motion.span layoutId={`${id}-pill`} transition={SPRING_UI} className="absolute inset-0 rounded-[8px] bg-paper shadow-[var(--shadow-card)] border border-line" />}
             <span className="relative inline-flex items-center justify-center gap-1.5">
               {t.label}
               {t.count != null && <span className="tabular text-xs text-muted">{t.count}</span>}

@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useId, useRef, type ReactNode, type RefObject } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { SPRING } from "@/lib/motion";
+import { SPRING_UI } from "@/lib/motion";
 import { cn } from "@/lib/cn";
 import { IconClose } from "@/components/icons";
 import { IconButton } from "@/components/ui/icon-button";
@@ -61,7 +61,7 @@ export function Sheet({ open, onClose, title, labelledBy, side = "right", initia
           <motion.div className="absolute inset-0 bg-ink/35" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} />
           <motion.div
             ref={ref} role="dialog" aria-modal="true" aria-labelledby={labelledBy ?? titleId}
-            initial={right ? { x: "100%" } : { y: "100%" }} animate={right ? { x: 0 } : { y: 0 }} exit={right ? { x: "100%" } : { y: "100%" }} transition={SPRING}
+            initial={right ? { x: "100%" } : { y: "100%" }} animate={right ? { x: 0 } : { y: 0 }} exit={right ? { x: "100%" } : { y: "100%" }} transition={SPRING_UI}
             className={cn(
               "absolute flex flex-col bg-paper shadow-[var(--shadow-pop)]",
               right ? "inset-y-0 right-0 w-full max-w-[480px] border-l border-line" : "inset-x-0 bottom-0 max-h-[90dvh] border-t border-line rounded-t-[var(--radius-panel)]",

@@ -9,7 +9,7 @@ import { useToast } from "@/components/ui/toast";
 import { IconPlus, IconClose, IconClock, IconRefresh, IconCake, IconMoney, IconCalendar } from "@/components/icons";
 import { TRIGGER_LABELS, ACTION_LABELS, type AutomationInput, type Trigger, type Action } from "@/server/rules/types";
 import { saveAutomationAction, toggleAutomationAction, restoreAutomationAction, deleteAutomationAction, automationDetailsAction, previewAutomationAction } from "@/app/(app)/config/actions";
-import { SPRING } from "@/lib/motion";
+import { SPRING_UI } from "@/lib/motion";
 import { relTime } from "@/lib/format";
 
 type Item = { id: string; name: string; enabled: boolean; trigger: Record<string, unknown>; conditions: Record<string, unknown>[]; actions: Record<string, unknown>[]; version: number; updatedAt: string };
@@ -53,7 +53,7 @@ export function AutomationsList({ items, stages, runs }: { items: Item[]; stages
           {list.map((a, i) => {
             const t = a.trigger as Trigger; const conds = a.conditions as { type: "etapa_em"; stages: string[] }[]; const acts = a.actions as Action[];
             return (
-              <motion.li key={a.id} layout transition={SPRING} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0, transition: { delay: i * 0.04 } }} exit={{ opacity: 0 }}
+              <motion.li key={a.id} layout transition={SPRING_UI} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0, transition: { delay: i * 0.04 } }} exit={{ opacity: 0 }}
                 className={`rounded-[var(--radius-card)] border bg-paper p-4 lg:p-5 flex gap-4 items-start transition-colors ${a.enabled ? "border-line" : "border-line opacity-70"}`}>
                 <span className={`size-9 shrink-0 rounded-[var(--radius-control)] grid place-items-center ${a.enabled ? "bg-gold-soft text-gold-ink" : "bg-paper-2 text-muted"}`}>
                   {t.type === "sem_resposta_minutos" || t.type === "parado_dias" ? <IconClock size={17} /> : t.type === "sem_retorno_cliente_dias" ? <IconRefresh size={17} /> : t.type === "aniversario_em_dias" ? <IconCake size={17} /> : t.type === "data_cobranca" ? <IconMoney size={17} /> : <IconCalendar size={17} />}

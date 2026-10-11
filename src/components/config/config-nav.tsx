@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { motion } from "motion/react";
-import { SPRING } from "@/lib/motion";
+import { SPRING_UI } from "@/lib/motion";
 
 const TABS = [["/config/automacoes", "Automações"], ["/config/etapas", "Etapas e prazos"], ["/config/listas", "Listas e respostas"], ["/config/whatsapp", "WhatsApp"], ["/config/origens", "Origens"], ["/config/equipe", "Equipe"]] as const;
 export function ConfigNav() {
@@ -18,7 +18,7 @@ export function ConfigNav() {
           return (
             <li key={href}>
               <Link href={href} aria-current={on ? "page" : undefined} className={`relative inline-flex h-10 items-center px-3 text-sm whitespace-nowrap ${on ? "text-ink font-medium" : "text-graphite hover:text-ink"}`}>
-                {label}{on && <motion.span layoutId="cfg-underline" transition={SPRING} className="absolute left-2 right-2 -bottom-px h-[2px] rounded-full bg-gold" />}
+                {label}{on && <motion.span layoutId="cfg-underline" transition={SPRING_UI} className="absolute left-2 right-2 -bottom-px h-[2px] rounded-full bg-gold" />}
               </Link>
             </li>
           );

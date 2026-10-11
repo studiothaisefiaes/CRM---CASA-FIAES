@@ -1,22 +1,27 @@
 "use client";
 import Link from "next/link";
 import type { BoardCard } from "@/server/queries/board";
-import { useUrgency, useNow } from "./timer";
+import { memo } from "react";
+import { useUrgencyLevel } from "./timer";
+import { Elapsed } from "@/components/motion/elapsed";
 import { IconMic, IconClock, IconCalendar } from "@/components/icons";
 import { formatPhoneClient } from "@/lib/phone-client";
-import { elapsed, initials, money } from "@/lib/format";
+import { initials, money } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { ContactAvatar } from "@/components/ui/contact-avatar";
 
-export function DealCard({ card, slaMinutes, stageKind, stageName, dragging, filtersQs, a11y, opening }: {
+/**
+ * O card do Quadro. Não escuta o relógio: o nível de urgência vem de `useUrgencyLevel` (re-renderiza só quando muda de "ok" para "atenção" para "atrasado")
+ * e os cronômetros são folhas (`Elapsed`). Por isso 100 cards não re-renderizam a cada segundo e o `layout` do pai nunca é medido por causa do relógio.
+ */
+export const DealCard = memo(function DealCard({ card, slaMinutes, stageKind, stageName, dragging, filtersQs, a11y, opening }: {
   card: BoardCard; slaMinutes: number | null; stageKind: string; stageName?: string; dragging?: boolean; filtersQs: string;
   /** Atributos de acessibilidade do arrastar (instruções para leitor de tela), no link, que é quem recebe o foco. */
   a11y?: { "aria-describedby"?: string; "aria-roledescription"?: string };
   /** A folha de agendar, fechar venda ou perdido está abrindo para este card. */
   opening?: boolean;
 }) {
-  const { urgency, label } = useUrgency(card.awaitingReplySince, slaMinutes);
-  const now = useNow();
+  const urgency = useUrgencyLevel(card.awaitingReplySince, slaMinutes);
   const name = card.contactName?.trim() || formatPhoneClient(card.phone);
   const KIND: Record<string, string> = { audio: "Áudio", image: "Foto", sticker: "Figurinha", video: "Vídeo", document: "Documento", location: "Localização", contact: "Contato", poll: "Enquete", event: "Evento", other: "Mensagem" };
   const snippet = card.lastMessage || (card.lastMessageKind ? KIND[card.lastMessageKind] ?? null : null);
@@ -54,16 +59,16 @@ export function DealCard({ card, slaMinutes, stageKind, stageName, dragging, fil
           )}
           {stageKind === "fechado" && card.valueCents != null && <span className="h-5 px-1.5 rounded-[5px] bg-ok-soft text-ok text-[10.5px] font-semibold grid place-items-center">{money(card.valueCents)}</span>}
         </div>
-        {label ? (
+        {card.awaitingReplySince ? (
           <span className={cn("inline-flex items-center gap-1 text-xs font-semibold tabular whitespace-nowrap",
-            urgency === "late" ? "text-alert" : urgency === "warn" ? "text-gold-ink" : "text-ink-2")}
-            aria-label={`Sua vez: esperando resposta há ${label}`} suppressHydrationWarning>
-            <IconClock size={13} />Sua vez · {label}
+            urgency === "late" ? "text-alert" : urgency === "warn" ? "text-gold-ink" : "text-ink-2")}>
+            <IconClock size={13} aria-hidden /><span className="sr-only">Sua vez, esperando resposta há </span><span aria-hidden>Sua vez · </span>
+            <Elapsed since={card.awaitingReplySince} sla={slaMinutes} />
           </span>
         ) : waitingClient ? (
-          <span className="text-xs text-muted whitespace-nowrap" suppressHydrationWarning>Aguardando cliente · {elapsed(card.lastMessageAt!, now)}</span>
+          <span className="text-xs text-muted whitespace-nowrap">Aguardando cliente · <Elapsed since={card.lastMessageAt} sla={null} wall /></span>
         ) : null}
       </div>
     </Link>
   );
-}
+});

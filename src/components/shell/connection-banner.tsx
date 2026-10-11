@@ -6,10 +6,10 @@ import { resumeAlertsAction } from "@/app/(app)/quiet/actions";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { quietUntilLabel } from "@/lib/late";
-import { EASE } from "@/lib/motion";
+import { EASE, T } from "@/lib/motion";
 import type { ShellBanners } from "@/server/queries/banners";
 
-const enter = { initial: { opacity: 0, y: -8 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0, y: -8 }, transition: { duration: 0.2, ease: EASE } } as const;
+const enter = { initial: { opacity: 0, y: -8 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0, y: -8 }, transition: { duration: T.base, ease: EASE } } as const;
 
 /** Faixas no topo do app: WhatsApp caído (o lead não chega) e modo quieto (avisos pausados de propósito). Canal removido não entra. */
 export function ShellBannersView({ banners, role }: { banners: ShellBanners; role: string }) {

@@ -5,7 +5,7 @@ import { ignoreContactsAction, undoIgnoreContactsAction } from "@/app/(app)/cont
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { useQueueSelection } from "@/components/queue/queue-selection";
-import { DUR, EASE } from "@/lib/motion";
+import { T, EASE } from "@/lib/motion";
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
@@ -41,7 +41,7 @@ export function ContactsBulkBar({ ids }: { ids: string[] }) {
   });
 
   return (
-    <motion.div role="region" aria-label="Ações em massa" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: DUR.base, ease: EASE }}
+    <motion.div role="region" aria-label="Ações em massa" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: T.base, ease: EASE }}
       className="sticky bottom-20 z-30 mt-4 border-t border-line-strong bg-paper px-5 py-2.5 shadow-[0_-8px_24px_-12px_rgb(18_18_18/0.18)] lg:bottom-0 lg:px-8">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p data-testid="selecionados" className="font-serif text-lg leading-none">

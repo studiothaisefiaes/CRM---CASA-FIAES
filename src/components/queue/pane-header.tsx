@@ -7,11 +7,12 @@ import type { QueueItem } from "@/server/queries/queue";
 import { ContactAvatar } from "@/components/ui/contact-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Menu, type MenuItem } from "@/components/ui/menu";
-import { useUrgency } from "@/components/pipeline/timer";
+import { useUrgencyLevel } from "@/components/pipeline/timer";
+import { Elapsed } from "@/components/motion/elapsed";
 import { IconClock, IconClose, IconInstagram, IconMail, IconMore, IconPhone, IconWhatsApp } from "@/components/icons";
 import { formatPhoneClient } from "@/lib/phone-client";
 import { money, PAYMENT_LABEL } from "@/lib/format";
-import { DUR, EASE, SPRING } from "@/lib/motion";
+import { T, EASE, SPRING_UI } from "@/lib/motion";
 import { cn } from "@/lib/cn";
 import { BackToQueue } from "./queue-route";
 import type { LeadActions } from "./use-lead-actions";
@@ -24,24 +25,21 @@ export type WaWarning = { down: { id: string; name: string }[]; href: string };
 const URGENCY = { late: "bg-alert text-white", warn: "bg-gold-soft text-gold-ink", ok: "bg-paper-2 text-ink" } as const;
 
 /**
- * Só este pedaço bate o relógio (a cada segundo): o resto do painel não re-renderiza por causa dele. Um chip só: no celular é a espera curta
+ * Só as folhas `Elapsed` batem o relógio: o chip re-renderiza só quando a urgência muda e o resto do painel nunca por causa dele. Um chip só: no celular é a espera curta
  * ao lado do nome; no desktop vira a linha "Esperando resposta há … · prazo …" (o CSS decide qual texto aparece, o relógio é o mesmo).
  */
 function SlaChip({ since, slaMinutes, hidden }: { since: string | null; slaMinutes: number | null; hidden: boolean }) {
-  const { urgency, label } = useUrgency(since, slaMinutes);
-  const show = !!label && !hidden;
+  const urgency = useUrgencyLevel(since, slaMinutes);
+  const show = !!since && !hidden;
   return (
     <AnimatePresence initial={false}>
       {show && (
-        <motion.span key="sla" initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: DUR.base, ease: EASE }}
-          aria-label={`Esperando resposta há ${label}${slaMinutes ? `, prazo de ${slaMinutes} min` : ""}`} suppressHydrationWarning
+        <motion.span key="sla" initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: T.base, ease: EASE }}
           className={cn("inline-flex shrink-0 items-center gap-1.5 h-8 px-2.5 lg:px-3 rounded-full text-sm font-semibold lg:col-span-3 lg:row-start-2 lg:justify-self-start lg:mt-3", URGENCY[urgency])}>
           <IconClock size={14} aria-hidden />
-          <span aria-hidden suppressHydrationWarning>
-            <span className="lg:hidden" suppressHydrationWarning>{label}</span>
-            <span className="hidden lg:inline" suppressHydrationWarning>Esperando resposta há {label}</span>
-          </span>
-          {slaMinutes ? <span aria-hidden className="hidden lg:inline font-normal opacity-80">· prazo {slaMinutes} min</span> : null}
+          <span className="lg:hidden"><Elapsed since={since} sla={slaMinutes} /></span>
+          <span className="hidden lg:inline">Esperando resposta há <Elapsed since={since} sla={slaMinutes} /></span>
+          {slaMinutes ? <span className="hidden lg:inline font-normal opacity-80">· prazo {slaMinutes} min</span> : null}
         </motion.span>
       )}
     </AnimatePresence>
@@ -139,7 +137,7 @@ export function PaneHeader({ item, d, name, answered, back, tab, onTab, actions,
         {(["conversa", "dados", "historico"] as const).map((t) => (
           <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => onTab(t)}
             className={cn("relative flex-1 min-h-11 text-sm font-medium transition-colors", tab === t ? "text-ink" : "text-graphite hover:text-ink")}>
-            {tab === t && <motion.span layoutId="pane-tab" transition={SPRING} className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-ink" />}
+            {tab === t && <motion.span layoutId="pane-tab" transition={SPRING_UI} className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-ink" />}
             {t === "conversa" ? "Conversa" : t === "dados" ? "Dados" : "Histórico"}
           </button>
         ))}

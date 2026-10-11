@@ -3,7 +3,7 @@ import { memo, useCallback, useLayoutEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { IconMic, IconReply } from "@/components/icons";
 import { IconButton } from "@/components/ui/icon-button";
-import { DUR, EASE, SPRING } from "@/lib/motion";
+import { T, EASE, SPRING_UI } from "@/lib/motion";
 
 export type Msg = { id: string; externalId?: string | null; direction: "in" | "out"; kind: string; body: string | null; status: string; createdAt: string; sender: string | null; fromPhone: boolean; error?: string | null; hasMedia?: boolean; quotedBody?: string | null; edited?: boolean; deleted?: boolean };
 
@@ -49,7 +49,7 @@ export const bubblePropsEqual = (a: BubbleProps, b: BubbleProps) => a.day === b.
 export const Bubble = memo(function Bubble({ m, day, onReply, animateIn }: BubbleProps) {
   const out = m.direction === "out";
   return (
-    <motion.div initial={animateIn ? { opacity: 0, y: 10 } : false} animate={{ opacity: 1, y: 0 }} transition={SPRING} className="flex flex-col">
+    <motion.div initial={animateIn ? { opacity: 0, y: 10 } : false} animate={{ opacity: 1, y: 0 }} transition={SPRING_UI} className="flex flex-col">
       {day && <p className="self-center my-2 text-xs font-medium text-muted bg-paper border border-line rounded-full px-2.5 py-0.5 first-letter:uppercase">{day}</p>}
       <div className={`group flex items-center gap-1 ${out ? "flex-row-reverse self-end" : "self-start"} max-w-full`}>
         <div className={`min-w-0 max-w-[78%] rounded-[var(--radius-card)] px-3.5 py-2 text-base leading-relaxed shadow-[var(--shadow-card)] ${out ? "bg-[#f3ead9] rounded-br-[5px]" : "bg-paper border border-line rounded-bl-[5px]"} ${m.status === "pending" ? "opacity-60" : ""}`}>
@@ -178,7 +178,7 @@ export function Conversation({ messages, onReply, label = "Mensagens", forceEndK
       <AnimatePresence>
         {unseen > 0 && (
           <motion.button type="button" key="novas" onClick={() => { toEnd(); setUnseen(0); }}
-            initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }} transition={{ duration: DUR.base, ease: EASE }}
+            initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }} transition={{ duration: T.base, ease: EASE }}
             className="absolute bottom-3 left-1/2 -translate-x-1/2 min-h-11 px-4 rounded-full bg-ink text-paper text-sm font-semibold shadow-[var(--shadow-pop)] inline-flex items-center gap-2">
             {unseen === 1 ? "1 nova mensagem" : `${unseen} novas mensagens`} <span aria-hidden>↓</span>
           </motion.button>

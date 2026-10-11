@@ -12,13 +12,14 @@ import type { Viewer } from "@/app/(app)/atendimento/actions";
 import { useLeadActions } from "@/components/queue/use-lead-actions";
 import { IconClose, IconPhone, IconMail, IconInstagram, IconWhatsApp, IconCake, IconClock, IconArrowRight } from "@/components/icons";
 import { useLiveRefresh } from "@/components/shell/live";
-import { useUrgency } from "@/components/pipeline/timer";
+import { useUrgencyLevel } from "@/components/pipeline/timer";
+import { Elapsed } from "@/components/motion/elapsed";
 import { Badge } from "@/components/ui/badge";
 import { formatPhoneClient } from "@/lib/phone-client";
 import { money, PAYMENT_LABEL } from "@/lib/format";
 import { groupByDay, HISTORY_EVENT_LIMIT, historyEntries } from "@/lib/history";
 import { Button } from "@/components/ui/button";
-import { SPRING, EASE } from "@/lib/motion";
+import { SPRING_UI, SPRING_SHEET, EASE, T, exitOf } from "@/lib/motion";
 import { isChannelOrigin, NOT_IDENTIFIED } from "@/lib/source-kinds";
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -124,7 +125,7 @@ export function LeadSide({ d, tab, bp, cols }: { d: DealDetail; tab: "conversa" 
       <div className={`${c.tabs} gap-1 bg-paper-2 rounded-[var(--radius-control)] p-1 mb-4`} role="tablist" aria-label="Painel do lead">
         {(["dados", "historico"] as const).map((t) => (
           <button key={t} role="tab" aria-selected={sideTab === t} onClick={() => setSideTab(t)} className="relative flex-1 h-8 text-sm rounded-[8px]">
-            {sideTab === t && <motion.span layoutId={`lead-side-tab-${bp}`} transition={SPRING} className="absolute inset-0 bg-paper rounded-[8px] shadow-[var(--shadow-card)]" />}
+            {sideTab === t && <motion.span layoutId={`lead-side-tab-${bp}`} transition={SPRING_UI} className="absolute inset-0 bg-paper rounded-[8px] shadow-[var(--shadow-card)]" />}
             <span className="relative">{t === "dados" ? "Dados" : `Histórico (${d.events.length})`}</span>
           </button>
         ))}
@@ -140,13 +141,44 @@ export function LeadSide({ d, tab, bp, cols }: { d: DealDetail; tab: "conversa" 
  * Em ≥ 1024 px a conversa fica à esquerda e os dados à direita; abaixo disso, abas Conversa | Dados | Histórico.
  * Na Fila (/atendimento) quem faz isso é o `ConversationPane`.
  */
-export function LeadSheet({ d, nextId, viewer }: { d: DealDetail; nextId?: string | null; viewer: Viewer | null }) {
+/** "Esperando resposta há 5 min": folha própria, o único pedaço do painel que escuta o relógio (o painel e a conversa não re-renderizam por segundo). */
+function WaitPill({ since, sla, hidden }: { since: string | null; sla: number | null; hidden: boolean }) {
+  const urgency = useUrgencyLevel(since, sla);
+  return (
+    <AnimatePresence initial={false}>
+      {since && !hidden && (
+        <motion.div key="wait" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: T.enter, ease: EASE }}>
+          <p className={`mt-3 inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-sm font-semibold ${urgency === "late" ? "bg-alert text-white" : urgency === "warn" ? "bg-gold-soft text-gold-ink" : "bg-paper-2 text-ink"}`}>
+            <IconClock size={14} />Esperando resposta há <Elapsed since={since} sla={sla} />{sla ? <span className="font-normal opacity-80">· prazo {sla} min</span> : null}
+          </p>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+/**
+ * Trocar de lead com o painel aberto ("Próximo da fila") não fecha e reabre o painel: ele fica no lugar e o conteúdo faz um crossfade curto.
+ * `swap` (custom) escolhe a variante: abrindo/fechando de verdade desliza para a direita; trocando de lead só esmaece (opacity), sem dois painéis cruzando a tela.
+ */
+const SCRIM_V = {
+  hidden: (swap: boolean) => (swap ? { opacity: 1 } : { opacity: 0 }),
+  shown: { opacity: 1 },
+  gone: (swap: boolean) => (swap ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0 }),
+};
+const ASIDE_V = {
+  hidden: (swap: boolean) => (swap ? { opacity: 0 } : { x: "100%" }),
+  shown: (swap: boolean) => ({ x: 0, opacity: 1, transition: swap ? { duration: T.fast, ease: EASE } : SPRING_SHEET }),
+  gone: (swap: boolean) => (swap ? { opacity: 0, transition: { duration: exitOf(T.fast), ease: EASE } } : { x: "100%", transition: SPRING_SHEET }),
+};
+
+export function LeadSheet({ d, nextId, viewer, swap = false }: { d: DealDetail; nextId?: string | null; viewer: Viewer | null; /** Entrou no lugar de outro lead aberto: sem deslizar. */ swap?: boolean }) {
   const router = useRouter();
   const sp = useSearchParams();
   useLiveRefresh([`deal:${d.deal.id}`]); // o card aberto só se atualiza com avisos do próprio lead
   const [tab, setTab] = useState<"conversa" | "dados" | "historico">("conversa");
   const [answered, setAnswered] = useState(false);
-  const { urgency, label: waitLabel } = useUrgency(d.deal.awaitingReplySince ? new Date(d.deal.awaitingReplySince).toISOString() : null, d.stage.slaMinutes);
+  const awaitingSince = d.deal.awaitingReplySince ? new Date(d.deal.awaitingReplySince).toISOString() : null;
   const [optimistic, setOptimistic] = useState<string | null>(null);
   const [replyTo, setReplyTo] = useState<QuoteTarget | null>(null);
   // Visto azul: uma vez por abertura do lead (o servidor só marca o que chegou depois da última vez).
@@ -186,8 +218,8 @@ export function LeadSheet({ d, nextId, viewer }: { d: DealDetail; nextId?: strin
 
   return (
     <>
-      <motion.div className="fixed inset-0 z-40 bg-ink/25 lg:bg-ink/15" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={close} aria-hidden />
-      <motion.aside role="dialog" aria-label={`Lead ${name}`} initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ ...SPRING, stiffness: 380, damping: 38 }}
+      <motion.div className="fixed inset-0 z-40 bg-ink/25 lg:bg-ink/15" variants={SCRIM_V} custom={swap} initial="hidden" animate="shown" exit="gone" onClick={close} aria-hidden />
+      <motion.aside role="dialog" aria-label={`Lead ${name}`} variants={ASIDE_V} custom={swap} initial="hidden" animate="shown" exit="gone"
         className="fixed z-50 inset-y-0 right-0 w-full lg:w-[min(1040px,calc(100vw-260px))] bg-paper shadow-[-30px_0_60px_-30px_rgb(40_30_15/0.35)] flex flex-col">
         <header className="px-5 lg:px-6 pt-4 pb-3 border-b border-line">
           <div className="flex items-start justify-between gap-3">
@@ -203,15 +235,7 @@ export function LeadSheet({ d, nextId, viewer }: { d: DealDetail; nextId?: strin
             </div>
             <button onClick={close} className="size-9 pointer-coarse:size-11 grid place-items-center rounded-[var(--radius-control)] text-muted hover:bg-paper-2 hover:text-ink" aria-label="Fechar"><IconClose /></button>
           </div>
-          <AnimatePresence initial={false}>
-            {waitLabel && !answered && (
-              <motion.div key="wait" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.25, ease: EASE }}>
-                <p className={`mt-3 inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-sm font-semibold ${urgency === "late" ? "bg-alert text-white" : urgency === "warn" ? "bg-gold-soft text-gold-ink" : "bg-paper-2 text-ink"}`} suppressHydrationWarning>
-                  <IconClock size={14} />Esperando resposta há {waitLabel}{d.stage.slaMinutes ? <span className="font-normal opacity-80">· prazo {d.stage.slaMinutes} min</span> : null}
-                </p>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          <WaitPill since={awaitingSince} sla={d.stage.slaMinutes} hidden={answered} />
           <div className="flex items-center gap-2 mt-3 flex-wrap">
             <label className="relative">
               <span className="sr-only">Etapa</span>
@@ -233,7 +257,7 @@ export function LeadSheet({ d, nextId, viewer }: { d: DealDetail; nextId?: strin
           <div className="lg:hidden flex gap-1 mt-3 bg-paper-2 rounded-[var(--radius-control)] p-1" role="tablist" aria-label="Partes do lead">
             {(["conversa", "dados", "historico"] as const).map((t) => (
               <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className="relative flex-1 h-8 pointer-coarse:min-h-11 text-sm rounded-[8px]">
-                {tab === t && <motion.span layoutId="lead-tab" transition={SPRING} className="absolute inset-0 bg-paper rounded-[8px] shadow-[var(--shadow-card)]" />}
+                {tab === t && <motion.span layoutId="lead-tab" transition={SPRING_UI} className="absolute inset-0 bg-paper rounded-[8px] shadow-[var(--shadow-card)]" />}
                 <span className="relative">{t === "conversa" ? "Conversa" : t === "dados" ? "Dados" : "Histórico"}</span>
               </button>
             ))}
@@ -265,5 +289,10 @@ export function LeadSheet({ d, nextId, viewer }: { d: DealDetail; nextId?: strin
 }
 
 export function LeadSheetPresence({ d, nextId, viewer }: { d: DealDetail | null; nextId?: string | null; viewer: Viewer | null }) {
-  return <AnimatePresence>{d && <LeadSheet key={d.deal.id} d={d} nextId={nextId} viewer={viewer} />}</AnimatePresence>;
+  // "Trocou de lead sem fechar": havia um lead aberto e agora há outro. Calculado no render (estado, sem efeito) e entregue também a quem está saindo.
+  const id = d?.deal.id ?? null;
+  const [last, setLast] = useState<{ id: string | null; swap: boolean }>({ id, swap: false });
+  if (last.id !== id) setLast({ id, swap: last.id !== null && id !== null });
+  const swap = last.id === id ? last.swap : last.id !== null && id !== null;
+  return <AnimatePresence custom={swap}>{d && <LeadSheet key={d.deal.id} d={d} nextId={nextId} viewer={viewer} swap={swap} />}</AnimatePresence>;
 }

@@ -3,7 +3,7 @@ import { useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
 import { scheduleAction } from "@/app/(app)/funil/actions";
-import { useHours, useNow } from "@/components/pipeline/timer";
+import { useClock, useHours } from "@/components/pipeline/timer";
 import { bahiaParts, checkSlot, defaultSlot, slotMs } from "@/lib/schedule";
 import { IconClock } from "@/components/icons";
 import { ActionSheet, FieldError, SheetLabel } from "./action-sheet";
@@ -23,7 +23,8 @@ export function ScheduleSheet({ open, onClose, dealId, name, scheduledAt, resche
   const dateRef = useRef<HTMLInputElement>(null);
 
   const ms = slotMs(slot.date, slot.time);
-  const now = useNow();
+  // A validação "horário já passou" só precisa do minuto: o formulário não re-renderiza por segundo.
+  const now = useClock((n) => Math.floor(n / 60_000) * 60_000);
   const check = checkSlot(ms, now, hours);
   const error = serverError ?? (check.ok ? null : check.error);
   const warning = check.ok ? check.outsideHours : null;

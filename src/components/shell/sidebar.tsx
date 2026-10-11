@@ -10,7 +10,7 @@ import { useLiveAlerts } from "./use-live-alerts";
 import { logoutAction } from "./push-cleanup";
 import { initials } from "@/lib/format";
 import { isConversationPath } from "@/lib/lead-href";
-import { SPRING } from "@/lib/motion";
+import { SPRING_UI } from "@/lib/motion";
 import type { AlertItem } from "@/server/queries/alerts";
 
 /** O Quadro (/funil) fica dentro de Atendimento: acende o mesmo item da barra. */
@@ -46,7 +46,7 @@ export function Sidebar({ user, alerts: initialAlerts }: { user: { name: string;
             return (
               <Link key={it.href} href={it.href} aria-current={active ? "page" : undefined}
                 className={`relative flex items-center gap-3 h-10 px-3 rounded-[var(--radius-control)] text-base transition-colors ${active ? "text-ink font-medium" : "text-graphite hover:text-ink hover:bg-paper-3/60"}`}>
-                {active && <motion.span layoutId="nav-pill" transition={SPRING} className="absolute inset-0 rounded-[var(--radius-control)] bg-paper border border-line shadow-[var(--shadow-card)]" />}
+                {active && <motion.span layoutId="nav-pill" transition={SPRING_UI} className="absolute inset-0 rounded-[var(--radius-control)] bg-paper border border-line shadow-[var(--shadow-card)]" />}
                 <it.icon className="relative" /><span className="relative">{it.label}</span>
               </Link>
             );
@@ -75,7 +75,7 @@ export function Sidebar({ user, alerts: initialAlerts }: { user: { name: string;
           const active = isActive(it.href);
           return (
             <Link key={it.href} href={it.href} aria-current={active ? "page" : undefined} className={`relative flex flex-col items-center justify-center gap-0.5 min-h-14 text-[11px] ${active ? "text-ink font-medium" : "text-muted"}`}>
-              {active && <motion.span layoutId="tab-dot" transition={SPRING} className="absolute top-0 h-0.5 w-8 rounded-full bg-gold" />}
+              {active && <motion.span layoutId="tab-dot" transition={SPRING_UI} className="absolute top-0 h-0.5 w-8 rounded-full bg-gold" />}
               <it.icon size={20} />{it.label}
             </Link>
           );

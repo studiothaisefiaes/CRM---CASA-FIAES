@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { DUR, EASE } from "@/lib/motion";
+import { T, EASE } from "@/lib/motion";
 import { cn } from "@/lib/cn";
 
 export type MenuItem = { label: string; onSelect: () => void; danger?: boolean; /** Opção em uso (aria-current): destaca em negrito. */ current?: boolean };
@@ -59,7 +59,7 @@ export function Menu({ trigger, items, label, align = "right", up = false, class
         {open && (
           <motion.div
             ref={list} id={id} role="menu" aria-label={label} onKeyDown={onListKey}
-            initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: DUR.fast, ease: EASE }}
+            initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: T.fast, ease: EASE }}
             className={cn("absolute z-50 min-w-44 max-h-[min(70dvh,26rem)] overflow-y-auto overscroll-contain p-1 bg-paper border border-line rounded-[var(--radius-card)] shadow-[var(--shadow-pop)]", up ? "bottom-full mb-1.5" : "top-full mt-1.5", align === "right" ? "right-0" : "left-0")}
           >
             {items.map((it) => (

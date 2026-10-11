@@ -2,9 +2,6 @@ export const BASE_TITLE = "Casa Fiaes";
 const TZ = "America/Bahia";
 const OUR_TITLE = /^\(\d+\) atrasados · /;
 
-/** "Cruzou o limite": o número de atrasados subiu. Nunca no primeiro render (prev nulo), nunca em refresh igual. A T21 troca pela primitiva final. */
-export const crossedUp = (prev: number | null, next: number) => prev !== null && next > prev;
-
 export const lateTitle = (n: number, original: string) => (n > 0 ? `(${n}) atrasados · ${BASE_TITLE}` : original);
 
 /**

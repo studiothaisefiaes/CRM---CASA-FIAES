@@ -11,7 +11,7 @@ import { attendanceToast } from "@/components/queue/use-lead-actions";
 import { formatPhoneClient } from "@/lib/phone-client";
 import { dueLabel } from "@/lib/next-action";
 import { leadHref } from "@/lib/lead-href";
-import { DUR, EASE, SPRING } from "@/lib/motion";
+import { T, EASE, SPRING_UI } from "@/lib/motion";
 import { cn } from "@/lib/cn";
 
 /**
@@ -40,7 +40,7 @@ export function AttendanceList({ items, nowMs }: { items: AttendanceDue[]; nowMs
           const name = i.name === i.phone ? formatPhoneClient(i.phone) : i.name;
           return (
             <motion.li key={i.dealId} layout="position" data-testid="comparecimento-item"
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, x: 24, transition: { duration: DUR.base, ease: EASE } }} transition={SPRING}
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, x: 24, transition: { duration: T.base, ease: EASE } }} transition={SPRING_UI}
               className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-line/70 px-3 py-2 first:border-t-0">
               <Link href={leadHref(i.dealId)} className="flex min-h-11 min-w-0 flex-1 basis-40 items-center gap-2.5 rounded-[var(--radius-control)]">
                 <ContactAvatar contactId={i.contactId} hasAvatar={i.hasAvatar} name={name} size={36} />

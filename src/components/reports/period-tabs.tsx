@@ -1,7 +1,7 @@
 "use client";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "motion/react";
-import { SPRING } from "@/lib/motion";
+import { SPRING_UI } from "@/lib/motion";
 
 const P = [["hoje", "Hoje"], ["7d", "7 dias"], ["mes", "Mês"], ["ano", "Ano"]] as const;
 
@@ -15,7 +15,7 @@ export function PeriodTabs({ people, origins }: { people: { id: string; name: st
       <div className="flex bg-paper-2 border border-line rounded-full p-1" role="tablist" aria-label="Período">
         {P.map(([k, label]) => (
           <button key={k} role="tab" aria-selected={current === k} onClick={() => set("periodo", k)} className={`relative h-7 pointer-coarse:h-9 px-3.5 text-sm font-medium rounded-full transition-colors ${current === k ? "text-paper" : "text-graphite hover:text-ink"}`}>
-            {current === k && <motion.span layoutId="period-pill" transition={SPRING} className="absolute inset-0 rounded-full bg-ink" />}
+            {current === k && <motion.span layoutId="period-pill" transition={SPRING_UI} className="absolute inset-0 rounded-full bg-ink" />}
             <span className="relative">{label}</span>
           </button>
         ))}

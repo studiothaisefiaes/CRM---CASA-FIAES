@@ -1,10 +1,16 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
 import { Conversation, bubblePropsEqual, type Msg } from "./conversation";
 
-afterEach(cleanup);
-const msg = (over: Partial<Msg>): Msg => ({ id: "m1", direction: "in", kind: "text", body: "oi", status: "received", createdAt: new Date().toISOString(), sender: null, fromPhone: false, externalId: "EXT1", ...over });
+/**
+ * Relógio injetado: só o `Date` é falso (timers e requestAnimationFrame seguem reais, o motion precisa deles). Meio-dia fixo evita que o rótulo
+ * do dia ("Hoje") e a hora das mensagens dependam de quando o teste roda (virada de meia-noite, fuso, máquina lenta).
+ */
+const AGORA = new Date("2026-10-09T15:00:00.000Z"); // 12:00 em America/Bahia
+beforeEach(() => { vi.useFakeTimers({ toFake: ["Date"], now: AGORA }); });
+afterEach(() => { cleanup(); vi.useRealTimers(); });
+const msg = (over: Partial<Msg>): Msg => ({ id: "m1", direction: "in", kind: "text", body: "oi", status: "received", createdAt: AGORA.toISOString(), sender: null, fromPhone: false, externalId: "EXT1", ...over });
 
 describe("botão Responder", () => {
   it("só aparece em mensagem que tem id no WhatsApp (senão a citação some em silêncio)", () => {
@@ -61,7 +67,7 @@ describe("rolagem da conversa", () => {
     expect(screen.getByRole("button", { name: "2 novas mensagens" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "2 novas mensagens" }));
     expect(log.scrollTop).toBe(1000);
-    await waitFor(() => expect(screen.queryByRole("button", { name: /novas? mensagens?/ })).toBeNull()); // sai com a animação de opacidade
+    await waitFor(() => expect(screen.queryByRole("button", { name: /novas? mensagens?/ })).toBeNull(), { timeout: 3000 }); // sai com a animação de opacidade
   });
 
   it("o que eu mesma envio sempre desce, mesmo com a leitura lá em cima", () => {

@@ -4,10 +4,13 @@ import { AnimatePresence, motion } from "motion/react";
 import type { QueueItem, QueueSection } from "@/server/queries/queue";
 import { SECTION_LABEL, type QueueSectionKey } from "@/lib/queue";
 import { Empty } from "@/components/ui/empty";
-import { DUR, EASE } from "@/lib/motion";
+import { EASE, EASE_IN, LIMITS, T, exitOf } from "@/lib/motion";
 import { cn } from "@/lib/cn";
 import { QueueRow } from "./queue-item";
+
 import type { QueueSelectionState } from "./queue-selection";
+
+export { __itemRenderCount } from "./queue-item";
 
 const HEAD: Record<QueueSectionKey, string> = {
   atrasados: "bg-alert text-white py-2.5 font-serif text-[18px]",
@@ -18,6 +21,26 @@ const HEAD: Record<QueueSectionKey, string> = {
   "aguardando-cliente": "bg-paper-2 text-graphite py-1.5 text-xs font-semibold",
   reengajar: "bg-paper-2 text-graphite py-1.5 text-xs font-semibold",
 };
+
+/**
+ * As linhas de uma seção. Até `LIMITS.presenceItems` itens: entram por opacidade; saem por opacidade e a altura fecha por FLIP
+ * (`popLayout` tira a que sai do fluxo e as de baixo deslizam por `transform`, sem animar height). Acima do teto: lista comum, sem motion.
+ * `layoutDependency` = posição: só quem mudou de lugar é medido (o relógio e o resto da tela nunca disparam medição).
+ * Com "reduzir movimento" o MotionConfig global desliga o deslize; fica só a opacidade.
+ */
+function Rows({ items, children }: { items: QueueItem[]; section: QueueSectionKey; children: (item: QueueItem) => React.ReactNode }) {
+  if (items.length > LIMITS.presenceItems) return <>{items.map((item) => <div key={item.dealId} role="none">{children(item)}</div>)}</>;
+  return (
+    <AnimatePresence initial={false} mode="popLayout">
+      {items.map((item, i) => (
+        <motion.div key={item.dealId} role="none" layout="position" layoutDependency={i} initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { duration: T.base, ease: EASE } }}
+          exit={{ opacity: 0, transition: { duration: exitOf(T.base), ease: EASE_IN } }} transition={{ layout: { duration: T.base, ease: EASE } }}>
+          {children(item)}
+        </motion.div>
+      ))}
+    </AnimatePresence>
+  );
+}
 
 export const defaultHref = (i: QueueItem) => `/atendimento/${i.dealId}`;
 
@@ -70,6 +93,16 @@ export function QueueList({ sections, selectedId, hrefFor = defaultHref, onOpen,
     if (id) setActiveId(id);
   };
 
+  // Callbacks estáveis para as linhas (memo): leem o valor atual por ref, assim a lista pode re-renderizar sem acordar as 100 linhas.
+  const latest = useRef({ selection, visible, onOpen });
+  useEffect(() => { latest.current = { selection, visible, onOpen }; });
+  const openRow = useCallback((item: QueueItem, e: MouseEvent<HTMLAnchorElement>) => latest.current.onOpen?.(item, e), []);
+  const selectRow = useCallback((id: string, range: boolean) => {
+    const { selection: sel, visible: order } = latest.current;
+    if (!sel) return;
+    if (sel.mode) sel.toggle(id, { range, order }); else sel.enter(id);
+  }, []);
+
   const setRefs = useCallback((el: HTMLDivElement | null) => { inner.current = el; listRef?.(el); }, [listRef]);
 
   if (total === 0) return <div className={cn("min-h-0 overflow-y-auto", className)}><Empty title="Nenhuma conversa por aqui">Quando uma cliente escrever, ela aparece nesta lista na hora.</Empty></div>;
@@ -77,29 +110,27 @@ export function QueueList({ sections, selectedId, hrefFor = defaultHref, onOpen,
   return (
     <div className={cn("flex flex-col min-h-0", className)}>
       {selection && <span id="fila-ajuda" className="sr-only">Espaço marca vários leads para agir em massa.</span>}
-      <div ref={setRefs} role="listbox" aria-label="Fila" aria-orientation="vertical" aria-multiselectable={selection ? true : undefined} aria-describedby={selection ? "fila-ajuda" : undefined} onKeyDown={onKeyDown} onFocus={onFocus} onScroll={onScroll}
+      <motion.div layoutScroll ref={setRefs} role="listbox" aria-label="Fila" aria-orientation="vertical" aria-multiselectable={selection ? true : undefined} aria-describedby={selection ? "fila-ajuda" : undefined} onKeyDown={onKeyDown} onFocus={onFocus} onScroll={onScroll}
         className="flex-1 min-h-0 overflow-y-auto overscroll-contain scroll-thin">
         {sections.map((s) => {
           if (!isOpen(s)) return null; // recolhida: só a barra de baixo, fora do listbox
           const headId = `fila-${s.key}`;
           return (
-            <div key={s.key} role="group" aria-labelledby={headId}>
+            <div key={s.key} role="group" aria-labelledby={headId} className="relative">
               <div className={cn("sticky top-0 z-[1] flex items-center justify-between gap-3 px-4", HEAD[s.key])}>
                 <span id={headId} role="presentation">{SECTION_LABEL[s.key]}</span>
                 <span className="tabular opacity-90" role="presentation">{s.items.length}</span>
               </div>
-              <AnimatePresence initial={false}>
-                {s.items.map((item) => (
-                  <motion.div key={item.dealId} role="none" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: DUR.base, ease: EASE }}>
-                    <QueueRow item={item} section={s.key} selected={item.dealId === selectedId} href={hrefFor(item)} tabIndex={item.dealId === tabId ? 0 : -1} onOpen={onOpen}
-                      selection={selection ? { mode: selection.mode, checked: selection.selected.has(item.dealId), onToggle: ({ range }) => (selection.mode ? selection.toggle(item.dealId, { range, order: visible }) : selection.enter(item.dealId)) } : undefined} />
-                  </motion.div>
-                ))}
-              </AnimatePresence>
+              <Rows items={s.items} section={s.key}>
+                {(item) => (
+                  <QueueRow item={item} section={s.key} selected={item.dealId === selectedId} href={hrefFor(item)} tabIndex={item.dealId === tabId ? 0 : -1} onOpen={onOpen ? openRow : undefined}
+                    selectable={!!selection} selecting={!!selection?.mode} checked={!!selection?.selected.has(item.dealId)} onSelect={selection ? selectRow : undefined} />
+                )}
+              </Rows>
             </div>
           );
         })}
-      </div>
+      </motion.div>
       {collapsible && (
         <button type="button" aria-expanded={isOpen(collapsible)} onClick={() => setExpanded((v) => !v)}
           className="shrink-0 flex items-center justify-between gap-3 px-4 min-h-11 border-t border-line bg-paper-2 text-sm font-medium text-graphite hover:text-ink">

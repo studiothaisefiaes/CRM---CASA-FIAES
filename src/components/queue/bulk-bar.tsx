@@ -6,7 +6,7 @@ import { archiveAction, bulkAssignAction, bulkMoveAction, restoreAction } from "
 import { Button } from "@/components/ui/button";
 import { Menu } from "@/components/ui/menu";
 import { useToast } from "@/components/ui/toast";
-import { DUR, EASE } from "@/lib/motion";
+import { T, EASE } from "@/lib/motion";
 import { useCloseLead } from "./open-lead";
 import { useQueueSelection } from "./queue-selection";
 
@@ -66,7 +66,7 @@ export function BulkBar({ ids, options, openId }: { ids: string[]; options: Bulk
   });
 
   return (
-    <motion.div role="region" aria-label="Ações em massa" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: DUR.base, ease: EASE }}
+    <motion.div role="region" aria-label="Ações em massa" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: T.base, ease: EASE }}
       className="shrink-0 border-t border-line-strong bg-paper px-3 py-2.5 shadow-[0_-8px_24px_-12px_rgb(18_18_18/0.18)]">
       <div className="mb-1.5 flex items-center justify-between gap-2">
         <p data-testid="selecionados" className="font-serif text-lg leading-none">

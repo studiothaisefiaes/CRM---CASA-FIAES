@@ -8,7 +8,7 @@ import { IconCheck } from "@/components/icons";
 import { useToast } from "@/components/ui/toast";
 import { dueLabel } from "@/lib/next-action";
 import { leadHref } from "@/lib/lead-href";
-import { DUR, EASE, SPRING } from "@/lib/motion";
+import { T, EASE, SPRING_UI } from "@/lib/motion";
 import { cn } from "@/lib/cn";
 
 /**
@@ -34,7 +34,7 @@ export function NextActions({ items, nowMs }: { items: TodayTask[]; nowMs: numbe
       <AnimatePresence initial={false} mode="popLayout">
         {list.map((t) => (
           <motion.li key={t.id} layout="position" data-testid="proxima-acao-item"
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, x: 24, transition: { duration: DUR.base, ease: EASE } }} transition={SPRING}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, x: 24, transition: { duration: T.base, ease: EASE } }} transition={SPRING_UI}
             className="flex items-center gap-2 border-t border-line/70 px-3 py-1.5 first:border-t-0">
             <Link href={t.dealId ? leadHref(t.dealId) : `/contatos/${t.contactId}`} className="flex min-h-11 min-w-0 flex-1 flex-col justify-center py-1 rounded-[var(--radius-control)]">
               <span className="text-base font-medium leading-snug">{t.title}</span>

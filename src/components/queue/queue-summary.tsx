@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { QueueCounts } from "@/server/queries/queue";
 import { queueHref, type QueueFoco } from "@/lib/queue";
 import { cn } from "@/lib/cn";
+import { ChangeFlash } from "@/components/motion/change-flash";
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
@@ -20,7 +21,8 @@ export function QueueSummary({ counts, view, foco, filtro }: { counts: QueueCoun
       {items.map((it) => (
         <Link key={it.key} href={it.on ? queueHref({ view: "todos" }) : it.href} replace scroll={false} aria-current={it.on ? "true" : undefined}
           className={cn("inline-flex items-center min-h-11 lg:min-h-8 px-2 rounded-[var(--radius-control)] tabular hover:bg-paper-2 hover:text-ink", it.tone, it.on && "bg-ink text-paper hover:bg-ink hover:text-paper")}>
-          {it.label}
+          {/* O número que mudou (chegou gente esperando, alguém atrasou) brilha 600 ms; o filtro ligado fica sem brilho (texto claro em fundo escuro). */}
+          <ChangeFlash value={it.label} disabled={it.on}>{it.label}</ChangeFlash>
         </Link>
       ))}
     </p>

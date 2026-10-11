@@ -1,18 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyLateTitle, crossedUp, lateAnnouncement, lateTitle, quietUntilLabel } from "./late";
-
-describe("crossedUp (cruzou o limite)", () => {
-  it("nunca no primeiro render", () => { expect(crossedUp(null, 3)).toBe(false); });
-  it("só quando o número sobe", () => {
-    expect(crossedUp(0, 1)).toBe(true);
-    expect(crossedUp(2, 3)).toBe(true);
-  });
-  it("não repete em refresh (igual) nem quando desce", () => {
-    expect(crossedUp(2, 2)).toBe(false);
-    expect(crossedUp(3, 1)).toBe(false);
-    expect(crossedUp(1, 0)).toBe(false);
-  });
-});
+import { applyLateTitle, lateAnnouncement, lateTitle, quietUntilLabel } from "./late";
 
 describe("lateTitle", () => {
   it("troca o título quando há atrasados e devolve o original quando zera", () => {

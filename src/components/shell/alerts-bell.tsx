@@ -8,7 +8,7 @@ import { IconBell, IconClose } from "@/components/icons";
 import { markAlertsReadAction } from "@/app/(app)/funil/actions";
 import type { AlertItem } from "@/server/queries/alerts";
 import { isMuted, muteFor, unmute } from "./sound";
-import { SPRING, EASE } from "@/lib/motion";
+import { SPRING_UI, EASE, T } from "@/lib/motion";
 import { relTime } from "@/lib/format";
 import { leadHref } from "@/lib/lead-href";
 import { isTop, popModal, pushModal } from "@/components/ui/modal-stack";
@@ -92,11 +92,11 @@ export function AlertsBell({ alerts, reload }: { alerts: AlertItem[]; reload?: (
     <AnimatePresence>
       {open && (
         <>
-          <motion.div key="scrim" className="fixed inset-0 z-[60] bg-ink/25 backdrop-blur-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18, ease: EASE }} onClick={() => setOpen(false)} aria-hidden data-testid="alerts-scrim" />
+          <motion.div key="scrim" className="fixed inset-0 z-[60] bg-ink/25 backdrop-blur-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: T.base, ease: EASE }} onClick={() => setOpen(false)} aria-hidden data-testid="alerts-scrim" />
           <motion.div key="panel" ref={panelRef} role="dialog" aria-modal="true" aria-label="Alertas" data-testid="alerts-panel"
             style={{ "--bell-top": `${anchor.top}px`, "--bell-left": `${anchor.left}px` } as React.CSSProperties}
             initial={desktop ? { opacity: 0, y: -6, scale: 0.98 } : { y: "100%" }} animate={desktop ? { opacity: 1, y: 0, scale: 1 } : { y: 0 }} exit={desktop ? { opacity: 0, y: -4, scale: 0.98 } : { y: "100%" }}
-            transition={desktop ? { duration: 0.18, ease: EASE } : SPRING}
+            transition={desktop ? { duration: T.base, ease: EASE } : SPRING_UI}
             className="fixed z-[61] inset-x-0 bottom-0 lg:inset-x-auto lg:bottom-auto lg:top-[var(--bell-top)] lg:left-[var(--bell-left)] w-full lg:w-[360px] max-h-[80dvh] lg:max-h-[460px] flex flex-col bg-paper border border-line rounded-t-[var(--radius-panel)] lg:rounded-[var(--radius-card)] shadow-[var(--shadow-pop)] pb-[env(safe-area-inset-bottom)] lg:pb-0">
             <div className="flex items-center justify-between gap-2 pl-4 pr-1 py-1.5 border-b border-line bg-paper rounded-t-[inherit] shrink-0">
               <p className="font-semibold text-sm">Alertas</p>
@@ -144,7 +144,7 @@ export function AlertsBell({ alerts, reload }: { alerts: AlertItem[]; reload?: (
         <IconBell />
         <AnimatePresence>
           {unread.length > 0 && (
-            <motion.span key={unread.length} initial={{ scale: 0.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.4, opacity: 0 }} transition={SPRING}
+            <motion.span key={unread.length} initial={{ scale: 0.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.4, opacity: 0 }} transition={SPRING_UI}
               className="absolute top-0.5 right-0.5 lg:-top-0.5 lg:-right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-alert text-white text-[10.5px] font-semibold grid place-items-center tabular">
               {unread.length > 99 ? "99+" : unread.length}
             </motion.span>

@@ -7,7 +7,7 @@ import { ContactAvatar } from "@/components/ui/contact-avatar";
 import { IconCheck, IconClose } from "@/components/icons";
 import { useToast } from "@/components/ui/toast";
 import { formatPhoneClient } from "@/lib/phone-client";
-import { DUR, EASE } from "@/lib/motion";
+import { T, EASE } from "@/lib/motion";
 import { cn } from "@/lib/cn";
 import { useOpenLead } from "./open-lead";
 import { attendanceToast } from "./use-lead-actions";
@@ -44,7 +44,7 @@ export function AttendanceStrip({ items }: { items: AttendanceDue[] }) {
           {list.map((i) => {
             const name = i.name === i.phone ? formatPhoneClient(i.phone) : i.name;
             return (
-              <motion.li key={i.dealId} layout="position" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: DUR.base, ease: EASE }}
+              <motion.li key={i.dealId} layout="position" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: T.base, ease: EASE }}
                 data-testid="conferir-item" className="flex items-center gap-2.5 border-t border-line/70 py-1.5 first:border-t-0">
                 <button type="button" onClick={() => openLead(i.dealId)} className="flex min-h-11 min-w-0 flex-1 items-center gap-2.5 rounded-[var(--radius-control)] text-left lg:min-h-9">
                   <ContactAvatar contactId={i.contactId} hasAvatar={i.hasAvatar} name={name} size={32} />

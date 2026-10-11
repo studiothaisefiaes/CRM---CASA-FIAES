@@ -2,13 +2,13 @@
 import Link from "next/link";
 import { motion } from "motion/react";
 import type { JourneyPerson, JourneyStation } from "@/server/queries/journey";
-import { useHours, useNow } from "@/components/pipeline/timer";
+import { useClock, useHours } from "@/components/pipeline/timer";
 import { ContactAvatar } from "@/components/ui/contact-avatar";
 import { leadHref } from "@/lib/lead-href";
 import { personStatus } from "@/lib/journey-status";
 import type { RingState } from "@/lib/queue";
 import { BOARD_CLOSED_DAYS } from "@/lib/board-order";
-import { DUR, EASE } from "@/lib/motion";
+import { T, EASE } from "@/lib/motion";
 import { cn } from "@/lib/cn";
 
 const SIZE = 76, R = 35, C = 2 * Math.PI * R;
@@ -27,13 +27,15 @@ export const shortName = (name: string) => {
  * O anel mostra quanto do prazo da etapa já passou (verde, dourado, vermelho) e só existe para quem espera resposta: Fechado e Perdido não têm prazo.
  */
 function Person({ p, stageKind, index }: { p: JourneyPerson; stageKind: string; index: number }) {
-  const now = useNow();
   const hours = useHours();
-  const { text, ring, progress } = personStatus({ stageKind, awaitingSince: p.awaitingSince, urgency: p.urgency, slaMinutes: p.slaMinutes, scheduledAt: p.scheduledAt, closedAt: p.closedAt }, now, hours);
+  // O relógio entra como valor derivado: a pessoa só re-renderiza quando o texto ou 1% do anel muda, não a cada segundo.
+  const key = useClock((now) => { const r = personStatus({ stageKind, awaitingSince: p.awaitingSince, urgency: p.urgency, slaMinutes: p.slaMinutes, scheduledAt: p.scheduledAt, closedAt: p.closedAt }, now, hours); return `${r.ring}|${Math.round(r.progress * 100)}|${r.text}`; });
+  const [ringKey, pct, ...rest] = key.split("|");
+  const ring = ringKey as RingState, progress = Number(pct) / 100, text = rest.join("|");
   const short = shortName(p.name);
   const label = `${short}${short === p.name.trim() ? "" : ` (${p.name})`}, ${text}`;
   return (
-    <motion.li initial={{ opacity: 0, scale: 0.92 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: DUR.base, ease: EASE, delay: Math.min(index, 11) * 0.025 }}>
+    <motion.li initial={{ opacity: 0, scale: 0.92 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: T.base, ease: EASE, delay: Math.min(index, 11) * 0.025 }}>
       <Link href={leadHref(p.dealId)} aria-label={label} suppressHydrationWarning className="group flex w-24 flex-col items-center gap-2 rounded-[var(--radius-control)] py-1 outline-offset-2">
         <span className="relative block" style={{ width: SIZE, height: SIZE }}>
           <svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} className="absolute inset-0" aria-hidden>
@@ -59,7 +61,7 @@ export function Station({ station: s, index }: { station: JourneyStation; index:
   const empty = s.count === 0;
   const done = s.kind === "fechado" || s.kind === "perdido";
   return (
-    <motion.li initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: DUR.slow, ease: EASE, delay: 0.04 + index * 0.06 }}
+    <motion.li initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: T.slow, ease: EASE, delay: 0.04 + index * 0.06 }}
       className="relative flex min-w-0 flex-col gap-3" data-station={s.key}>
       <Link href={href} aria-label={`${s.name}: ${s.count} ${s.count === 1 ? "lead" : "leads"}${done ? ` nos últimos ${BOARD_CLOSED_DAYS} dias` : ""}${hot ? `, ${s.late} ${s.late === 1 ? "atrasado" : "atrasados"}` : ""}. ${done ? "Ver no Quadro" : "Abrir na Fila"}`}
         className="relative z-10 flex min-h-11 w-fit max-w-full items-center gap-2 rounded-[var(--radius-control)] bg-paper px-1.5 outline-offset-2 hover:bg-paper-2">

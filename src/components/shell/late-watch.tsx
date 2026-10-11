@@ -1,24 +1,13 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { applyLateTitle, crossedUp, lateAnnouncement } from "@/lib/late";
+import { applyLateTitle, lateAnnouncement } from "@/lib/late";
+import { useCrossedThreshold } from "@/components/motion/use-crossed-threshold";
 import { useLive } from "./live";
 import { playAlert } from "./sound";
 
 /** Eventos ao vivo que podem mudar quem está atrasado. */
 const RELEVANT = new Set(["regras", "alerta", "lead_criado", "lead_atualizado", "lead_arquivado", "lead_restaurado", "mensagem_recebida", "mensagem_enviada", "resposta", "etapa_alterada", "historico_importado", "reconectado"]);
 const DEBOUNCE_MS = 2000;
-
-/** Versão local de "cruzou o limite" (a T21 troca pela primitiva final): chama `onCross` só quando o número sobe. */
-function useCrossedThreshold(count: number, onCross: (n: number) => void) {
-  const prev = useRef<number | null>(null);
-  const cb = useRef(onCross);
-  useEffect(() => { cb.current = onCross; });
-  useEffect(() => {
-    const before = prev.current;
-    prev.current = count;
-    if (crossedUp(before, count)) cb.current(count);
-  }, [count]);
-}
 
 /**
  * Quando um lead passa do prazo: toca o som, põe "(N) atrasados · Casa Fiaes" no título da aba e anuncia
@@ -53,12 +42,16 @@ export function LateWatch({ initial }: { initial: number }) {
 
   // Região aria-live: a cada subida anuncia o total atual; limpa antes de escrever para o mesmo texto ser lido de novo.
   const announceTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useCrossedThreshold(n, (now) => {
+  // "Cruzou o limite" aqui é o número subir (0 -> 1, mas também 2 -> 3): o limite anda com o valor anterior. Nunca na primeira pintura.
+  const rose = useCrossedThreshold(n, (prev) => prev + 1);
+  useEffect(() => {
+    if (!rose) return;
     playAlert();
-    setMessage("");
     clearTimeout(announceTimer.current);
-    announceTimer.current = setTimeout(() => setMessage(lateAnnouncement(now)), 80);
-  });
+    const clear = setTimeout(() => setMessage(""), 0); // limpa antes de escrever, para o mesmo texto ser lido de novo
+    announceTimer.current = setTimeout(() => setMessage(lateAnnouncement(n)), 80);
+    return () => clearTimeout(clear);
+  }, [rose, n]);
   useEffect(() => () => clearTimeout(announceTimer.current), []);
 
   // Título: o Next reescreve o <title> a cada navegação; aplicamos o nosso por cima e devolvemos o original em N = 0.

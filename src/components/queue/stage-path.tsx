@@ -2,7 +2,7 @@
 import type { CSSProperties } from "react";
 import { motion } from "motion/react";
 import { IconCheck } from "@/components/icons";
-import { DUR, EASE } from "@/lib/motion";
+import { T, EASE } from "@/lib/motion";
 import { cn } from "@/lib/cn";
 
 export type PathStage = { id: string; key: string; name: string; kind: string };
@@ -69,7 +69,7 @@ export function StagePath({ stages, currentKey, onPick, busy }: { stages: PathSt
       <ol aria-label="Etapas" className="relative">
         <span aria-hidden className="absolute left-[calc(0.25rem+9px-0.5px)] top-[calc(var(--row)/2)] bottom-[var(--rail-end)] w-px bg-line-strong" />
         <motion.span aria-hidden className="absolute left-[calc(0.25rem+9px-1px)] top-[calc(var(--row)/2)] bottom-[var(--rail-end)] w-0.5 origin-top rounded-full bg-gold"
-          initial={false} animate={{ scaleY: progress }} transition={{ duration: DUR.slow, ease: EASE }} />
+          initial={false} animate={{ scaleY: progress }} transition={{ duration: T.slow, ease: EASE }} />
         {main.map((n) => row(n, nodes.indexOf(n)))}
         {lostNode && row(lostNode, nodes.indexOf(lostNode), "mt-1 border-t border-line pt-1")}
       </ol>

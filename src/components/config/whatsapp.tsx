@@ -11,7 +11,7 @@ import { useToast } from "@/components/ui/toast";
 import { IconWhatsApp, IconPlus, IconCheck, IconRefresh } from "@/components/icons";
 import { createChannelAction, channelQrAction, channelStateAction, disconnectChannelAction } from "@/app/(app)/config/actions";
 import { useLiveRefresh } from "@/components/shell/live";
-import { SPRING, EASE } from "@/lib/motion";
+import { SPRING_UI, EASE } from "@/lib/motion";
 import { relTime } from "@/lib/format";
 import { formatPhoneClient } from "@/lib/phone-client";
 
@@ -40,13 +40,13 @@ export function WhatsAppChannels({ channels }: { channels: Ch[] }) {
       ) : (
         <ul className="grid sm:grid-cols-2 gap-3">
           {channels.map((c) => (
-            <motion.li key={c.id} layout transition={SPRING} className="rounded-[var(--radius-card)] border border-line bg-paper p-5">
+            <motion.li key={c.id} layout transition={SPRING_UI} className="rounded-[var(--radius-card)] border border-line bg-paper p-5">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <span className={`size-10 rounded-[var(--radius-control)] grid place-items-center ${c.status === "conectado" ? "bg-ok-soft text-ok" : "bg-paper-2 text-muted"}`}><IconWhatsApp /></span>
                   <div><p className="font-medium">{c.name}</p><p className="text-sm text-muted">{c.phone ? formatPhoneClient(c.phone) : "número aparece ao conectar"}</p></div>
                 </div>
-                <Badge tone={STATUS[c.status][1]}>{c.status === "conectado" && <span className="size-1.5 rounded-full bg-ok animate-pulse" />}{STATUS[c.status][0]}</Badge>
+                <Badge tone={STATUS[c.status][1]}>{c.status === "conectado" && <span className="size-1.5 rounded-full bg-ok" />}{STATUS[c.status][0]}</Badge>
               </div>
               <div className="flex items-center justify-between mt-4">
                 <p className="text-xs text-muted">{c.lastEventAt ? `Último sinal ${relTime(c.lastEventAt)}` : "Sem sinal ainda"}</p>
@@ -123,11 +123,11 @@ function QrDialog({ channel, onClose }: { channel: Ch | null; onClose: () => voi
               <motion.div key={`q${st.refreshes}`} initial={{ opacity: 0, scale: 0.94, filter: "blur(6px)" }} animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }} exit={{ opacity: 0 }} transition={{ duration: 0.4, ease: EASE }} className="relative">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={st.qr} alt="QR code para conectar o WhatsApp" className="size-[208px]" />
-                <motion.span className="absolute left-0 right-0 h-[2px] bg-gold/70 shadow-[0_0_12px_rgb(184_134_63)]" animate={{ top: ["4%", "96%", "4%"] }} transition={{ duration: 2.6, repeat: Infinity, ease: "easeInOut" }} aria-hidden />
+                <motion.span className="absolute left-0 right-0 top-0 h-[2px] bg-gold/70 shadow-[0_0_12px_rgb(184_134_63)]" animate={{ y: [8, 198, 8] }} transition={{ duration: 2.6, repeat: Infinity, ease: "easeInOut" }} aria-hidden />
               </motion.div>
             )}
             {st.s === "conectado" && (
-              <motion.div key="ok" initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={SPRING} className="size-24 rounded-full bg-ok text-white grid place-items-center">
+              <motion.div key="ok" initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={SPRING_UI} className="size-24 rounded-full bg-ok text-white grid place-items-center">
                 <IconCheck size={44} />
               </motion.div>
             )}

@@ -14,7 +14,7 @@ import { moveDealAction } from "@/app/(app)/funil/actions";
 import { useToast } from "@/components/ui/toast";
 import { orderByUrgency } from "@/lib/board-order";
 import { formatPhoneClient } from "@/lib/phone-client";
-import { SPRING } from "@/lib/motion";
+import { LIMITS, SPRING_UI } from "@/lib/motion";
 import { cn } from "@/lib/cn";
 
 type Column = BoardStage & { virtual?: boolean; stageNames?: Record<string, string> };
@@ -158,11 +158,11 @@ export function Board({ stages, viewer }: { stages: BoardStage[]; viewer: Viewer
       <DndContext id="funil" sensors={sensors} collisionDetection={collision} accessibility={{ announcements, screenReaderInstructions: INSTRUCTIONS, restoreFocus: false }}
         onDragStart={(e: DragStartEvent) => { setActiveId(e.active.id as string); setFocusId(null); }} onDragEnd={onDragEnd} onDragCancel={() => setActiveId(null)}>
         <LayoutGroup>
-          <div className="flex gap-3 overflow-x-auto scroll-thin px-5 lg:px-8 pb-6 snap-x snap-mandatory lg:snap-none" style={{ height: "calc(100dvh - 190px)" }}>
+          <motion.div layoutScroll className="flex gap-3 overflow-x-auto scroll-thin px-5 lg:px-8 pb-6 snap-x snap-mandatory lg:snap-none" style={{ height: "calc(100dvh - 190px)" }}>
             {columns.map((s) => (s.kind === "fechado" || s.kind === "perdido") && !openClosed[s.id]
               ? <CollapsedColumn key={s.id} stage={s} onOpen={() => setOpenClosed((o) => ({ ...o, [s.id]: true }))} />
               : <ColumnView key={s.id} stage={s} activeId={activeId} focusId={focusId} openingId={openingId} filtersQs={filtersQs} onCollapse={s.kind === "fechado" || s.kind === "perdido" ? () => setOpenClosed((o) => ({ ...o, [s.id]: false })) : undefined} />)}
-          </div>
+          </motion.div>
         </LayoutGroup>
         {/* "Reduzir movimento": o card solta e pronto, sem o voo de volta. */}
         <DragOverlay dropAnimation={reduced ? null : { duration: 220, easing: "cubic-bezier(0.22,1,0.36,1)" }}>
@@ -190,6 +190,11 @@ function ColumnView({ stage, activeId, focusId, openingId, filtersQs, onCollapse
   const { setNodeRef, isOver } = useDroppable({ id: stage.id });
   // Atrasado = alerta de espera aberto (a regra da Fila e da Jornada), não o relógio da tela.
   const late = stage.cards.filter((c) => c.urgency === "late").length;
+  const card = (c: Column["cards"][number]) => (
+    <Draggable id={c.id} refocus={c.id === focusId}>
+      {(a11y) => <DealCard card={c} slaMinutes={stage.slaMinutes} stageKind={stage.kind} stageName={stage.stageNames?.[c.stageId]} filtersQs={filtersQs} a11y={a11y} opening={c.id === openingId} />}
+    </Draggable>
+  );
   return (
     <section ref={setNodeRef} aria-label={`${stage.name}, ${stage.cards.length} leads`}
       className={cn("snap-start shrink-0 w-[288px] flex flex-col rounded-[var(--radius-card)] transition-colors duration-200", isOver ? "bg-gold-soft/70 ring-1 ring-gold/40" : "bg-paper-2")}>
@@ -202,19 +207,23 @@ function ColumnView({ stage, activeId, focusId, openingId, filtersQs, onCollapse
         </div>
         {late > 0 && <span className="text-xs font-semibold text-alert bg-alert-soft rounded-[6px] px-1.5 h-5 grid place-items-center">{late} atrasado{late > 1 ? "s" : ""}</span>}
       </header>
-      <div role="list" aria-label={`Leads em ${stage.name}`} className="flex-1 overflow-y-auto scroll-thin px-2 pb-2 flex flex-col gap-2 min-h-24">
-        <AnimatePresence initial={false}>
-          {stage.cards.map((c) => (
-            <motion.div key={c.id} layout layoutId={c.id} transition={SPRING}
-              initial={{ opacity: 0, y: -8, scale: 0.98 }} animate={{ opacity: c.id === activeId ? 0.35 : 1, y: 0, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }}>
-              <Draggable id={c.id} refocus={c.id === focusId}>
-                {(a11y) => <DealCard card={c} slaMinutes={stage.slaMinutes} stageKind={stage.kind} stageName={stage.stageNames?.[c.stageId]} filtersQs={filtersQs} a11y={a11y} opening={c.id === openingId} />}
-              </Draggable>
-            </motion.div>
-          ))}
-        </AnimatePresence>
+      <motion.div layoutScroll role="list" aria-label={`Leads em ${stage.name}`} className="flex-1 overflow-y-auto scroll-thin px-2 pb-2 flex flex-col gap-2 min-h-24">
+        {/* Até LIMITS.layoutItems cards a coluna anima entrada, saída e troca de lugar; acima disso, lista comum (animar 100 cards custa mais do que ajuda).
+            `layoutDependency` = coluna e posição: só o que mudou de lugar é medido, o relógio nunca dispara medição. */}
+        {stage.cards.length > LIMITS.layoutItems
+          ? stage.cards.map((c) => <div key={c.id} className={c.id === activeId ? "opacity-35" : undefined}>{card(c)}</div>)
+          : (
+            <AnimatePresence initial={false}>
+              {stage.cards.map((c, i) => (
+                <motion.div key={c.id} layout layoutId={c.id} layoutDependency={`${stage.id}:${i}`} transition={SPRING_UI}
+                  initial={{ opacity: 0, y: -8, scale: 0.98 }} animate={{ opacity: c.id === activeId ? 0.35 : 1, y: 0, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }}>
+                  {card(c)}
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          )}
         {stage.cards.length === 0 && <p className="text-xs text-muted text-center py-6 px-4">Arraste um lead para cá</p>}
-      </div>
+      </motion.div>
     </section>
   );
 }

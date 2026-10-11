@@ -12,7 +12,7 @@ import { useLive } from "@/components/shell/live";
 import { markConversationReadAction } from "@/app/(app)/funil/actions";
 import { getConversationAction, nextWaitingAction, type Viewer } from "@/app/(app)/atendimento/actions";
 import { formatPhoneClient } from "@/lib/phone-client";
-import { DUR, EASE } from "@/lib/motion";
+import { T, EASE } from "@/lib/motion";
 import { PaneHeader, type PaneBack, type PaneTab, type WaWarning } from "./pane-header";
 import { ClientPane } from "./client-pane";
 import { useLeadActions } from "./use-lead-actions";
@@ -165,7 +165,7 @@ export function ConversationPane({ dealId, initial, initialTab = "conversa", bac
           {detail ? <Conversation messages={msgs} onReply={onReply} forceEndKey={sentCount} visible={tab === "conversa"} /> : <ConversationSkeleton item={initial} error={error} onRetry={() => { setError(null); void load(); }} />}
           <AnimatePresence initial={false}>
             {answered && next && (
-              <motion.div key="proximo" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: DUR.base, ease: EASE }} className="shrink-0 px-3 pt-2">
+              <motion.div key="proximo" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: T.base, ease: EASE }} className="shrink-0 px-3 pt-2">
                 {next.id ? (
                   <button type="button" onClick={() => openLead(next.id!)}
                     className="w-full min-h-11 px-3 rounded-[var(--radius-control)] bg-gold-soft text-gold-ink text-sm font-semibold inline-flex items-center justify-center gap-2 hover:brightness-[0.98]">

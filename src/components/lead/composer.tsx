@@ -5,7 +5,7 @@ import { IconClose, IconMic, IconPaperclip, IconReply, IconSend, IconStop, IconT
 import { sendMediaAction, sendMessageAction } from "@/app/(app)/funil/actions";
 import { IconButton } from "@/components/ui/icon-button";
 import { useToast } from "@/components/ui/toast";
-import { EASE } from "@/lib/motion";
+import { EASE, T } from "@/lib/motion";
 
 type Reply = { id: string; label: string; body: string | null };
 export type QuoteTarget = { id: string; text: string };
@@ -133,7 +133,7 @@ export function Composer({ dealId, firstName, quickReplies, onOptimistic, onSent
     <div className="sticky bottom-0 z-[1] shrink-0 border-t border-line bg-paper px-3 pt-3 pb-[max(0.375rem,env(safe-area-inset-bottom))] lg:pb-3">
       <AnimatePresence>
         {matches.length > 0 && (
-          <motion.ul initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }} transition={{ duration: 0.16, ease: EASE }}
+          <motion.ul initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }} transition={{ duration: T.fast, ease: EASE }}
             className="absolute left-3 right-3 bottom-full mb-2 bg-paper border border-line rounded-[var(--radius-card)] shadow-[var(--shadow-pop)] overflow-hidden" role="listbox" aria-label="Respostas prontas">
             {matches.map((q, i) => (
               <li key={q.id} role="option" aria-selected={i === sel}>
@@ -149,7 +149,7 @@ export function Composer({ dealId, firstName, quickReplies, onOptimistic, onSent
 
       <AnimatePresence initial={false}>
         {replyTo && (
-          <motion.div key="reply" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }} transition={{ duration: 0.16, ease: EASE }}
+          <motion.div key="reply" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }} transition={{ duration: T.fast, ease: EASE }}
             className="mb-2 flex items-center gap-2 rounded-[var(--radius-control)] bg-paper-2 border-l-2 border-gold/70 pl-3 pr-1 py-1">
             <IconReply size={15} className="shrink-0 text-gold-ink" />
             <p className="min-w-0 flex-1 text-sm text-graphite truncate"><span className="font-semibold text-ink">Respondendo a: </span>{replyTo.text}</p>
@@ -157,7 +157,7 @@ export function Composer({ dealId, firstName, quickReplies, onOptimistic, onSent
           </motion.div>
         )}
         {attachment && (
-          <motion.div key="attachment" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }} transition={{ duration: 0.16, ease: EASE }}
+          <motion.div key="attachment" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }} transition={{ duration: T.fast, ease: EASE }}
             className="mb-2 flex items-center gap-3 rounded-[var(--radius-control)] border border-line bg-paper-2 p-2" role="group" aria-label="Arquivo para enviar">
             {attachment.kind === "image"
               // eslint-disable-next-line @next/next/no-img-element
@@ -178,7 +178,7 @@ export function Composer({ dealId, firstName, quickReplies, onOptimistic, onSent
           <span role="status" className="sr-only">Gravando áudio</span>
           <IconButton label="Descartar gravação" size="lg" onClick={cancelRecording}><IconTrash size={18} /></IconButton>
           <p className="flex-1 flex items-center gap-2 h-11 px-3.5 rounded-[var(--radius-control)] bg-paper-2 text-base">
-            <span className="size-2.5 rounded-full bg-alert animate-pulse" aria-hidden />Gravando <span aria-hidden className="tabular-nums text-graphite">{clock(recording.seconds)}</span>
+            <span className="size-2.5 rounded-full bg-alert" aria-hidden />Gravando <span aria-hidden className="tabular-nums text-graphite">{clock(recording.seconds)}</span>
           </p>
           <motion.button type="button" onClick={stopRecording} whileTap={{ scale: 0.92 }} aria-label="Parar e revisar áudio"
             className="size-11 shrink-0 grid place-items-center rounded-[var(--radius-control)] bg-ink text-paper"><IconStop size={18} /></motion.button>
