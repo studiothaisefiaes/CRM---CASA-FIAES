@@ -1,6 +1,6 @@
 "use client";
 import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
-import { AnimatePresence, motion, usePresence } from "motion/react";
+import { AnimatePresence, motion, useIsPresent } from "motion/react";
 import { SPRING_UI } from "@/lib/motion";
 import { pushToast } from "./toast-queue";
 
@@ -33,7 +33,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
 /** Um aviso. Na animação de saída o aviso já não vale: sai da árvore de acessibilidade e o botão não aceita mais toque (nem um segundo "Desfazer" em cima do primeiro). */
 function ToastItem({ t, dismiss }: { t: Toast; dismiss: (id: number) => void }) {
-  const [present] = usePresence();
+  const present = useIsPresent(); // não usePresence(): ele registra o item e o AnimatePresence esperaria um safeToRemove que nunca vem (aviso preso no DOM)
   return (
     <motion.div layout initial={{ opacity: 0, y: -10, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, scale: 0.97 }} transition={SPRING_UI}
       role={t.tone === "error" ? "alert" : "status"} aria-hidden={present ? undefined : true}

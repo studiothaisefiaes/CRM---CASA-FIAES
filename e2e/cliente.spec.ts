@@ -192,7 +192,7 @@ test("Não é cliente arquiva e o Desfazer devolve o lead", async ({ page, isMob
   expect((await e2eSql("select ignored from contacts where phone_e164 = '+5571997405001'"))[0].ignored).toBe(false);
   expect((await eventos(id, "restaurado"))).toHaveLength(1);
 
-  await expect(page.getByRole("button", { name: "Desfazer" })).toHaveCount(0); // o aviso do 1º Desfazer saiu (senão o 2º clique poderia pegar o aviso velho)
+  await expect(page.locator("button", { hasText: "Desfazer" })).toHaveCount(0); // o aviso do 1º Desfazer saiu do DOM de verdade (não só da árvore de acessibilidade)
   // Alguém já devolveu o lead antes do Desfazer: avisa e não tenta abrir
   await painel(page).getByRole("button", { name: "Não é cliente" }).click();
   await expect(page.getByRole("button", { name: "Desfazer" })).toBeVisible();
