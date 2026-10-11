@@ -30,6 +30,7 @@ export default async function ConversaPage({ params, searchParams }: PageProps<"
   const cols = withList ? "lg:grid-cols-[340px_minmax(0,1fr)] xl:grid-cols-[340px_minmax(0,1fr)_300px]" : "xl:grid-cols-[minmax(0,1fr)_300px]";
   return (
     <main className={`h-dvh overflow-hidden grid grid-cols-1 grid-rows-[minmax(0,1fr)] ${cols}`}>
+      <h1 className={withList ? "sr-only lg:hidden" : "sr-only"}>Conversa</h1>{/* com a lista na tela (≥ lg) o h1 é o "Atendimento" dela */}
       <LiveRefresh scopes={["queue"]} />
       {queue && bulk && <QueueColumn queue={queue} query="" view="todos" foco={null} filtro={null} q={null} fonte={null} journey={user.role === "gestor"} onlyOwnLabel={false} selectedId={id} className="hidden lg:flex" bulk={bulk} />}
       <ConversationPane key={id} dealId={id} initial={queue?.sections.flatMap((s) => s.items).find((i) => i.dealId === id) ?? item} back={withList ? "below-lg" : "always"} focusComposer={compose}

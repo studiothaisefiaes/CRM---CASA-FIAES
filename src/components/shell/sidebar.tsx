@@ -37,7 +37,7 @@ export function Sidebar({ user, alerts: initialAlerts }: { user: { name: string;
     <>
       <aside className="hidden lg:flex fixed inset-y-0 left-0 w-[232px] flex-col bg-paper-2 border-r border-line z-30">
         <div className="flex items-center justify-between px-5 pt-5 pb-6">
-          <Link href="/" className="font-serif text-[21px] leading-none">Casa <em className="text-gold">Fiaes</em></Link>
+          <Link href="/" className="font-serif text-[21px] leading-none">Casa <em className="text-gold-ink">Fiaes</em></Link>
           <AlertsBell alerts={alerts} reload={reload} />
         </div>
         <nav className="flex-1 px-3 flex flex-col gap-0.5" aria-label="Principal">
@@ -64,7 +64,7 @@ export function Sidebar({ user, alerts: initialAlerts }: { user: { name: string;
 
       {/* Celular: barra superior + navegação inferior */}
       {!conversation && <header className="lg:hidden sticky top-0 z-30 flex items-center justify-between h-14 px-4 bg-paper/90 backdrop-blur border-b border-line">
-        <Link href="/" className="font-serif text-[19px]">Casa <em className="text-gold">Fiaes</em></Link>
+        <Link href="/" className="font-serif text-[19px] inline-block py-3">Casa <em className="text-gold-ink">Fiaes</em></Link>
         <div className="flex items-center gap-1">
           <AlertsBell alerts={alerts} reload={reload} />
           <form action={logoutAction}><button className="size-11 grid place-items-center rounded-[var(--radius-control)] text-muted" aria-label="Sair"><IconLogout size={17} /></button></form>

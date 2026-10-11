@@ -106,7 +106,7 @@ export default async function HojePage({ searchParams }: PageProps<"/">) {
         <section className="rounded-[var(--radius-panel)] border border-line bg-paper">
           <header className="flex items-center justify-between px-5 pt-4 pb-3">
             <h2 className="font-serif text-[22px] font-light">Esperando resposta</h2>
-            <Link href="/atendimento" className="text-sm text-gold-ink hover:underline">Abrir a fila</Link>
+            <Link href="/atendimento" className="text-sm text-gold-ink hover:underline pointer-coarse:inline-flex pointer-coarse:items-center pointer-coarse:min-h-11">Abrir a fila</Link>
           </header>
           <WaitingList items={t.waiting} />
         </section>

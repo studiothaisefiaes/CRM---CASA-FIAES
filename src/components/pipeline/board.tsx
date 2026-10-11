@@ -207,7 +207,7 @@ function ColumnView({ stage, activeId, focusId, openingId, filtersQs, onCollapse
         </div>
         {late > 0 && <span className="text-xs font-semibold text-alert bg-alert-soft rounded-[6px] px-1.5 h-5 grid place-items-center">{late} atrasado{late > 1 ? "s" : ""}</span>}
       </header>
-      <motion.div layoutScroll role="list" aria-label={`Leads em ${stage.name}`} className="flex-1 overflow-y-auto scroll-thin px-2 pb-2 flex flex-col gap-2 min-h-24">
+      <motion.div layoutScroll role={stage.cards.length ? "list" : "group"} aria-label={`Leads em ${stage.name}`} className="flex-1 overflow-y-auto scroll-thin px-2 pb-2 flex flex-col gap-2 min-h-24">
         {/* Até LIMITS.layoutItems cards a coluna anima entrada, saída e troca de lugar; acima disso, lista comum (animar 100 cards custa mais do que ajuda).
             `layoutDependency` = coluna e posição: só o que mudou de lugar é medido, o relógio nunca dispara medição. */}
         {stage.cards.length > LIMITS.layoutItems

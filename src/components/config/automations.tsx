@@ -79,7 +79,7 @@ export function AutomationsList({ items, stages, runs }: { items: Item[]; stages
                   <p className="text-xs text-muted mt-1.5">{runs[a.id] ? <b className="text-graphite font-semibold">Disparou {runs[a.id]}× nos últimos 7 dias · </b> : "Não disparou nos últimos 7 dias · "}versão {a.version}, alterada {relTime(a.updatedAt)}</p>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
-                  <button className="text-sm text-graphite hover:text-ink underline-offset-2 hover:underline" onClick={() => setEditing(a)}>Editar</button>
+                  <button className="text-sm text-graphite hover:text-ink underline-offset-2 hover:underline pointer-coarse:min-h-11 pointer-coarse:min-w-11" onClick={() => setEditing(a)}>Editar</button>
                   <Switch checked={a.enabled} label={`${a.enabled ? "Desligar" : "Ligar"} ${a.name}`} onChange={(v) => (v && sendsMessages(a.actions as Action[]) ? askOn(a) : toggle(a, v))} />
                 </div>
               </motion.li>

@@ -43,8 +43,8 @@ export default async function ContatosPage({ searchParams }: PageProps<"/contato
             <div className="order-1 min-w-0 flex-1 sm:flex-none"><SearchBox initial={q} keep={keep} /></div>
             <SelectToggle className="order-2 min-h-11 border border-line-strong sm:order-4 sm:ml-auto sm:min-h-10 lg:min-h-10" />
             <div className="order-3 flex w-full flex-wrap gap-2 sm:w-auto">
-              <Link href={href({ clientes: !clientes })} aria-pressed={clientes} className={cn(CHIP, clientes ? "border-ink bg-ink text-paper" : "border-line-strong hover:bg-paper-2")}>Só clientes</Link>
-              <Link href={href({ ignorados: !ignorados })} aria-pressed={ignorados} className={cn(CHIP, ignorados ? "border-ink bg-ink text-paper" : "border-line-strong hover:bg-paper-2")}>Incluir “Não é cliente”</Link>
+              <Link href={href({ clientes: !clientes })} aria-current={clientes ? "true" : undefined} className={cn(CHIP, clientes ? "border-ink bg-ink text-paper" : "border-line-strong hover:bg-paper-2")}>Só clientes</Link>
+              <Link href={href({ ignorados: !ignorados })} aria-current={ignorados ? "true" : undefined} className={cn(CHIP, ignorados ? "border-ink bg-ink text-paper" : "border-line-strong hover:bg-paper-2")}>Incluir “Não é cliente”</Link>
             </div>
           </div>
           {data.rows.length === 0 ? (
