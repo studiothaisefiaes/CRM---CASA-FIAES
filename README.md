@@ -46,7 +46,7 @@ Requisitos: Node 20.9+, Docker (Colima ou Docker Desktop).
 cp .env.example .env        # ajuste as chaves (EVOLUTION_API_KEY, WEBHOOK_SECRET, SESSION_SECRET)
 npm install
 npm run infra:up            # Postgres 17 + Evolution API 2.3.7
-npm run db:migrate          # cria/atualiza as tabelas (migrações 0000 a 0009)
+npm run db:migrate          # cria/atualiza as tabelas (migrações 0000 a 0010)
 npm run db:seed             # etapas, listas e automações padrão (idempotente)
 npm run seed:admin -- --email voce@casafiaes.com.br --name "Seu nome"   # primeiro acesso de gestão
 npm run dev                 # app em http://localhost:3000
@@ -105,7 +105,7 @@ src/components/    design system (ui/), shell, queue (Fila e conversa), lead, pi
 src/lib/           utilitários compartilhados entre cliente e servidor (Fila, links dos relatórios, dinheiro, horário de funcionamento, motion)
 worker/            processo separado (pg-boss): automações, alertas, envios automáticos, push, reprocessamento de webhooks, limpeza
 scripts/           backup, restauração, teste de restauração, medição de desempenho, VAPID, seeds
-drizzle/           migrações SQL versionadas (0000 a 0009)
+drizzle/           migrações SQL versionadas (0000 a 0010)
 docs/              especificações, planos, deploy e backup
 ```
 
