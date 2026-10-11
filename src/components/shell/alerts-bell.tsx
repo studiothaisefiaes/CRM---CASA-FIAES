@@ -119,10 +119,10 @@ export function AlertsBell({ alerts, reload }: { alerts: AlertItem[]; reload?: (
                   {alerts.map((a) => (
                     <li key={a.id}>
                       <Link href={leadHref(a.dealId)} onClick={(e) => openAlert(e, a)}
-                        className={`flex gap-3 px-4 py-3 min-h-11 border-b border-line/70 hover:bg-paper-2 transition-colors ${a.read ? "opacity-60" : ""}`}>
-                        <span className={`mt-1.5 size-2 rounded-full shrink-0 ${a.resolved ? "bg-ok" : a.severity === "urgente" ? "bg-alert" : "bg-gold"}`} />
+                        className={`flex gap-3 px-4 py-3 min-h-11 border-b border-line/70 hover:bg-paper-2 transition-colors`}>
+                        <span className={`mt-1.5 size-2 rounded-full shrink-0 ${a.read ? "opacity-50" : ""} ${a.resolved ? "bg-ok" : a.severity === "urgente" ? "bg-alert" : "bg-gold"}`} />
                         <span className="min-w-0">
-                          <span className="block text-sm leading-snug">{a.message}</span>
+                          <span className={`block text-sm leading-snug ${a.read ? "text-graphite" : "font-medium"}`}>{a.message}</span>
                           <span className="block text-xs text-muted mt-0.5">{relTime(a.createdAt)}{a.resolved ? " · resolvido" : ""}</span>
                         </span>
                       </Link>

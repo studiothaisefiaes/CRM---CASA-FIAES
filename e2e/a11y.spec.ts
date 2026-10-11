@@ -20,7 +20,9 @@ test.beforeAll(async () => {
   lead = { contactId: String(c.id), dealId: String(d.id) };
 });
 test.afterAll(async () => {
-  await e2eSql("update deals set archived_at = coalesce(archived_at, now()) where contact_id = $1", [lead.contactId]);
+  // Não deixa lead nem aviso para os outros specs (o sino do teste abaixo cria um lead atrasado).
+  await e2eSql("update deals set archived_at = coalesce(archived_at, now()) where contact_id = $1 or contact_id in (select id from contacts where phone_e164 = '+5571997004545')", [lead.contactId]);
+  await e2eSql("update alerts set resolved_at = now() where resolved_at is null");
 });
 
 const GESTAO = "gestao@e2e.local";
