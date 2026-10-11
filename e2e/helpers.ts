@@ -52,7 +52,7 @@ export async function simulate(page: Page, opts: { phone: string; name: string; 
 /** Volta o relógio da espera de um lead e roda o motor de automações (simula a passagem do tempo). */
 export function ageLead(phoneE164: string, minutes: number) {
   const url = (process.env.DATABASE_URL ?? "").replace(/\/crm(\?|$)/, "/crm_e2e$1");
-  execSync(`npx tsx e2e/envelhecer.ts ${phoneE164} ${minutes}`, { stdio: "inherit", env: { ...process.env, DATABASE_URL: url } });
+  execSync(`npx tsx e2e/envelhecer.ts ${phoneE164} ${minutes}`, { stdio: "inherit", env: { ...process.env, DATABASE_URL: url, EVOLUTION_URL: "http://127.0.0.1:9" } }); // nunca a Evolution real
 }
 
 const e2eUrl = () => (process.env.DATABASE_URL ?? "").replace(/\/crm(\?|$)/, "/crm_e2e$1");

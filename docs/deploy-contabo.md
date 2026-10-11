@@ -57,13 +57,13 @@ Primeira instalação, na ordem:
 
 O banco que está no ar (`crm`) ainda **não** tem as migrações desta rodada. No deploy dela, nesta ordem:
 
-1. **Ensaio numa cópia, antes do dia** (cronometrado). A 0008 cria índices trigram (GIN) em `messages.body` e a 0009 cria índices sem `CONCURRENTLY` (o drizzle roda cada migração numa transação): enquanto cada índice é criado, as escritas na tabela ficam travadas. Medir numa cópia restaurada do backup mais recente, nunca no `crm`:
+1. **Ensaio numa cópia, antes do dia** (cronometrado). A 0008 cria índices trigram (GIN) em `messages.body` e a 0009 cria índices sem `CONCURRENTLY` (o drizzle roda todas as migrações pendentes numa transação só: os travamentos da 0008 ficam até a 0010 terminar): enquanto cada índice é criado, as escritas na tabela ficam travadas. Medir numa cópia restaurada do backup mais recente, nunca no `crm`:
    ```bash
    bash scripts/restore.sh ~/backups/casa-fiaes-crm/<pasta do backup> --into-db crm_restore_test
    time DATABASE_URL=postgresql://crm:<senha>@localhost:5433/crm_restore_test npm run db:migrate
    docker compose exec -T db psql -U crm -d postgres -c 'drop database if exists crm_restore_test with (force)'
    ```
-   Anote o tempo: é a janela em que o CRM fica parado no dia (passo 3). Se passar de alguns minutos, marque o deploy para fora do expediente. Apague a cópia no fim (é cópia de dados de clientes).
+   Anote o tempo: somado ao seed e ao `npm run build` (que também rodam com o app parado), é a janela em que o CRM fica parado no dia (passo 3). Se passar de alguns minutos, marque o deploy para fora do expediente. Apague a cópia no fim (é cópia de dados de clientes).
 2. **Backup antes de tudo** (com o app ainda na versão antiga): `bash scripts/backup.sh` e anote a pasta impressa na última linha. Confira o `SHA256SUMS` da pasta.
 3. **Parar o app e o worker antes de migrar**: `pm2 stop crm-web crm-worker`. Nada pode escrever no banco enquanto os índices são criados: as escritas ficariam esperando o cadeado (tela travada, webhook estourando o tempo) e o worker antigo continuaria rodando regras contra um esquema pela metade. Com o app parado, mensagens que chegarem nessa janela podem não entrar no CRM na hora (continuam no WhatsApp): por isso a janela tem de ser curta (o tempo medido no passo 1) e, de preferência, fora do expediente.
 4. **`pg_trgm`**: veja o passo 3 da primeira instalação (a 0008 cria a extensão).

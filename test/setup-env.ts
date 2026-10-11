@@ -5,3 +5,5 @@ process.env.DATABASE_URL = (process.env.DATABASE_URL ?? "").replace(/\/crm(\?|$)
 import os from "node:os";
 import path from "node:path";
 process.env.MEDIA_DIR = path.join(os.tmpdir(), "crm-test-media");
+// A Evolution do .env é a de verdade (WhatsApp conectado): teste nunca fala com ela. Endereço morto; quem precisa usa o fake.
+process.env.EVOLUTION_URL = "http://127.0.0.1:9";
