@@ -13,21 +13,28 @@ import { createChannelAction, channelQrAction, channelStateAction, disconnectCha
 import { useLiveRefresh } from "@/components/shell/live";
 import { SPRING_UI, EASE } from "@/lib/motion";
 import { relTime } from "@/lib/format";
+import { quietUntilLabel } from "@/lib/late";
+import { ResumeAlertsDialog } from "@/components/shell/resume-alerts-dialog";
+import { resumeAlertsAction } from "@/app/(app)/quiet/actions";
+import { SendSettings } from "@/components/config/send-settings";
 import { formatPhoneClient } from "@/lib/phone-client";
 
-type Ch = { id: string; name: string; status: "desconectado" | "aguardando_qr" | "conectado" | "erro"; phone: string | null; lastEventAt: string | null };
+export type Retention = 6 | 12 | 24 | "nunca";
+type Ch = { id: string; name: string; status: "desconectado" | "aguardando_qr" | "conectado" | "erro"; phone: string | null; lastEventAt: string | null; quietUntil: string | null };
 const STATUS: Record<Ch["status"], [string, "ok" | "gold" | "neutral" | "alert"]> = { conectado: ["Conectado", "ok"], aguardando_qr: ["Aguardando leitura", "gold"], desconectado: ["Desconectado", "neutral"], erro: ["Erro", "alert"] };
 
-export function WhatsAppChannels({ channels }: { channels: Ch[] }) {
+export function WhatsAppChannels({ channels, sendCap, retention }: { channels: Ch[]; sendCap: number; retention: Retention }) {
   const [naming, setNaming] = useState(false); const [name, setName] = useState(""); const [err, setErr] = useState<string | null>(null);
   const [qrFor, setQrFor] = useState<Ch | null>(null); const [confirm, setConfirm] = useState<{ ch: Ch; remove: boolean } | null>(null);
   const [pending, start] = useTransition(); const toast = useToast(); const router = useRouter();
+  const [resumeFor, setResumeFor] = useState<string | null>(null); const [resumeErr, setResumeErr] = useState<string | null>(null);
   useLiveRefresh(["channels"]);
+  const resume = (id: string) => start(async () => { const r = await resumeAlertsAction(id); setResumeFor(null); if (r.ok) { toast("Avisos retomados", "ok"); router.refresh(); } else setResumeErr(r.error); });
   const create = () => start(async () => {
     const r = await createChannelAction(name);
     if (!r.ok) return setErr(r.error);
     setNaming(false); setName(""); router.refresh();
-    setQrFor({ id: r.data!.id, name, status: "aguardando_qr", phone: null, lastEventAt: null });
+    setQrFor({ id: r.data!.id, name, status: "aguardando_qr", phone: null, lastEventAt: null, quietUntil: null });
   });
   return (
     <div>
@@ -48,6 +55,12 @@ export function WhatsAppChannels({ channels }: { channels: Ch[] }) {
                 </div>
                 <Badge tone={STATUS[c.status][1]}>{c.status === "conectado" && <span className="size-1.5 rounded-full bg-ok" />}{STATUS[c.status][0]}</Badge>
               </div>
+              {c.quietUntil && new Date(c.quietUntil) > new Date() && (
+                <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-[var(--radius-control)] bg-gold-soft text-gold-ink px-3 py-2 text-sm" data-testid={`quieto-${c.id}`}>
+                  <span>Avisos pausados {quietUntilLabel(new Date(c.quietUntil))}</span>
+                  <button type="button" className="inline-flex items-center min-h-11 lg:min-h-0 font-semibold underline underline-offset-2" onClick={() => { setResumeErr(null); setResumeFor(c.id); }}>Encerrar agora</button>
+                </div>
+              )}
               <div className="flex items-center justify-between mt-4">
                 <p className="text-xs text-muted">{c.lastEventAt ? `Último sinal ${relTime(c.lastEventAt)}` : "Sem sinal ainda"}</p>
                 <div className="flex gap-2">
@@ -64,6 +77,9 @@ export function WhatsAppChannels({ channels }: { channels: Ch[] }) {
         footer={<><Button variant="secondary" onClick={() => setNaming(false)}>Cancelar</Button><Button loading={pending} onClick={create}>Gerar QR code</Button></>}>
         <form onSubmit={(e) => { e.preventDefault(); create(); }}><Field label="Nome" htmlFor="ch-name" error={err}><Input id="ch-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Recepção, Comercial" /></Field></form>
       </Dialog>
+      <ResumeAlertsDialog open={resumeFor !== null} onClose={() => setResumeFor(null)} pending={pending} onConfirm={() => resumeFor && resume(resumeFor)} />
+      {resumeErr && <p role="alert" className="text-sm text-alert mt-3">{resumeErr}</p>}
+      <SendSettings sendCap={sendCap} retention={retention} />
       <QrDialog key={qrFor?.id ?? "nenhum"} channel={qrFor} onClose={() => { setQrFor(null); router.refresh(); }} />
       <Dialog open={!!confirm} onClose={() => setConfirm(null)} title={confirm?.remove ? "Remover número?" : "Desconectar número?"}
         description={confirm?.remove ? "O número sai do CRM. As conversas e leads que já entraram continuam guardados." : "O CRM para de receber mensagens deste número até ler o QR code de novo."}

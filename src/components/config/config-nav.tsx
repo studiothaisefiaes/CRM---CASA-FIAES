@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { motion } from "motion/react";
 import { SPRING_UI } from "@/lib/motion";
 
-const TABS = [["/config/automacoes", "Automações"], ["/config/etapas", "Etapas e prazos"], ["/config/listas", "Listas e respostas"], ["/config/whatsapp", "WhatsApp"], ["/config/origens", "Origens"], ["/config/equipe", "Equipe"]] as const;
+const TABS = [["/config/automacoes", "Automações"], ["/config/etapas", "Etapas e prazos"], ["/config/listas", "Listas e respostas"], ["/config/mensagens", "Mensagens automáticas"], ["/config/whatsapp", "WhatsApp"], ["/config/origens", "Origens"], ["/config/equipe", "Equipe"]] as const;
 export function ConfigNav() {
   const path = usePathname();
   const ref = useRef<HTMLElement>(null);

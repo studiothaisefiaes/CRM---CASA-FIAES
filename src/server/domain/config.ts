@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db, type Tx } from "../db";
 import { automations, automationVersions, auditLog, channels, lists, settings, stages, users } from "../db/schema";
 import { automationInputSchema, type AutomationInput } from "../rules/types";
+import { sendsMessages } from "../rules/templates";
 import { whatsapp } from "../whatsapp/evolution";
 import { createInvite } from "../auth/users";
 import { startQuietIfPaired } from "./quiet";
@@ -75,6 +76,7 @@ export async function saveAutomation(id: string | null, input: AutomationInput, 
     if (!id) {
       const [a] = await tx.insert(automations).values({ ...v, updatedBy: userId }).returning();
       await tx.insert(automationVersions).values({ automationId: a.id, version: 1, snapshot: v, userId });
+      await tx.insert(auditLog).values({ userId, action: "criou", entity: "automation", entityId: a.id, data: { enabled: v.enabled, envia: sendsMessages(v.actions) } });
       return a.id;
     }
     const [cur] = await tx.select().from(automations).where(eq(automations.id, id));
@@ -82,6 +84,8 @@ export async function saveAutomation(id: string | null, input: AutomationInput, 
     const next = cur.version + 1;
     await tx.update(automations).set({ ...v, version: next, updatedBy: userId, updatedAt: new Date() }).where(eq(automations.id, id));
     await tx.insert(automationVersions).values({ automationId: id, version: next, snapshot: v, userId });
+    // Quem salvou uma automação ligada que manda mensagem fica registrado (a confirmação "envio real" é da tela).
+    await tx.insert(auditLog).values({ userId, action: "editou", entity: "automation", entityId: id, data: { enabled: v.enabled, envia: sendsMessages(v.actions), versao: next } });
     return id;
   });
 }
@@ -91,7 +95,8 @@ export async function toggleAutomation(id: string, enabled: boolean, userId: str
     if (cur) await assertNoConfirmationConflict(tx, id, { ...cur, enabled });
     await tx.update(automations).set({ enabled, updatedBy: userId, updatedAt: new Date() }).where(eq(automations.id, id));
   });
-  await audit(userId, enabled ? "ligou" : "desligou", "automation", id);
+  const [after] = await db.select({ actions: automations.actions }).from(automations).where(eq(automations.id, id));
+  await audit(userId, enabled ? "ligou" : "desligou", "automation", id, { envia: sendsMessages((after?.actions ?? []) as { type: string }[]) });
 }
 export async function restoreAutomation(id: string, version: number, userId: string) {
   const [v] = await db.select().from(automationVersions).where(and(eq(automationVersions.automationId, id), eq(automationVersions.version, version)));

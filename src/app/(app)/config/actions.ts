@@ -5,6 +5,7 @@ import { assertUser } from "@/server/auth/session";
 import * as cfg from "@/server/domain/config";
 import type { AutomationInput } from "@/server/rules/types";
 import * as sources from "@/server/domain/sources";
+import * as msg from "@/server/domain/messaging-settings";
 import { env } from "@/server/env";
 
 type R<T = undefined> = { ok: true; data?: T } | { ok: false; error: string };
@@ -33,3 +34,17 @@ export const inviteMemberAction = async (v: { name: string; email: string; role:
 export const setMemberAction = async (id: string, patch: { role?: "gestor" | "atendente"; active?: boolean }) => run((u) => cfg.setMember(id, patch, u), "/config/equipe");
 export const createSourceAction = async (v: Parameters<typeof sources.createSource>[0]) => run((u) => sources.createSource(v, u), "/config/origens");
 export const setSourceActiveAction = async (id: string, active: boolean) => run((u) => sources.setSourceActive(id, active, u), "/config/origens");
+
+/* ---------- Mensagens automáticas, teto, retenção e ciclo (texto de erro fixo: nada de e.message cru) ---------- */
+async function runSafe<T>(fn: (uid: string) => Promise<T>, path: string, fallback: string): Promise<R<T>> {
+  try { const u = await assertUser("gestor"); const data = await fn(u.id); revalidatePath(path); return { ok: true, data }; } catch (e) {
+    if (e instanceof z.ZodError) return { ok: false, error: e.issues[0]?.message ?? fallback };
+    if (e instanceof Error && /sessão expirou|só a gestão/i.test(e.message)) return { ok: false, error: e.message };
+    console.error("[config]", fallback, e);
+    return { ok: false, error: fallback };
+  }
+}
+export const saveAutoReplyAction = async (v: unknown) => runSafe((u) => msg.saveAutoReply(v, u), "/config/mensagens", "Não deu para salvar a resposta fora do horário. Tente de novo.");
+export const saveSendCapAction = async (v: unknown) => runSafe((u) => msg.saveSendCap(v, u), "/config/whatsapp", "Não deu para salvar o limite por hora. Tente de novo.");
+export const saveMediaRetentionAction = async (v: unknown) => runSafe((u) => msg.saveMediaRetention(v, u), "/config/whatsapp", "Não deu para salvar o prazo de guarda das mídias. Tente de novo.");
+export const saveServiceCycleDaysAction = async (id: string, v: unknown) => runSafe((u) => msg.saveServiceCycleDays(id, v, u), "/config/listas", "Não deu para salvar o lembrete de retorno. Tente de novo.");

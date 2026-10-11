@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { SPRING_UI } from "@/lib/motion";
 import { IconClose } from "@/components/icons";
@@ -10,6 +10,7 @@ export function Dialog({ open, onClose, title, description, children, footer, wi
   open: boolean; onClose: () => void; title: string; description?: ReactNode; children?: ReactNode; footer?: ReactNode; width?: number;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const titleId = useId(); // vários diálogos empilhados não podem repetir o id do título
   const onCloseRef = useRef(onClose);
   useEffect(() => { onCloseRef.current = onClose; });
   // Quem abriu: capturado só na abertura (e devolvido ao fechar), não a cada render.
@@ -42,12 +43,12 @@ export function Dialog({ open, onClose, title, description, children, footer, wi
       {open && (
         <div className="fixed inset-0 z-[70] grid place-items-center p-4">
           <motion.div className="absolute inset-0 bg-ink/35" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} />
-          <motion.div ref={ref} role="dialog" aria-modal="true" aria-labelledby="dlg-title" style={{ maxWidth: width }}
+          <motion.div ref={ref} role="dialog" aria-modal="true" aria-labelledby={titleId} style={{ maxWidth: width }}
             initial={{ opacity: 0, y: 18, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10, scale: 0.98 }} transition={SPRING_UI}
             className="relative w-full bg-paper rounded-[var(--radius-panel)] shadow-[var(--shadow-pop)] border border-line">
             <div className="px-6 pt-5 pb-4">
               <div className="flex items-start justify-between gap-4">
-                <h2 id="dlg-title" className="font-serif text-[24px] leading-tight font-light">{title}</h2>
+                <h2 id={titleId} className="font-serif text-[24px] leading-tight font-light">{title}</h2>
                 <button data-close onClick={onClose} className="size-8 -mr-2 -mt-1 grid place-items-center rounded-[8px] text-muted hover:bg-paper-2 hover:text-ink" aria-label="Fechar"><IconClose size={16} /></button>
               </div>
               {description && <div className="text-sm text-graphite mt-1.5">{description}</div>}

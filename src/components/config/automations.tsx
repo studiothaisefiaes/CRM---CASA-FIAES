@@ -4,6 +4,8 @@ import { AnimatePresence, motion } from "motion/react";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
+import { SendConfirmDialog } from "@/components/config/send-confirm";
+import { AUTOMATION_TEMPLATES, sendsMessages, type AutomationTemplate } from "@/server/rules/templates";
 import { Input, Select } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
 import { IconPlus, IconClose, IconClock, IconRefresh, IconCake, IconMoney, IconCalendar } from "@/components/icons";
@@ -38,12 +40,19 @@ const GROUPS: { title: string; hint: string; types: Trigger["type"][]; icon: "cl
 
 export function AutomationsList({ items, stages, runs }: { items: Item[]; stages: StageOpt[]; runs: Record<string, number> }) {
   const [editing, setEditing] = useState<Item | "new" | null>(null);
+  const [picking, setPicking] = useState(false);
+  const [confirmOn, setConfirmOn] = useState<Item | null>(null);
+  const [pendingOn, startOn] = useTransition();
   const [, start] = useTransition(); const toast = useToast();
+  const toggle = (a: Item, v: boolean) => start(async () => { const r = await toggleAutomationAction(a.id, v); toast(r.ok ? (v ? "Automação ligada" : "Automação desligada") : r.error, r.ok ? "ok" : "error"); });
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
         <p className="text-sm text-graphite max-w-[60ch]">Regras que o CRM roda sozinho a cada minuto. Ligue, desligue ou edite: cada mudança fica guardada e dá para voltar à versão anterior.</p>
-        <Button size="sm" className="h-9 shrink-0" onClick={() => setEditing("new")}><IconPlus size={16} />Nova automação</Button>
+        <div className="flex flex-wrap gap-2 shrink-0">
+          <Button size="sm" variant="secondary" className="h-9 pointer-coarse:h-11" onClick={() => setPicking(true)}>Começar de um modelo</Button>
+          <Button size="sm" className="h-9 pointer-coarse:h-11" onClick={() => setEditing("new")}><IconPlus size={16} />Nova automação</Button>
+        </div>
       </div>
       {GROUPS.map((g) => { const list = items.filter((a) => g.types.includes((a.trigger as Trigger).type)); if (!list.length) return null; return (
       <section key={g.title} className="mb-7">
@@ -69,7 +78,7 @@ export function AutomationsList({ items, stages, runs }: { items: Item[]; stages
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
                   <button className="text-sm text-graphite hover:text-ink underline-offset-2 hover:underline" onClick={() => setEditing(a)}>Editar</button>
-                  <Switch checked={a.enabled} label={`${a.enabled ? "Desligar" : "Ligar"} ${a.name}`} onChange={(v) => start(async () => { const r = await toggleAutomationAction(a.id, v); toast(r.ok ? (v ? "Automação ligada" : "Automação desligada") : r.error, r.ok ? "ok" : "error"); })} />
+                  <Switch checked={a.enabled} label={`${a.enabled ? "Desligar" : "Ligar"} ${a.name}`} onChange={(v) => (v && sendsMessages(a.actions as Action[]) ? setConfirmOn(a) : toggle(a, v))} />
                 </div>
               </motion.li>
             );
@@ -77,6 +86,9 @@ export function AutomationsList({ items, stages, runs }: { items: Item[]; stages
         </AnimatePresence>
       </ul>
       </section>); })}
+      <TemplatePicker open={picking} onClose={() => setPicking(false)} onCreated={(it) => { setPicking(false); setEditing(it); }} />
+      <SendConfirmDialog open={!!confirmOn} pending={pendingOn} onClose={() => setConfirmOn(null)} what={`A automação “${confirmOn?.name ?? ""}” passa a mandar mensagem para as clientes, só no horário de atendimento e respeitando o limite por hora.`}
+        onConfirm={() => startOn(async () => { if (confirmOn) { const r = await toggleAutomationAction(confirmOn.id, true); toast(r.ok ? "Automação ligada" : r.error, r.ok ? "ok" : "error"); } setConfirmOn(null); })} />
       <Editor key={editing === "new" ? "new" : editing?.id ?? "none"} item={editing} stages={stages} onClose={() => setEditing(null)} />
     </div>
   );
@@ -93,7 +105,12 @@ function Editor({ item, stages, onClose }: { item: Item | "new" | null; stages: 
   const [details, setDetails] = useState<{ versions: { version: number; createdAt: string; user: string | null }[]; runs: { createdAt: string; name: string | null; phone: string | null; result: { acoes?: string[] } }[] } | null>(null);
   const [pending, start] = useTransition(); const toast = useToast();
   const [confirmDel, setConfirmDel] = useState(false);
+  const [confirmSend, setConfirmSend] = useState(false);
   const open = item !== null;
+  // Ligada e passando a mandar mensagem (nova, ou antes sem envio): pede a confirmação de envio real antes de salvar.
+  const wasSending = !!item && item !== "new" && item.enabled && sendsMessages(item.actions as Action[]);
+  const needsSendConfirm = v.enabled && sendsMessages(v.actions) && !wasSending;
+  const save = () => start(async () => { const r = await saveAutomationAction(isNew ? null : (item as Item).id, v); setConfirmSend(false); if (r.ok) { toast("Automação salva"); onClose(); } else setErr(r.error); });
   const stagesSel = v.conditions[0]?.stages ?? [];
   const unit = unitOf(v.trigger.type);
   const amount = "minutes" in v.trigger ? v.trigger.minutes : "hours" in v.trigger ? v.trigger.hours : "days" in v.trigger ? v.trigger.days : 0;
@@ -111,13 +128,14 @@ function Editor({ item, stages, onClose }: { item: Item | "new" | null; stages: 
     : { type, message: type === "alertar_gestao" ? "Atenção: {nome}" : type === "enviar_mensagem" ? "Oi, {nome}! " : type === "enviar_enquete_confirmacao" ? "Oi, {nome}! Seu horário na Casa Fiaes é {data}, às {hora}. Você confirma?" : "Hora de falar com {nome}" };
 
   return (
+    <>
     <Dialog open={open} onClose={onClose} title={isNew ? "Nova automação" : "Editar automação"} width={640}
       footer={<>
         {!isNew && (confirmDel
           ? <span className="mr-auto flex items-center gap-2 text-sm">Apagar de vez?<Button size="sm" variant="danger" onClick={() => start(async () => { const r = await deleteAutomationAction((item as Item).id); if (r.ok) { toast("Automação apagada"); onClose(); } else toast(r.error, "error"); })}>Apagar</Button><Button size="sm" variant="ghost" onClick={() => setConfirmDel(false)}>Não</Button></span>
           : <Button variant="ghost" className="mr-auto text-alert hover:bg-alert-soft" onClick={() => setConfirmDel(true)}>Apagar</Button>)}
         <Button variant="secondary" onClick={() => start(async () => { const r = await previewAutomationAction(v); setPreview(r.ok ? `Agora, ${r.data!.count} lead${r.data!.count === 1 ? "" : "s"} se encaixa${r.data!.count === 1 ? "" : "m"} nesta regra${r.data!.sample.length ? `: ${r.data!.sample.join(", ")}` : ""}.` : r.error); })}>Testar</Button>
-        <Button onClick={() => start(async () => { const r = await saveAutomationAction(isNew ? null : (item as Item).id, v); if (r.ok) { toast("Automação salva"); onClose(); } else setErr(r.error); })} loading={pending}>Salvar</Button>
+        <Button onClick={() => (needsSendConfirm ? setConfirmSend(true) : save())} loading={pending}>Salvar</Button>
       </>}>
       <div className="flex flex-col gap-5">
         <label className="block"><span className="text-sm font-medium text-graphite">Nome</span>
@@ -186,6 +204,42 @@ function Editor({ item, stages, onClose }: { item: Item | "new" | null; stages: 
           </div>
         )}
       </div>
+    </Dialog>
+    <SendConfirmDialog open={confirmSend} pending={pending} onClose={() => setConfirmSend(false)} onConfirm={save}
+      what="Salvar deixa esta automação ligada, mandando mensagem para as clientes, só no horário de atendimento e respeitando o limite por hora." />
+    </>
+  );
+}
+
+/** "Começar de um modelo": cria a automação já desligada e abre o editor para ajustar o texto. */
+function TemplatePicker({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (it: Item) => void }) {
+  const [pending, start] = useTransition(); const [busy, setBusy] = useState<string | null>(null); const [err, setErr] = useState<string | null>(null);
+  const toast = useToast();
+  const pick = (t: AutomationTemplate) => start(async () => {
+    setBusy(t.id); setErr(null);
+    const r = await saveAutomationAction(null, { ...t.rule, enabled: false });
+    setBusy(null);
+    if (!r.ok) return setErr(r.error);
+    toast("Automação criada, desligada. Revise e ligue quando quiser", "ok");
+    onCreated({ id: r.data as unknown as string, name: t.rule.name, enabled: false, trigger: t.rule.trigger, conditions: t.rule.conditions, actions: t.rule.actions, version: 1, updatedAt: new Date().toISOString() });
+  });
+  return (
+    <Dialog open={open} onClose={onClose} title="Começar de um modelo" width={680} description="Escolha um ponto de partida. A automação nasce desligada e você revisa o texto antes de ligar.">
+      <ul className="grid sm:grid-cols-2 gap-2.5 max-h-[58vh] overflow-y-auto overscroll-contain pr-1" data-testid="modelos">
+        {AUTOMATION_TEMPLATES.map((t) => (
+          <li key={t.id}>
+            <button type="button" disabled={pending} onClick={() => pick(t)} data-testid={`modelo-${t.id}`}
+              className="w-full h-full text-left rounded-[var(--radius-card)] border border-line bg-paper hover:bg-paper-2 hover:border-line-strong p-3.5 min-h-11 flex flex-col gap-1.5 disabled:opacity-60 transition-colors">
+              <span className="flex items-start justify-between gap-2">
+                <span className="font-medium text-base leading-snug">{t.name}</span>
+                {sendsMessages(t.rule.actions) && <span className="shrink-0 text-xs font-medium text-gold-ink bg-gold-soft rounded-full px-2 py-0.5">Envia mensagem</span>}
+              </span>
+              <span className="text-sm text-graphite leading-relaxed">{busy === t.id ? "Criando…" : t.description}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      {err && <p className="text-sm text-alert mt-3" role="alert">{err}</p>}
     </Dialog>
   );
 }

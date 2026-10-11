@@ -3,8 +3,7 @@ import Link from "next/link";
 import { useState, useTransition } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { resumeAlertsAction } from "@/app/(app)/quiet/actions";
-import { Button } from "@/components/ui/button";
-import { Dialog } from "@/components/ui/dialog";
+import { ResumeAlertsDialog } from "@/components/shell/resume-alerts-dialog";
 import { quietUntilLabel } from "@/lib/late";
 import { EASE, T } from "@/lib/motion";
 import type { ShellBanners } from "@/server/queries/banners";
@@ -56,12 +55,7 @@ export function ShellBannersView({ banners, role }: { banners: ShellBanners; rol
           </motion.div>
         ))}
       </AnimatePresence>
-      <Dialog open={confirmId !== null} onClose={() => setConfirmId(null)} title="Retomar avisos agora?"
-        description="Os avisos voltam para todas as conversas desse número, inclusive as antigas. Retomar agora?"
-        footer={<>
-          <Button variant="ghost" onClick={() => setConfirmId(null)}>Cancelar</Button>
-          <Button loading={pending} onClick={() => confirmId && resume(confirmId)}>Retomar agora</Button>
-        </>} />
+      <ResumeAlertsDialog open={confirmId !== null} onClose={() => setConfirmId(null)} pending={pending} onConfirm={() => confirmId && resume(confirmId)} />
       {error && <p role="alert" className="bg-alert-soft text-alert px-5 lg:px-8 py-2 text-sm">{error}</p>}
     </div>
   );
