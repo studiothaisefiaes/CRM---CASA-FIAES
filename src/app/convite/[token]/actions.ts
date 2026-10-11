@@ -5,6 +5,7 @@ import { acceptInvite } from "@/server/auth/users";
 import { createSession } from "@/server/auth/session";
 import { allow } from "@/server/auth/rate-limit";
 import { clientIp } from "@/server/auth/client-ip";
+import { userErrorMessage } from "@/server/user-error";
 
 export type InviteState = { error?: string };
 
@@ -18,7 +19,7 @@ export async function acceptInviteAction(token: string, _: InviteState, form: Fo
     const user = await acceptInvite(token, password);
     await createSession(user.id);
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "Não foi possível aceitar o convite." };
+    return { error: userErrorMessage(e, "convite", "Não foi possível aceitar o convite.") };
   }
   redirect("/");
 }

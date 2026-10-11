@@ -7,9 +7,11 @@ import type { AutomationInput } from "@/server/rules/types";
 import * as sources from "@/server/domain/sources";
 import * as msg from "@/server/domain/messaging-settings";
 import { env } from "@/server/env";
+import { userErrorMessage } from "@/server/user-error";
 
 type R<T = undefined> = { ok: true; data?: T } | { ok: false; error: string };
-const fail = (e: unknown): { ok: false; error: string } => ({ ok: false, error: e instanceof z.ZodError ? e.issues.map((i) => i.message).join("; ") : e instanceof Error ? e.message : "Algo deu errado." });
+/** Erro para a tela: as regras do zod (todas) e o texto do domínio; SQL, rede e bugs vão para o log e viram "Não deu certo. Tente de novo." */
+const fail = (e: unknown): { ok: false; error: string } => ({ ok: false, error: e instanceof z.ZodError ? e.issues.map((i) => i.message).join("; ") : userErrorMessage(e, "config") });
 async function run<T>(fn: (uid: string) => Promise<T>, path: string): Promise<R<T>> {
   try { const u = await assertUser("gestor"); const data = await fn(u.id); revalidatePath(path); return { ok: true, data }; } catch (e) { return fail(e); }
 }

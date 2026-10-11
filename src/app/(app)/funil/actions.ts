@@ -12,16 +12,21 @@ import { completeTask, setNextAction } from "@/server/domain/tasks";
 import { updateDeal, createManualLead, closeSale, scheduleDeal, loseDeal, markAttendance, UserFacingError, type DealPatch } from "@/server/domain/updates";
 import { MAX_MEDIA_BYTES, markConversationRead, sendFromCrm, sendMediaFromCrm } from "@/server/domain/send";
 import { db } from "@/server/db";
+import { userErrorMessage } from "@/server/user-error";
 import { alerts, leadSources, tasks, users } from "@/server/db/schema";
 
 export type ActionResult<T = undefined> = { ok: true; data?: T } | { ok: false; error: string };
-const fail = (e: unknown): { ok: false; error: string } => ({ ok: false, error: e instanceof z.ZodError ? e.issues[0]?.message ?? "Dados inválidos" : e instanceof Error ? e.message : "Algo deu errado. Tente de novo." });
+/** Erro para a tela: texto do domínio ou da regra; SQL, rede e bugs vão para o log e viram "Não deu certo. Tente de novo." */
+const fail = (e: unknown): { ok: false; error: string } => ({ ok: false, error: userErrorMessage(e, "funil") });
 
 /** Mensagens que o domínio escreve em texto fixo (pt-BR) e podem chegar à tela. Qualquer outro erro vira o texto da ação. */
 const KNOWN_ERRORS = new Set(["Sua sessão expirou. Entre de novo.", "Só a gestão pode fazer isso.", "Lead não encontrado", "Lead arquivado não pode fechar venda", "Serviço não encontrado"]);
 /** Erro para a tela: texto fixo. Nunca o `message` cru de um erro qualquer (SQL, rede) nem o JSON do zod. */
-const safe = (e: unknown, fallback: string): { ok: false; error: string } =>
-  ({ ok: false, error: e instanceof ReopenConflict || e instanceof UserFacingError || (e instanceof Error && KNOWN_ERRORS.has(e.message)) ? (e as Error).message : fallback });
+const safe = (e: unknown, fallback: string): { ok: false; error: string } => {
+  if (e instanceof ReopenConflict || e instanceof UserFacingError || (e instanceof Error && KNOWN_ERRORS.has(e.message))) return { ok: false, error: (e as Error).message };
+  console.error("[funil]", fallback, e);
+  return { ok: false, error: fallback };
+};
 const revalidateLead = () => { revalidatePath("/funil"); revalidatePath("/atendimento"); revalidatePath("/"); };
 
 /**

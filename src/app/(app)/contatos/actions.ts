@@ -10,6 +10,7 @@ import { startConversation } from "@/server/domain/start-conversation";
 import { importClients, importLimitError, previewImportWithDb, type ImportPreview, type ImportReport } from "@/server/domain/import";
 import { db } from "@/server/db";
 import { auditLog } from "@/server/db/schema";
+import { userErrorMessage } from "@/server/user-error";
 
 async function readCsv(file: File) {
   const buf = Buffer.from(await file.arrayBuffer());
@@ -29,7 +30,7 @@ export async function previewImportAction(form: FormData): Promise<{ ok: true; p
     const preview = await previewImportWithDb(text);
     if (preview.missingPhoneColumn) return { ok: false, error: "Não achei a coluna de telefone. Use um cabeçalho como \"Telefone\" ou \"Celular\"." };
     return { ok: true, preview };
-  } catch (e) { return { ok: false, error: e instanceof Error ? e.message : "Falha ao ler o arquivo." }; }
+  } catch (e) { return { ok: false, error: userErrorMessage(e, "contatos", "Falha ao ler o arquivo.") }; }
 }
 
 export async function importClientsAction(form: FormData): Promise<{ ok: true; report: ImportReport } | { ok: false; error: string }> {
@@ -45,7 +46,7 @@ export async function importClientsAction(form: FormData): Promise<{ ok: true; r
     await db.insert(auditLog).values({ userId: user.id, action: "importou", entity: "contacts", data: { ...report, invalid: report.invalid.length } });
     revalidatePath("/contatos");
     return { ok: true, report };
-  } catch (e) { return { ok: false, error: e instanceof Error ? e.message : "Falha na importação." }; }
+  } catch (e) { return { ok: false, error: userErrorMessage(e, "contatos", "Falha na importação.") }; }
 }
 
 export type ActionResult<T = undefined> = { ok: true; data?: T } | { ok: false; error: string };
