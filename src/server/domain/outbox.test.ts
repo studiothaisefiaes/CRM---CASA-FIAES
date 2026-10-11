@@ -588,3 +588,40 @@ describe("fix round 3: eco x timeout", () => {
     expect(rows.find((r) => r.id === fail.id)).toMatchObject({ status: "failed", externalId: null });
   });
 });
+
+describe("erro inesperado no processamento do item", () => {
+  const t0 = new Date("2026-10-13T13:00:00Z");
+  const quiet = async <T>(fn: () => Promise<T>) => { const errs: unknown[][] = []; const orig = console.error; console.error = (...a: unknown[]) => { errs.push(a); }; try { return { r: await fn(), errs }; } finally { console.error = orig; } };
+  it("depois do envio (registro do item falhou): loga, item 'failed', alerta 'envio incerto — confira no WhatsApp', sem reenvio", async () => {
+    const id = await lead("71999991201", t0);
+    const itemId = await enqueueAutomated({ dealId: id, kind: "text", text: "saiu" });
+    await db.execute(sql`create or replace function t27_fail() returns trigger as $$ begin raise exception 'banco caiu no registro'; end $$ language plpgsql`);
+    await db.execute(sql`create trigger t27_trg before update on outbox for each row when (new.status = 'sent') execute function t27_fail()`);
+    try {
+      const { errs } = await quiet(() => drainOutbox(t0));
+      expect(errs.length).toBeGreaterThan(0);
+    } finally { await db.execute(sql`drop trigger if exists t27_trg on outbox`); }
+    expect((await db.select().from(outbox))[0]).toMatchObject({ status: "failed" });
+    const al = (await db.select().from(alerts)).filter((a) => a.dedupeKey === `auto:${itemId}`);
+    expect(al).toHaveLength(1);
+    expect(al[0]).toMatchObject({ type: "envio_automatico_falhou", audience: "gestao", dealId: id });
+    expect(al[0].message).toMatch(/envio incerto — confira no WhatsApp/);
+    await drainOutbox(new Date(t0.getTime() + 3 * 3_600_000));
+    expect(textCalls).toBe(1);
+  });
+  it("erro de banco antes de chamar o provider (nada saiu): loga e tenta de novo depois, sem alerta de envio incerto", async () => {
+    const id = await lead("71999991202", t0);
+    await enqueueAutomated({ dealId: id, kind: "text", text: "não saiu" });
+    await db.execute(sql`create or replace function t27_fail() returns trigger as $$ begin raise exception 'banco caiu antes'; end $$ language plpgsql`);
+    await db.execute(sql`create trigger t27_trg before insert on messages for each row when (new.direction = 'out') execute function t27_fail()`);
+    try {
+      const { errs } = await quiet(() => drainOutbox(t0));
+      expect(errs.flat().join(" ")).toMatch(/banco caiu antes/);
+    } finally { await db.execute(sql`drop trigger if exists t27_trg on messages`); }
+    expect(textCalls).toBe(0);
+    expect((await db.select().from(outbox))[0]).toMatchObject({ status: "pending", attempts: 1 });
+    expect(await db.select().from(alerts)).toHaveLength(0);
+    await drainOutbox(new Date(t0.getTime() + 6 * 60_000));
+    expect(sent).toEqual(["não saiu"]);
+  });
+});

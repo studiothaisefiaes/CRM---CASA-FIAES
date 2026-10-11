@@ -98,7 +98,8 @@ type Outcome = "sent" | "cancelled" | "retry" | "failed";
 
 async function finish(id: string, set: Partial<typeof outbox.$inferInsert>) { await db.update(outbox).set(set).where(eq(outbox.id, id)); }
 
-async function processItem(item: OutboxItem, now: Date, open: boolean): Promise<Outcome> {
+/** `progress.pending`: a linha pendente já foi criada, então o provider pode ter sido chamado (a mensagem pode ter saído). */
+async function processItem(item: OutboxItem, now: Date, open: boolean, progress: { pending: boolean } = { pending: false }): Promise<Outcome> {
   const cancel = async (reason: string): Promise<Outcome> => { await finish(item.id, { status: "cancelled", error: reason }); return "cancelled"; };
   const meta = unpackOptions(item.options);
   const { values, source } = meta;
@@ -143,10 +144,12 @@ async function processItem(item: OutboxItem, now: Date, open: boolean): Promise<
   let delivered;
   try {
     delivered = await deliverAutomated(item.dealId, channel, { kind: item.kind === "poll" ? "poll" : "text", text: item.text, options: values }, last,
-      (messageId) => saveMessageId(item, messageId));
+      (messageId) => { progress.pending = true; return saveMessageId(item, messageId); });
   } catch (e) {
     // Fail-closed: só reenvia o que está EXPLICITAMENTE marcado como "não saiu" (resposta de erro da Evolution ou falha antes de chamar o provider).
-    const notSent = (e instanceof NotSentError) || (e instanceof SendError && !(e instanceof UncertainSendError));
+    // Sem a linha pendente o provider nem foi chamado (ex.: o banco falhou ao gravá-la): nada saiu, pode tentar de novo.
+    if (!(e instanceof SendError)) console.error("[fila] erro inesperado no envio automático", item.id, errDetail(e));
+    const notSent = (e instanceof NotSentError) || (e instanceof SendError && !(e instanceof UncertainSendError)) || !progress.pending;
     if (!notSent) { // incerto ou desconhecido: pode ter saído, então NÃO reenvia
       await finish(item.id, { status: "failed", error: e instanceof UncertainSendError ? UNCERTAIN_SEND_MESSAGE : `Erro inesperado no envio: ${(e instanceof Error ? e.message : String(e)).slice(0, 200)}` });
       await alertInterrupted(item, row.contact.name ?? row.contact.phoneE164, "não teve resposta confiável da Evolution e pode ter saído");
@@ -177,6 +180,19 @@ async function saveMessageId(item: OutboxItem, messageId: string) {
 async function alertInterrupted(item: OutboxItem, who: string, why: string) {
   await db.insert(alerts).values({ dealId: item.dealId, audience: "gestao", type: "envio_automatico_falhou", severity: "info",
     message: `O envio automático para ${who} ${why}. Confira a conversa antes de reenviar.`, dedupeKey: `auto:${item.id}` }).onConflictDoNothing();
+}
+
+/** Mensagem do erro com a causa (o drizzle embrulha o erro do Postgres em `cause`). */
+const errDetail = (e: unknown) => e instanceof Error ? (e.cause instanceof Error ? `${e.message} — ${e.cause.message}` : e.message) : String(e);
+
+/** Erro inesperado: se a linha pendente já existia, o provider pode ter enviado — "envio incerto"; senão, nada saiu. Nunca reenvia. */
+async function alertUnexpected(item: OutboxItem, maybeSent: boolean) {
+  const [c] = await db.select({ name: contacts.name, phone: contacts.phoneE164 }).from(deals).innerJoin(contacts, eq(contacts.id, deals.contactId)).where(eq(deals.id, item.dealId));
+  const who = c?.name ?? c?.phone ?? "a cliente";
+  const message = maybeSent
+    ? `Mensagem automática para ${who}: envio incerto — confira no WhatsApp antes de reenviar (erro inesperado depois do envio).`
+    : `A mensagem automática para ${who} não foi enviada (erro inesperado antes do envio). Ela não será reenviada sozinha.`;
+  await db.insert(alerts).values({ dealId: item.dealId, audience: "gestao", type: "envio_automatico_falhou", severity: "info", message, dedupeKey: `auto:${item.id}` }).onConflictDoNothing();
 }
 
 /** Item que ficou "enviando" (worker caiu no meio): não reenvia, para não duplicar. Marca a conversa e avisa a gestão. */
@@ -229,9 +245,13 @@ async function drainLocked(now: Date) {
     const item = await claimNext(now, open);
     if (!item) break;
     let r: Outcome;
-    try { r = await processItem(item, now, open); }
-    catch (e) { // erro inesperado (banco): não deixa o item "enviando" para sempre
-      await finish(item.id, { status: "failed", error: (e instanceof Error ? e.message : String(e)).slice(0, 300) }).catch(() => {});
+    const progress = { pending: false };
+    try { r = await processItem(item, now, open, progress); }
+    catch (e) { // erro inesperado (banco): não deixa o item "enviando" para sempre, registra e avisa a gestão
+      const msg = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+      console.error("[fila] erro inesperado no envio automático", item.id, errDetail(e));
+      await finish(item.id, { status: "failed", error: msg }).catch((dbErr) => console.error("[fila] não marcou o item como falho", item.id, dbErr instanceof Error ? dbErr.message : dbErr));
+      await alertUnexpected(item, progress.pending).catch((dbErr) => console.error("[fila] não criou o alerta do erro inesperado", item.id, dbErr instanceof Error ? dbErr.message : dbErr));
       r = "failed";
     }
     summary[r]++;
