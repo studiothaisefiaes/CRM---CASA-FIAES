@@ -49,6 +49,28 @@ test("celular: sino abre o painel embaixo e tocar no alerta abre o lead", async 
   await expect(page.getByRole("dialog", { name: "Alertas" })).toHaveCount(0);
 });
 
+test("celular: aviso com Desfazer usa a largura da tela, não fica espremido em meia tela", async ({ page }) => {
+  // O contêiner fixo em left: 50% encolhia o aviso para a metade da tela (195 px): "Débora Lima saiu da fila" quebrava em 5 linhas.
+  await login(page);
+  await simulate(page, { phone: "71 99700-4040", name: "Débora Lima Cavalcanti", text: "Oi, tem horário sábado?" });
+  const [{ id }] = await e2eSql("select d.id from deals d join contacts c on c.id = d.contact_id where c.phone_e164 = '+5571997004040' and d.archived_at is null");
+  await page.goto(`/atendimento/${id}`);
+  const lead = page.getByRole("region", { name: /Lead Débora Lima Cavalcanti/ });
+  await lead.getByRole("tab", { name: "Dados" }).click();
+  await page.getByRole("region", { name: "Dados do cliente" }).getByRole("button", { name: "Não é cliente" }).click();
+  const aviso = page.getByRole("status").filter({ hasText: "Débora Lima Cavalcanti saiu da fila" });
+  await expect(aviso).toBeVisible();
+  await page.waitForTimeout(400); // fim da animação de entrada
+  const vp = page.viewportSize()!;
+  const box = (await aviso.boundingBox())!;
+  expect(box.width).toBeGreaterThan(vp.width / 2 + 40);
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(vp.width);
+  expect(box.height).toBeLessThanOrEqual(64); // no máximo duas linhas de texto (o botão tem 44 px)
+  await page.getByRole("button", { name: "Desfazer" }).click();
+  await expect(lead).toBeVisible();
+});
+
 test("celular: banner de conexão cabe em 390 px", async ({ page }) => {
   await e2eSql("insert into channels (name, instance_name, status) values ('Salão', 'e2e-banner-m', 'erro')");
   try {

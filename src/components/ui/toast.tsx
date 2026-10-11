@@ -10,7 +10,10 @@ type Push = (text: string, tone?: Toast["tone"], action?: Action) => void;
 const Ctx = createContext<Push>(() => {});
 export const useToast = () => useContext(Ctx);
 
-/** Avisos curtos. Com "Desfazer", ficam 8 s; erros ficam 7 s. No desktop aparecem no topo (não cobrem o campo de mensagem). */
+/**
+ * Avisos curtos. Com "Desfazer", ficam 8 s; erros ficam 7 s. No desktop aparecem no topo (não cobrem o campo de mensagem).
+ * No celular o contêiner vai de margem a margem (centraliza com flex): com `left: 50%` + translate o aviso encolhia para meia tela.
+ */
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<Toast[]>([]);
   const dismiss = useCallback((id: number) => setItems((l) => l.filter((t) => t.id !== id)), []);
@@ -22,7 +25,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={push}>
       {children}
-      <div className="fixed z-[80] bottom-20 left-1/2 -translate-x-1/2 lg:bottom-auto lg:top-5 lg:left-auto lg:right-6 lg:translate-x-0 flex flex-col items-center lg:items-end gap-2 pointer-events-none" aria-live="polite">
+      <div className="fixed z-[80] bottom-20 left-[max(1rem,env(safe-area-inset-left))] right-[max(1rem,env(safe-area-inset-right))] lg:bottom-auto lg:top-5 lg:left-auto lg:right-6 flex flex-col items-center lg:items-end gap-2 pointer-events-none" aria-live="polite">
         <AnimatePresence initial={false}>
           {items.map((t) => <ToastItem key={t.id} t={t} dismiss={dismiss} />)}
         </AnimatePresence>
