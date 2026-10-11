@@ -53,19 +53,33 @@ Primeira instalação, na ordem:
 11. **Backup diário.** Criar a pasta do log (`mkdir -p ~/backups`), agendar o `scripts/backup.sh` no cron (ver `docs/backup-restauracao.md`) e rodar `bash scripts/restore-test.sh` uma vez para provar que a restauração funciona (ver `docs/backup-restauracao.md`).
 12. **Conectar os números do WhatsApp** (QR code) pela tela de canais.
 
-## Rodada de melhorias (migrações 0008 e 0009)
+## Rodada de melhorias (migrações 0008, 0009 e 0010)
 
 O banco que está no ar (`crm`) ainda **não** tem as migrações desta rodada. No deploy dela, nesta ordem:
 
-1. **Backup antes de tudo** (com o app ainda na versão antiga): `bash scripts/backup.sh` e anote a pasta impressa na última linha. Confira o `SHA256SUMS` da pasta.
-2. **`pg_trgm`**: veja o passo 3 da primeira instalação (a 0008 cria a extensão).
-3. **Aplicar** `npm run db:migrate`, que roda:
+1. **Ensaio numa cópia, antes do dia** (cronometrado). A 0008 cria índices trigram (GIN) em `messages.body` e a 0009 cria índices sem `CONCURRENTLY` (o drizzle roda cada migração numa transação): enquanto cada índice é criado, as escritas na tabela ficam travadas. Medir numa cópia restaurada do backup mais recente, nunca no `crm`:
+   ```bash
+   bash scripts/restore.sh ~/backups/casa-fiaes-crm/<pasta do backup> --into-db crm_restore_test
+   time DATABASE_URL=postgresql://crm:<senha>@localhost:5433/crm_restore_test npm run db:migrate
+   docker compose exec -T db psql -U crm -d postgres -c 'drop database if exists crm_restore_test with (force)'
+   ```
+   Anote o tempo: é a janela em que o CRM fica parado no dia (passo 3). Se passar de alguns minutos, marque o deploy para fora do expediente. Apague a cópia no fim (é cópia de dados de clientes).
+2. **Backup antes de tudo** (com o app ainda na versão antiga): `bash scripts/backup.sh` e anote a pasta impressa na última linha. Confira o `SHA256SUMS` da pasta.
+3. **Parar o app e o worker antes de migrar**: `pm2 stop crm-web crm-worker`. Nada pode escrever no banco enquanto os índices são criados: as escritas ficariam esperando o cadeado (tela travada, webhook estourando o tempo) e o worker antigo continuaria rodando regras contra um esquema pela metade. Com o app parado, mensagens que chegarem nessa janela podem não entrar no CRM na hora (continuam no WhatsApp): por isso a janela tem de ser curta (o tempo medido no passo 1) e, de preferência, fora do expediente.
+4. **`pg_trgm`**: veja o passo 3 da primeira instalação (a 0008 cria a extensão).
+5. **Aplicar** `npm run db:migrate` (com tudo parado), que roda:
    - `0008_melhorias.sql`: tabelas novas (`tasks`, `lead_sources`, `outbox`, `push_subscriptions`), colunas novas em `alerts`, `channels`, `contacts`, `lists`, `messages` e `deals` (arquivamento, origem, serviço, pagamento, comparecimento; todas aceitam nulo ou têm padrão), índices trigram de busca e a troca do índice único `deals_one_open_per_contact` (passa a ignorar leads arquivados; é o único `DROP`, e é de índice, recriado na mesma migração);
-   - `0009_indices.sql`: só índices `IF NOT EXISTS` (relatórios, fila e busca por telefone). Roda dentro de uma transação, sem `CONCURRENTLY`: segura as escritas por segundos nas tabelas desta casa.
-4. **Seed** `npm run db:seed` (idempotente: acrescenta automações e listas novas sem sobrescrever o que a gestão editou; as que enviam mensagem entram desligadas). O seed **não** cria serviços. A retenção de mídia fica em "Não apagar" até a gestão escolher um prazo (nada é apagado no primeiro job depois do deploy).
-5. `npm run build`, `pm2 reload crm-web crm-worker` e a checagem de saúde (`status: "ok"`, `worker.ok: true`).
+   - `0009_indices.sql`: só índices `IF NOT EXISTS` (relatórios, fila e busca por telefone). Roda dentro de uma transação, sem `CONCURRENTLY`;
+   - `0010_wait_key_legado.sql`: os alertas "sem resposta" que estão abertos desde antes da 0008 não têm `wait_key`, então não contariam como atraso nem escalariam para a gestão (e o motor não cria outro no lugar, porque a chave de deduplicação é a mesma). A 0010 preenche o `wait_key` deles com a espera atual do lead (um por espera, só quem ainda espera resposta) e marca `pushed_at` para não disparar push de alerta antigo. Só preenche coluna nula; rodar de novo não muda nada.
+6. **Seed** `npm run db:seed` (idempotente: acrescenta automações e listas novas sem sobrescrever o que a gestão editou; as que enviam mensagem entram desligadas). O seed **não** cria serviços. A retenção de mídia fica em "Não apagar" até a gestão escolher um prazo (nada é apagado no primeiro job depois do deploy).
+7. `npm run build`, `pm2 start crm-web crm-worker` e a checagem de saúde (`status: "ok"`, `worker.ok: true`).
+8. **Antes de abrir para a equipe** (só leitura, nada é alterado):
+   ```bash
+   docker compose exec -T db psql -U crm -d crm -c "select key, enabled from automations where actions::text like '%enviar_%'"
+   ```
+   Toda linha tem de estar com `enabled = f`. Se alguma estiver `t`, desligue em Configurações › Automações e só religue com a aprovação da Casa. Depois, cadastre os serviços (passo 7 da primeira instalação).
 
-**Volta (rollback) desta rodada:** as duas migrações são aditivas, então o normal é só voltar o código (seção "Rollback", passo 1): a versão antiga ignora as tabelas e colunas novas, e o índice único novo é menos restritivo que o antigo. Ressalva: a versão antiga não conhece o arquivamento, então para ela os leads arquivados ("Não é cliente", triagem) voltam a contar como abertos enquanto ela estiver no ar. Restaurar o backup do passo 1 só se dados foram corrompidos (passo 2 do "Rollback"); tudo que entrou depois dele se perde. Não há migração "para baixo": desfazer o esquema à mão é migração destrutiva e precisa de aprovação.
+**Volta (rollback) desta rodada:** as três migrações são aditivas, então o normal é só voltar o código (seção "Rollback", passo 1): a versão antiga ignora as tabelas e colunas novas, e o índice único novo é menos restritivo que o antigo. **Ressalva: a versão antiga não conhece o arquivamento**, então os leads arquivados ("Não é cliente", triagem) **voltam a aparecer** na Fila, no Quadro e nos números como abertos enquanto ela estiver no ar (nada se perde: ao voltar para a versão nova eles somem de novo). Restaurar o backup do passo 2 só se dados foram corrompidos (passo 2 do "Rollback"); tudo que entrou depois dele se perde. Não há migração "para baixo": desfazer o esquema à mão é migração destrutiva e precisa de aprovação.
 
 ## Atualizar (cada versão)
 
@@ -76,8 +90,10 @@ cd /opt/crm
 git tag -f anterior            # ou use a tag da versão que está no ar (ex.: v1.4.0)
 bash scripts/backup.sh
 git pull
-npm ci && npm run db:migrate && npm run build
-pm2 reload crm-web crm-worker
+npm ci
+pm2 stop crm-web crm-worker    # nada escreve no banco durante a migração
+npm run db:migrate && npm run build
+pm2 start crm-web crm-worker
 curl -s https://crm.<dominio>/api/health   # confere status ok
 ```
 
