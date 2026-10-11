@@ -12,7 +12,7 @@ import { IconPlus, IconClose, IconClock, IconRefresh, IconCake, IconMoney, IconC
 import { TRIGGER_LABELS, ACTION_LABELS, type AutomationInput, type Trigger, type Action } from "@/server/rules/types";
 import { saveAutomationAction, toggleAutomationAction, restoreAutomationAction, deleteAutomationAction, automationDetailsAction, previewAutomationAction } from "@/app/(app)/config/actions";
 import { SPRING_UI } from "@/lib/motion";
-import { relTime } from "@/lib/format";
+import { RelTime } from "@/components/ui/rel-time";
 
 type Item = { id: string; name: string; enabled: boolean; trigger: Record<string, unknown>; conditions: Record<string, unknown>[]; actions: Record<string, unknown>[]; version: number; updatedAt: string };
 type StageOpt = { key: string; name: string };
@@ -76,7 +76,7 @@ export function AutomationsList({ items, stages, runs }: { items: Item[]; stages
                     {conds[0]?.stages?.length ? <> <b className="text-gold-ink font-semibold">· Se</b> estiver em {conds[0].stages.map((k) => stages.find((s) => s.key === k)?.name ?? k).join(", ")}</> : null}
                     {" "}<b className="text-gold-ink font-semibold">· Então</b> {acts.map((x) => describeAction(x, stages)).join(" e ")}
                   </p>
-                  <p className="text-xs text-muted mt-1.5">{runs[a.id] ? <b className="text-graphite font-semibold">Disparou {runs[a.id]}× nos últimos 7 dias · </b> : "Não disparou nos últimos 7 dias · "}versão {a.version}, alterada {relTime(a.updatedAt)}</p>
+                  <p className="text-xs text-muted mt-1.5">{runs[a.id] ? <b className="text-graphite font-semibold">Disparou {runs[a.id]}× nos últimos 7 dias · </b> : "Não disparou nos últimos 7 dias · "}versão {a.version}, alterada <RelTime at={a.updatedAt} /></p>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
                   <button className="text-sm text-graphite hover:text-ink underline-offset-2 hover:underline pointer-coarse:min-h-11 pointer-coarse:min-w-11" onClick={() => setEditing(a)}>Editar</button>
@@ -194,12 +194,12 @@ function Editor({ item, stages, onClose }: { item: Item | "new" | null; stages: 
               <div className="grid sm:grid-cols-2 gap-5 text-sm">
                 <div><p className="font-semibold mb-1.5">Versões</p>
                   <ul className="flex flex-col gap-1">{details.versions.map((x) => (
-                    <li key={x.version} className="flex justify-between gap-2"><span>v{x.version} · {relTime(x.createdAt)}{x.user ? ` · ${x.user.split(" ")[0]}` : ""}</span>
+                    <li key={x.version} className="flex justify-between gap-2"><span>v{x.version} · <RelTime at={x.createdAt} />{x.user ? ` · ${x.user.split(" ")[0]}` : ""}</span>
                       {x.version !== (item as Item).version && <button className="text-gold-ink hover:underline" onClick={() => start(async () => { const r = await restoreAutomationAction((item as Item).id, x.version); if (r.ok) { toast(r.data?.disabled ? `Versão ${x.version} restaurada (desligada). Ligue quando quiser.` : `Voltou para a versão ${x.version}`); onClose(); } else toast(r.error, "error"); })}>Voltar a esta</button>}</li>
                   ))}{details.versions.length === 0 && <li className="text-muted">Versão original (nunca editada).</li>}</ul>
                 </div>
                 <div><p className="font-semibold mb-1.5">Últimas execuções</p>
-                  <ul className="flex flex-col gap-1">{details.runs.map((r, i) => <li key={i} className="flex justify-between gap-2"><span className="truncate">{r.name ?? r.phone ?? "—"}</span><span className="text-muted shrink-0">{relTime(r.createdAt)}</span></li>)}
+                  <ul className="flex flex-col gap-1">{details.runs.map((r, i) => <li key={i} className="flex justify-between gap-2"><span className="truncate">{r.name ?? r.phone ?? "—"}</span><span className="text-muted shrink-0"><RelTime at={r.createdAt} /></span></li>)}
                     {details.runs.length === 0 && <li className="text-muted">Ainda não disparou.</li>}</ul>
                 </div>
               </div>

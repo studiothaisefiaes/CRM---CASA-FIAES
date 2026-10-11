@@ -12,7 +12,7 @@ import { IconWhatsApp, IconPlus, IconCheck, IconRefresh } from "@/components/ico
 import { createChannelAction, channelQrAction, channelStateAction, disconnectChannelAction } from "@/app/(app)/config/actions";
 import { useLiveRefresh } from "@/components/shell/live";
 import { SPRING_UI, EASE } from "@/lib/motion";
-import { relTime } from "@/lib/format";
+import { RelTime } from "@/components/ui/rel-time";
 import { quietUntilLabel } from "@/lib/late";
 import { ResumeAlertsDialog } from "@/components/shell/resume-alerts-dialog";
 import { resumeAlertsAction } from "@/app/(app)/quiet/actions";
@@ -62,7 +62,7 @@ export function WhatsAppChannels({ channels, sendCap, retention }: { channels: C
                 </div>
               )}
               <div className="flex items-center justify-between mt-4">
-                <p className="text-xs text-muted">{c.lastEventAt ? `Último sinal ${relTime(c.lastEventAt)}` : "Sem sinal ainda"}</p>
+                <p className="text-xs text-muted">{c.lastEventAt ? <>Último sinal <RelTime at={c.lastEventAt} /></> : "Sem sinal ainda"}</p>
                 <div className="flex gap-2">
                   {c.status !== "conectado" && <Button size="sm" onClick={() => setQrFor(c)}>Ler QR code</Button>}
                   {c.status === "conectado" && <Button size="sm" variant="secondary" onClick={() => setConfirm({ ch: c, remove: false })}>Desconectar</Button>}
