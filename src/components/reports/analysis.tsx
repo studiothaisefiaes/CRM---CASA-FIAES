@@ -9,11 +9,28 @@ import { Bullet } from "./bullet";
 import { DataList, type Col } from "./data-list";
 import { Delta } from "./delta";
 import { Heatmap } from "./heatmap";
+import { Badge } from "@/components/ui/badge";
 import { Muted, Section } from "./section";
+
+/**
+ * Retorno por coorte depende da exportação de atendimentos do Avec (spec D9): o lugar existe, mas sem número, gráfico nem esqueleto
+ * que pareça dado. Some quando a importação do Avec existir.
+ */
+function BlockedAvec() {
+  return (
+    <section aria-labelledby="coorte-t" className="border-t border-line pt-6">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <h2 id="coorte-t" className="font-serif text-[22px] lg:text-[28px] leading-tight font-light">Retorno por coorte</h2>
+        <Badge>Bloqueado</Badge>
+      </div>
+      <p className="text-[14px] text-graphite mt-1">Depende da exportação de atendimentos do Avec, que ainda não está disponível.</p>
+    </section>
+  );
+}
 
 const KIND_LABEL: Record<string, string> = { proxima_acao: "Próxima ação", retorno: "Retorno", comparecimento: "Comparecimento", geral: "Geral" };
 
-/** Análise: R10 (follow-up), R11 (mapa de calor) e, só para a gestão, R7 (pessoa contra a meta) e R13 (financeiro). */
+/** Análise: R10 (follow-up), R11 (mapa de calor), retorno por coorte bloqueado (Avec) e, só para a gestão, R7 (pessoa contra a meta) e R13 (financeiro). */
 export function AnalysisTab({ data: d, qs }: { data: Analysis; qs: string }) {
   const csv = (tipo: string, label: string) => ({ href: `/api/relatorios/${tipo}?${qs}`, label });
   return (
@@ -22,6 +39,7 @@ export function AnalysisTab({ data: d, qs }: { data: Analysis; qs: string }) {
       <Section id="calor" title="Quando as clientes escrevem" lead="Mensagens recebidas por dia da semana e hora." csv={csv("calor", "mapa de calor")} legend="calor">
         <Heatmap grid={d.heatmap} />
       </Section>
+      <BlockedAvec />
       {d.people && <People d={d} csv={csv("pessoas", "pessoa contra a meta")} />}
       {d.finance && <Finance d={d} csv={csv("financeiro", "financeiro")} cobrancas={csv("cobrancas", "cobranças")} />}
     </div>

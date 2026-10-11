@@ -43,6 +43,7 @@ export function ImportButton() {
             </button>
             <input ref={input} type="file" accept=".csv,text/csv" hidden onChange={(e) => { setFile(e.target.files?.[0] ?? null); setErr(null); }} />
             {err && <p className="text-sm text-alert mt-3" role="alert">{err}</p>}
+            <p className="text-sm text-graphite mt-3">Importação periódica do Avec: bloqueada até a Casa liberar a exportação.</p>
           </div>
         ) : (
           <div className="grid grid-cols-3 gap-2 text-center">

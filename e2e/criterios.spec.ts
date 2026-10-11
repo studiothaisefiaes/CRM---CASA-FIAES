@@ -1,3 +1,4 @@
+import AxeBuilder from "@axe-core/playwright";
 import { test, expect, type Page } from "@playwright/test";
 import { login, simulate, ageLead, e2eSql } from "./helpers";
 
@@ -134,4 +135,28 @@ test("critério 12 (e2e): /api/health mostra banco, worker e WhatsApp", async ({
   const body = await r.json();
   expect(body).toMatchObject({ db: true, worker: { ok: expect.any(Boolean) }, whatsapp: expect.any(Array) });
   expect(["ok", "degraded"]).toContain(body.status);
+});
+
+test("critério 13: o que depende do Avec aparece como bloqueado, sem número; axe limpo na Análise e no diálogo de importar", async ({ page }) => {
+  const axe = async (rotulo: string) => {
+    const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag22aa"]).analyze();
+    expect(r.violations.filter((v) => ["serious", "critical"].includes(v.impact ?? "")).map((v) => v.id), rotulo).toEqual([]);
+  };
+  await login(page);
+  await page.goto("/relatorios?aba=analise&periodo=mes");
+  const coorte = page.getByRole("region", { name: "Retorno por coorte" });
+  await expect(coorte).toBeVisible();
+  await expect(coorte.getByText("Bloqueado", { exact: true })).toBeVisible();
+  await expect(coorte).toContainText("Depende da exportação de atendimentos do Avec, que ainda não está disponível.");
+  expect(await coorte.innerText(), "sem número nem dado inventado").not.toMatch(/\d/);
+  await expect(coorte.locator("svg, table, [aria-busy]")).toHaveCount(0);
+  await page.waitForTimeout(1500); // fim das animações de entrada (contraste no meio do fade dá falso positivo)
+  await axe("análise com coorte bloqueada");
+
+  await page.goto("/contatos");
+  await page.getByRole("button", { name: "Importar clientes" }).click();
+  const dlg = page.getByRole("dialog", { name: "Importar histórico de clientes" });
+  await expect(dlg.getByText("Importação periódica do Avec: bloqueada até a Casa liberar a exportação.")).toBeVisible();
+  await page.waitForTimeout(500);
+  await axe("diálogo de importar com Avec bloqueado");
 });
