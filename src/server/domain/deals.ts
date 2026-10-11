@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNotNull, isNull, notInArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, notInArray, notLike, or, sql } from "drizzle-orm";
 import { db, type Tx } from "../db";
 import { alerts, auditLog, contacts, deals, messages, stages, users, type Stage } from "../db/schema";
 import { normalizePhone } from "./phone";
@@ -255,7 +255,8 @@ export async function recordOutbound(input: OutboundInput) {
     await tx.update(alerts).set({ resolvedAt: resolvedNow, readAt: sql`coalesce(${alerts.readAt}, ${resolvedNow.toISOString()}::timestamptz)` })
       .where(and(sql`${alerts.resolvedAt} is null`, or(
         // alertas de espera deste lead (wait_key = "<dealId>:<desde>") e, por compatibilidade, os anteriores à chave
-        and(eq(alerts.dealId, dealId), isNotNull(alerts.waitKey)),
+        // (lembretes de tarefa, wait_key "task:<id>", não são espera: só se resolvem ao concluir a tarefa — mesma regra de `lateWhere`)
+        and(eq(alerts.dealId, dealId), isNotNull(alerts.waitKey), notLike(alerts.waitKey, "task:%")),
         and(eq(alerts.dealId, dealId), eq(alerts.type, "sem_resposta_minutos"), isNull(alerts.waitKey)),
       )));
 

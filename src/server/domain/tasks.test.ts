@@ -118,3 +118,22 @@ it("lembrete de tarefa sem responsável vai para a gestão", async () => {
   expect(await remindDueTasks(now)).toEqual({ alerts: 1 });
   expect((await db.select().from(alerts))[0]).toMatchObject({ audience: "gestao", userId: null, waitKey: `task:${t.id}`, type: "tarefa_vencendo" });
 });
+it("responder a cliente não resolve o lembrete de tarefa (task:<id>), só os alertas de espera", async () => {
+  const { sendFromCrm } = await import("./send");
+  const { setWhatsappProvider } = await import("../whatsapp/evolution");
+  const { channels } = await import("../db/schema");
+  const fake = { createInstance: async () => {}, connect: async () => ({ status: "conectado" as const }), state: async () => "conectado" as const, logout: async () => {}, remove: async () => {},
+    sendText: async () => ({ externalId: "OUT-T" }) };
+  setWhatsappProvider(fake);
+  try {
+    await db.insert(channels).values({ name: "Rec", instanceName: "rec", status: "conectado", phone: "+557199990404" });
+    const now = new Date();
+    const t = await createTask({ dealId, contactId, kind: "proxima_acao", title: "Ligar", dueAt: new Date(now.getTime() + 5 * 60_000), assigneeId: uid }, uid);
+    expect(await remindDueTasks(now)).toEqual({ alerts: 1 });
+    await db.insert(alerts).values({ dealId, audience: "responsavel", type: "sem_resposta_minutos", severity: "info", message: "esperando", dedupeKey: "w1", waitKey: `${dealId}:x` });
+    await sendFromCrm(dealId, "Oi, tudo bem?", uid);
+    const all = await db.select().from(alerts);
+    expect(all.find((a) => a.waitKey === `task:${t.id}`)!.resolvedAt).toBeNull();
+    expect(all.find((a) => a.dedupeKey === "w1")!.resolvedAt).not.toBeNull();
+  } finally { setWhatsappProvider(null); }
+});
