@@ -63,14 +63,14 @@ export function Sidebar({ user, alerts: initialAlerts }: { user: { name: string;
       </aside>
 
       {/* Celular: barra superior + navegação inferior */}
-      {!conversation && <header className="lg:hidden sticky top-0 z-30 flex items-center justify-between h-14 px-4 bg-paper/90 backdrop-blur border-b border-line">
+      {!conversation && <header className="lg:hidden sticky top-0 z-30 flex items-center justify-between h-14 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] bg-paper/90 backdrop-blur border-b border-line">
         <Link href="/" className="font-serif text-[19px] inline-block py-3">Casa <em className="text-gold-ink">Fiaes</em></Link>
         <div className="flex items-center gap-1">
           <AlertsBell alerts={alerts} reload={reload} />
           <form action={logoutAction}><button className="size-11 grid place-items-center rounded-[var(--radius-control)] text-muted" aria-label="Sair"><IconLogout size={17} /></button></form>
         </div>
       </header>}
-      {!conversation && <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 grid grid-cols-5 bg-paper/95 backdrop-blur border-t border-line pb-[env(safe-area-inset-bottom)]" aria-label="Principal">
+      {!conversation && <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 grid grid-cols-5 bg-paper/95 backdrop-blur border-t border-line pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]" aria-label="Principal">
         {NAV.map((it) => {
           const active = isActive(it.href);
           return (

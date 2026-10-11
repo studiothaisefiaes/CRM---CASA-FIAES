@@ -58,7 +58,7 @@ for (const [papel, email] of [["gestão", GESTAO], ["atendente", ATENDENTE]] as 
         await abre(page, path);
         await varre(page, `${papel} ${nome}`);
         await semRolagemLateral(page, nome);
-        expect(await page.getByRole("heading", { level: 1 }).count(), `h1 em ${nome}`).toBeGreaterThanOrEqual(1);
+        expect(await page.getByRole("heading", { level: 1 }).count(), `um só h1 em ${nome}`).toBe(1);
         expect(await page.getByRole("main").count(), `main em ${nome}`).toBe(1);
       });
     }
@@ -97,21 +97,22 @@ test("a11y: Sheet de fechar venda aberta", async ({ page }) => {
 });
 
 test("a11y: Dialog de envio real aberto", async ({ page }) => {
+  const limpa = () => e2eSql("delete from automations where name = 'Parabéns no aniversário'");
   await login(page, GESTAO);
-  await e2eSql("delete from automations where name = 'Parabéns no aniversário'");
-  await abre(page, "/config/automacoes");
-  await page.getByRole("button", { name: "Começar de um modelo" }).click();
-  await page.getByTestId("modelo-aniversario").click();
-  await expect(page.getByRole("dialog", { name: "Editar automação" })).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("dialog", { name: "Editar automação" })).toHaveCount(0);
-  const sw = page.getByRole("switch", { name: "Ligar Parabéns no aniversário" });
-  await sw.click();
-  await expect(page.getByRole("dialog", { name: "Ligar o envio automático?" })).toBeVisible();
-  await page.waitForTimeout(500);
-  await varre(page, "dialog envio real");
-  await page.getByRole("button", { name: "Cancelar" }).click();
-  await e2eSql("delete from automations where name = 'Parabéns no aniversário'");
+  await limpa();
+  try {
+    await abre(page, "/config/automacoes");
+    await page.getByRole("button", { name: "Começar de um modelo" }).click();
+    await page.getByTestId("modelo-aniversario").click();
+    await expect(page.getByRole("dialog", { name: "Editar automação" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog", { name: "Editar automação" })).toHaveCount(0);
+    await page.getByRole("switch", { name: "Ligar Parabéns no aniversário" }).click();
+    await expect(page.getByRole("dialog", { name: "Ligar o envio automático?" })).toBeVisible();
+    await page.waitForTimeout(500);
+    await varre(page, "dialog envio real");
+    await page.getByRole("button", { name: "Cancelar" }).click();
+  } finally { await limpa(); } // o modelo criado não fica para os outros specs
 });
 
 test("celular: campos com 16 px, alvos de 44 px e composer no fundo", async ({ page, isMobile }) => {
