@@ -87,6 +87,12 @@ Faz um backup novo e restaura as quatro partes em alvos temporários, sem parar 
 | `crm.dump` | banco `crm_restore_test` | `count(*)` de `deals`, `messages` e `contacts` igual ao `crm` (até a linha mais nova do backup, porque o CRM continua recebendo mensagens) |
 | `evolution.dump` | banco `crm_restore_evolution` | `Instance`, `Message` e `Contact` da Evolution: nunca mais linhas que o banco no ar e nunca vazio se ele tem dados |
 | `media.tgz` | pasta temporária (`mktemp`) | todos os arquivos do pacote saem inteiros |
-| `evolution_instances.tgz` | pasta temporária (`mktemp`) | a sessão de cada instância está no pacote (sem ela, QR code de novo) |
+| `evolution_instances.tgz` | pasta temporária (`mktemp`) | cada `Instance` restaurada tem a sua pasta de sessão (o volume usa o id da instância); faltando uma, QR code de novo |
 
-Imprime `restauração OK` e apaga os bancos e as pastas temporárias. Sai com erro se algo divergir. Os bancos `crm` e `evolution` só são lidos e o volume da Evolution é montado só para leitura. O backup gerado fica em `BACKUP_DIR` (é um backup válido); para testar sem guardar, rode com `BACKUP_DIR=$(mktemp -d)` e apague a pasta depois.
+Imprime `restauração OK` e apaga os bancos (`drop database … with (force)`) e as pastas temporárias. Depois do drop confere que os bancos sumiram; se algum ficou (cópia de dados de clientes), avisa no stderr com o comando para apagar e sai com erro. Também sai com erro se algo divergir. Os bancos `crm` e `evolution` só são lidos e o volume da Evolution é montado só para leitura.
+
+O backup gerado fica em `BACKUP_DIR` (é um backup válido). Para só testar, sem guardar cópia:
+
+```bash
+bash scripts/restore-test.sh --descartar   # backup numa pasta temporária, apagada ao sair (mesmo se falhar)
+```

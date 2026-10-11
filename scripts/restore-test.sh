@@ -6,9 +6,20 @@
 #   - evolution_instances.tgz (sessão do WhatsApp) → pasta temporária; confere que a sessão está no pacote
 # Só cria/apaga os dois bancos crm_restore_* e as pastas temporárias. Os bancos crm e evolution são só LIDOS (pg_dump/count);
 # o volume da Evolution é montado só para leitura (:ro) pelo backup. A Evolution não é parada nem reiniciada.
-# Sai com código != 0 se algo divergir.
+# Sai com código != 0 se algo divergir ou se um banco temporário (cópia de dados de clientes) não puder ser apagado.
+#   restore-test.sh              o backup gerado fica em BACKUP_DIR (é um backup válido)
+#   restore-test.sh --descartar  o backup vai para uma pasta temporária, apagada no fim (só testar, sem guardar cópia)
 set -euo pipefail
 umask 077
+
+discard=0
+case "${1:-}" in
+  --descartar) discard=1 ;;
+  "") ;;
+  *) printf 'uso: %s [--descartar]\n' "$0" >&2; exit 2 ;;
+esac
+# Antes de carregar a lib: o BACKUP_DIR dela (e o do backup.sh, que roda em outro processo) vem do ambiente.
+[ "$discard" -eq 0 ] || export BACKUP_DIR="$(mktemp -d)"
 
 # shellcheck source=scripts/lib-ops.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib-ops.sh"
@@ -19,17 +30,34 @@ TABLES=(deals messages contacts)
 EVO_TABLES=(Instance Message Contact)
 
 work_dir="$(mktemp -d)"
+# Apaga os bancos temporários e confere que sumiram: uma cópia de dados de clientes não pode ficar para trás em silêncio.
 drop_test_dbs() {
-  psql_db postgres -qc "drop database if exists $TEST_DB" >/dev/null 2>&1 || true
-  psql_db postgres -qc "drop database if exists $EVO_DB" >/dev/null 2>&1 || true
+  local db left=0 still
+  for db in "$TEST_DB" "$EVO_DB"; do
+    psql_db postgres -q -c "set client_min_messages = warning" -c "drop database if exists $db with (force)" >/dev/null || true
+    if ! still="$(psql_db postgres -Atc "select 1 from pg_database where datname = '$db'")"; then
+      printf 'ERRO: não deu para conferir se o banco temporário %s foi apagado. Confira e apague à mão:\n  docker compose exec -T db psql -U %s -d postgres -c "drop database if exists %s with (force)"\n' "$db" "$PG_USER" "$db" >&2
+      left=1
+    elif [ -n "$still" ]; then
+      printf 'ERRO: o banco temporário %s (cópia de dados de clientes) continua existindo. Apague à mão:\n  docker compose exec -T db psql -U %s -d postgres -c "drop database %s with (force)"\n' "$db" "$PG_USER" "$db" >&2
+      left=1
+    fi
+  done
+  return "$left"
 }
-cleanup() { drop_test_dbs; rm -rf -- "$work_dir"; }
+cleanup() {
+  local rc=$?
+  drop_test_dbs || rc=1
+  rm -rf -- "$work_dir"
+  [ "$discard" -eq 0 ] || rm -rf -- "$BACKUP_DIR"
+  exit "$rc"
+}
 trap cleanup EXIT
 
 backup="$(bash "$REPO_DIR/scripts/backup.sh" | tail -n 1)"
 [ -d "$backup" ] || die "backup não gerou pasta"
 
-drop_test_dbs
+drop_test_dbs || die "bancos temporários de uma execução anterior não puderam ser apagados"
 fail=0
 
 log "1/4 banco do CRM → $TEST_DB"
@@ -80,18 +108,23 @@ fi
 log "4/4 sessão do WhatsApp (volume da Evolution) → pasta temporária"
 mkdir "$work_dir/evolution"
 tar xzf "$backup/evolution_instances.tgz" -C "$work_dir/evolution" 2>/dev/null || tar xzf "$backup/evolution_instances.tgz" -C "$work_dir/evolution"
-sessions="$(find "$work_dir/evolution" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')"
+# Cada instância guarda a sessão numa pasta do volume com o id da instância. Instância sem pasta = QR code de novo depois de restaurar.
 files="$(find "$work_dir/evolution" -type f | wc -l | tr -d ' ')"
-instances="$(psql_db "$EVO_DB" -Atc "select count(*) from \"$evo_schema\".\"Instance\"")"
-# Cada instância da Evolution guarda a sessão numa pasta própria do volume. Instância sem pasta = QR code de novo depois de restaurar.
-if [ "$instances" -eq 0 ] || { [ "$files" -gt 0 ] && [ "$sessions" -ge 1 ]; }; then
-  printf '  %-9s instâncias=%s pastas=%s arquivos=%s  ok\n' "sessão" "$instances" "$sessions" "$files"
+instances=0 missing=()
+while IFS='|' read -r iid iname; do
+  [ -n "$iid" ] || continue
+  instances=$((instances + 1))
+  if [ -z "$(find "$work_dir/evolution/$iid" -type f -print -quit 2>/dev/null)" ]; then missing+=("$iname ($iid)"); fi
+done < <(psql_db "$EVO_DB" -Atc "select id, name from \"$evo_schema\".\"Instance\" order by name")
+if [ "${#missing[@]}" -eq 0 ]; then
+  printf '  %-9s instâncias=%s todas com pasta de sessão, arquivos=%s  ok\n' "sessão" "$instances" "$files"
 else
-  printf '  %-9s instâncias=%s pastas=%s arquivos=%s  DIVERGE\n' "sessão" "$instances" "$sessions" "$files"
+  printf '  %-9s instâncias=%s sem pasta de sessão: %s  DIVERGE\n' "sessão" "$instances" "${missing[*]}"
   fail=1
 fi
 
 if [ "$fail" -ne 0 ]; then
   die "restauração divergiu do original (backup em $backup)"
 fi
-printf 'restauração OK: banco do CRM, banco da Evolution, mídia e sessão (backup testado: %s)\n' "$backup"
+if [ "$discard" -eq 1 ]; then printf 'restauração OK: banco do CRM, banco da Evolution, mídia e sessão (backup temporário, apagado ao sair)\n'
+else printf 'restauração OK: banco do CRM, banco da Evolution, mídia e sessão (backup testado: %s)\n' "$backup"; fi

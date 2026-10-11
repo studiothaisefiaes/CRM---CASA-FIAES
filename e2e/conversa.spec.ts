@@ -1,11 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
-import { login, simulate, e2eSql, shot } from "./helpers";
+import { login, simulate, e2eSql, shot, isola } from "./helpers";
 
-/** Deixa só os leads do prefixo na Fila (os outros specs deixam leads para trás) e devolve o id de cada telefone. */
-async function isola(prefixo: string) {
-  await e2eSql("update alerts set resolved_at = now() where resolved_at is null");
-  await e2eSql("update deals set archived_at = now() where archived_at is null and contact_id not in (select id from contacts where phone_e164 like $1)", [`${prefixo}%`]);
-}
 const leadId = async (phone: string) => String((await e2eSql("select d.id from deals d join contacts c on c.id = d.contact_id where c.phone_e164 = $1 and d.archived_at is null", [phone]))[0].id);
 const stageOf = async (phone: string) => String((await e2eSql("select s.key from deals d join contacts c on c.id = d.contact_id join stages s on s.id = d.stage_id where c.phone_e164 = $1 and d.archived_at is null", [phone]))[0].key);
 

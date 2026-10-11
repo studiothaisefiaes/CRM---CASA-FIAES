@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { test, expect, type Page } from "@playwright/test";
-import { login, simulate, ageLead, e2eSql } from "./helpers";
+import { login, simulate, ageLead, e2eSql, isola } from "./helpers";
 
 /**
  * Critérios de conclusão da spec (§12) que ainda não tinham e2e próprio. O mapa completo critério → teste fica no ledger
@@ -10,11 +10,6 @@ import { login, simulate, ageLead, e2eSql } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 
-/** Deixa na Fila só os leads do prefixo (os outros specs deixam leads para trás) e resolve os avisos antigos. */
-async function isola(prefixo: string) {
-  await e2eSql("update alerts set resolved_at = now() where resolved_at is null");
-  await e2eSql("update deals set archived_at = now() where archived_at is null and contact_id not in (select id from contacts where phone_e164 like $1)", [`${prefixo}%`]);
-}
 const leadId = async (phone: string) =>
   String((await e2eSql("select d.id from deals d join contacts c on c.id = d.contact_id where c.phone_e164 = $1 and d.archived_at is null", [phone]))[0].id);
 const fila = (page: Page) => page.getByRole("listbox", { name: "Fila" });

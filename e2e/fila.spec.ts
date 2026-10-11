@@ -1,13 +1,7 @@
 import { test, expect, devices, type Page } from "@playwright/test";
-import { login, simulate, ageLead, e2eSql, shot } from "./helpers";
+import { login, simulate, ageLead, e2eSql, shot, isola } from "./helpers";
 
 /** Seis leads em seis seções da Fila (a Casa fica aberta 24 h no banco de e2e, então a espera conta o tempo todo). */
-/** Isola o cenário do que os outros specs deixaram no banco de e2e: avisos antigos resolvidos e leads de fora arquivados. */
-async function isola(prefixo: string) {
-  await e2eSql("update alerts set resolved_at = now() where resolved_at is null");
-  await e2eSql("update deals set archived_at = now() where archived_at is null and contact_id not in (select id from contacts where phone_e164 like $1)", [`${prefixo}%`]);
-}
-
 async function cenario(page: Page) {
   await isola("+5571997101");
   const phone = (n: number) => `+55719971${String(n).padStart(5, "0")}`;

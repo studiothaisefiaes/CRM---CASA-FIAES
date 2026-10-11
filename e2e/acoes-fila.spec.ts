@@ -1,12 +1,8 @@
 import { test, expect, type Page } from "@playwright/test";
-import { login, simulate, e2eSql, shot } from "./helpers";
+import { login, simulate, e2eSql, shot, isola } from "./helpers";
 
 /** T17b: triagem em massa, próxima ação, "Como conheceu?", Compareceu/Faltou e o histórico com de/para. */
 
-async function isola(prefixo: string) {
-  await e2eSql("update alerts set resolved_at = now() where resolved_at is null");
-  await e2eSql("update deals set archived_at = now() where archived_at is null and contact_id not in (select id from contacts where phone_e164 like $1)", [`${prefixo}%`]);
-}
 const leadId = async (phone: string) => String((await e2eSql("select d.id from deals d join contacts c on c.id = d.contact_id where c.phone_e164 = $1 order by d.created_at desc limit 1", [phone]))[0].id);
 const deal = async (id: string) => (await e2eSql(`select d.*, s.key as stage_key, u.email as owner_email from deals d join stages s on s.id = d.stage_id left join users u on u.id = d.owner_id where d.id = $1`, [id]))[0];
 const noEstagio = (id: string, key: string) => e2eSql("update deals set stage_id = (select id from stages where key = $2), stage_entered_at = now() where id = $1", [id, key]);

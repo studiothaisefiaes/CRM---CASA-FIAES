@@ -65,6 +65,15 @@ export async function e2eSql(text: string, params: unknown[] = []) {
   try { return (await c.query(text, params)).rows as Record<string, unknown>[]; } finally { await c.end(); }
 }
 
+/**
+ * Deixa na Fila só os leads cujo telefone começa pelo prefixo: os outros specs deixam leads para trás no banco de e2e compartilhado.
+ * Resolve os avisos abertos e arquiva o resto (não apaga nada).
+ */
+export async function isola(prefixo: string) {
+  await e2eSql("update alerts set resolved_at = now() where resolved_at is null");
+  await e2eSql("update deals set archived_at = now() where archived_at is null and contact_id not in (select id from contacts where phone_e164 like $1)", [`${prefixo}%`]);
+}
+
 /** Salva um print em CF_SHOTS_DIR (headless); sem a variável, não faz nada. */
 export async function shot(page: Page, name: string, opts: { fullPage?: boolean; clip?: { x: number; y: number; width: number; height: number } } = {}) {
   const dir = process.env.CF_SHOTS_DIR;
