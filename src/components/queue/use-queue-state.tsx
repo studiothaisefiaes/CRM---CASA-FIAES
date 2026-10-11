@@ -47,6 +47,9 @@ export function useQueueState(query: string) {
     if (saved.query === query) {
       // Mesma visão da última vez, inclusive a padrão (query vazia): devolve a rolagem.
       if (el && saved.scrollTop > 0) scrollTo(el, saved.scrollTop);
+      // Nada a devolver, mas a lista já está rolada: a pessoa rolou antes da hidratação (celular lento, lista grande), quando o onScroll
+      // ainda não existia. Guarda essa posição, senão a volta da conversa cai no topo.
+      else if (el && el.scrollTop > 0) writeQueueState({ scrollTop: Math.round(el.scrollTop) });
     } else if (query) {
       writeQueueState({ query, scrollTop: 0 });
       if (el) scrollTo(el, 0);

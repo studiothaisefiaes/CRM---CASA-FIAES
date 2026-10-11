@@ -184,7 +184,7 @@ test("fila (celular): abrir conversa e voltar preserva filtro e rolagem", async 
   await expect(page).toHaveURL(/\/atendimento\/[0-9a-f-]{36}/);
   await page.getByRole("link", { name: "Voltar para a fila" }).click();
   await expect(page).toHaveURL(/view=todos/);
-  expect(await page.getByRole("listbox", { name: "Fila" }).evaluate((el) => el.scrollTop)).toBeGreaterThan(300);
+  await expect.poll(() => page.getByRole("listbox", { name: "Fila" }).evaluate((el) => el.scrollTop)).toBeGreaterThan(300);
 });
 
 test("fila (celular): na visão padrão (sem ?view=) a rolagem também volta", async ({ page, isMobile }) => {
