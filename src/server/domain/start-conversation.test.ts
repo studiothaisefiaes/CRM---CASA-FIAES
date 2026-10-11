@@ -88,3 +88,19 @@ it("o lead abriu entre o lock e o INSERT: o índice único barra, e devolve o le
   expect(await open(c.id)).toHaveLength(1);
   expect(await db.select().from(messages)).toHaveLength(0);
 });
+
+it("o lead novo usa o mesmo relógio dos outros leads (o do app): com o relógio do banco atrasado, a ordem dos leads não inverte", async () => {
+  // No Mac o Postgres roda numa VM (colima) cujo relógio pode atrasar segundos depois de o computador dormir. O lead que chega pelo WhatsApp
+  // grava a hora do app; se este gravasse o now() do banco, o lead novo poderia ficar "mais velho" que o anterior e a ficha os mostraria trocados.
+  vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + 60_000 }); // o app 1 min à frente do banco
+  try {
+    const r = await recordInbound({ channelId: null, externalId: "REL1", phoneRaw: "71999990077", pushName: "Mariana", body: "oi" });
+    if (!("dealId" in r)) throw new Error();
+    const [first] = await db.select().from(deals).where(eq(deals.id, r.dealId));
+    await db.update(deals).set({ stageId: (await db.select().from(stages).where(eq(stages.key, "fechado")))[0].id, closedAt: new Date() }).where(eq(deals.id, first.id));
+    vi.setSystemTime(Date.now() + 1000); // o relógio falso fica parado: anda 1 s até o segundo lead
+    const second = await startConversation(first.contactId, uid);
+    const [d2] = await db.select().from(deals).where(eq(deals.id, second.dealId));
+    expect(d2.createdAt.getTime()).toBeGreaterThan(first.createdAt.getTime());
+  } finally { vi.useRealTimers(); }
+});

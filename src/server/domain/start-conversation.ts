@@ -39,7 +39,9 @@ async function startConversationTx(contactId: string, userId: string): Promise<{
     if (existing) return { dealId: existing.id, created: false };
     if (c.ignored) throw new UserFacingError("Esse contato está como “Não é cliente”. Volte a ser cliente para iniciar uma conversa.");
     const stage = await stageByKey("atendimento", tx);
-    const [d] = await tx.insert(deals).values({ contactId: c.id, stageId: stage.id, ownerId: userId, origin: detectOrigin({ isClient: c.isClient }) }).returning();
+    // Hora do app, como nos leads que chegam pelo WhatsApp: misturar com o now() do banco inverte a ordem dos leads se os relógios divergirem.
+    const at = new Date();
+    const [d] = await tx.insert(deals).values({ contactId: c.id, stageId: stage.id, ownerId: userId, origin: detectOrigin({ isClient: c.isClient }), createdAt: at, stageEnteredAt: at }).returning();
     await logEvent(tx, d.id, "lead_criado", { origin: d.origin, initialStage: stage.key, historico: false, iniciadoPelaCasa: true }, userId);
     return { dealId: d.id, created: true };
   });

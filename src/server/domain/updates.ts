@@ -161,7 +161,8 @@ export async function createManualLead(input: { phone: string; name?: string; or
     const existing = await findOpenDeal(c.id, tx);
     if (existing) return existing.id;
     const lead = await stageByKey("atendimento", tx);
-    const [d] = await tx.insert(deals).values({ contactId: c.id, stageId: lead.id, ownerId: userId, origin: input.origin || "Recepção", sourceLabel: input.origin || "Recepção" }).returning();
+    const at = new Date(); // hora do app, a mesma fonte dos leads do WhatsApp (ver start-conversation.ts)
+    const [d] = await tx.insert(deals).values({ contactId: c.id, stageId: lead.id, ownerId: userId, origin: input.origin || "Recepção", sourceLabel: input.origin || "Recepção", createdAt: at, stageEnteredAt: at }).returning();
     await logEvent(tx, d.id, "lead_criado", { origin: d.origin, initialStage: lead.key, historico: false, manual: true }, userId);
     return d.id;
   });
