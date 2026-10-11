@@ -39,7 +39,7 @@ test("painel do cliente (desktop): identidade, situação, por que está esperan
   const p = painel(page);
   await expect(p.getByRole("heading", { name: "Bianca Teles" })).toBeVisible();
   // Por que está esperando: a linha do whyLate, com o prazo da etapa
-  await expect(p.getByTestId("por-que-atrasou")).toContainText(/Cliente escreveu às \d{2}:\d{2} e ninguém respondeu \(\d+ min no expediente; prazo 2 min\)/);
+  await expect(p.getByTestId("por-que-atrasou")).toContainText(/Cliente escreveu (?:\p{L}+ )?às \d{2}:\d{2} e ninguém respondeu \(\d+ min no expediente; prazo 2 min\)/u); // logo depois da meia-noite vem o dia ("sábado às 23:55")
   // Origem: a mesma da Fila ("Não identificada"), nunca o canal
   await expect(p.getByRole("term").filter({ hasText: "Origem" })).toBeVisible();
   await expect(p.getByText("Não identificada").first()).toBeVisible();
@@ -273,7 +273,7 @@ test("agendar valida: horário passado é erro; fora do expediente avisa e deixa
     const dlg2 = page.getByRole("dialog", { name: "Agendar avaliação" });
     await dlg2.getByLabel("Dia").fill(diaBahia(2));
     await dlg2.getByLabel("Hora").fill("15:00");
-    await expect(dlg2.getByRole("status")).toContainText(/Fora do horário de atendimento \(\w+, das 8:00 às 9:00\)\. Dá para agendar mesmo assim\./);
+    await expect(dlg2.getByRole("status")).toContainText(/Fora do horário de atendimento \(\p{L}+, das 8:00 às 9:00\)\. Dá para agendar mesmo assim\./u);
     await shot(page, "03-agendar-fora-do-horario-desktop");
     await dlg2.getByRole("button", { name: "Agendar", exact: true }).click();
     await expect(page.getByRole("status").filter({ hasText: "Avaliação agendada" })).toBeVisible();

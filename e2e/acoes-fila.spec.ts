@@ -394,7 +394,7 @@ test("próxima ação: avisa quando a Casa está fechada no dia/horário, mas de
     await painel(page).getByRole("button", { name: "Próxima ação" }).click();
     const dlg = page.getByRole("dialog", { name: "Próxima ação" });
     await dlg.getByRole("radio", { name: "Amanhã 10h" }).click(); // 10h: fora de 8h-9h
-    await expect(dlg.getByRole("status")).toContainText(/Casa fechada nesse dia\/horário \(\w+, das 8:00 às 9:00\)/);
+    await expect(dlg.getByRole("status")).toContainText(/Casa fechada nesse dia\/horário \(\p{L}+, das 8:00 às 9:00\)/u);
     await dlg.getByLabel("Hora").fill("08:30");
     await expect(dlg.getByRole("status")).toHaveCount(0);
     await dlg.getByLabel("Hora").fill("15:00");

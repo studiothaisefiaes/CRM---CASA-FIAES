@@ -1,12 +1,15 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import { db } from "../db";
-import { alerts, contacts, deals, stages, users } from "../db/schema";
+import { alerts, contacts, deals, settings, stages, users } from "../db/schema";
 import { recordInbound } from "../domain/deals";
 import { resetDb } from "../../../test/db";
 import { getBoard, type BoardStage } from "./board";
 import { getJourney, JOURNEY_PEOPLE_MAX } from "./journey";
 import { BOARD_CLOSED_DAYS } from "../../lib/board-order";
+
+/** Expediente 24 h todos os dias (o mesmo do banco de e2e): o teste não depende da hora em que roda. */
+const ALL_DAY = Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [d, ["00:00", "24:00"]]));
 
 let n = 0;
 const mk = async (stage: string, over: { owner?: string | null; ignored?: boolean; archived?: boolean; awaiting?: Date | null; avatar?: boolean; name?: string } = {}) => {
@@ -61,6 +64,8 @@ describe("getJourney", () => {
   });
 
   it("pessoas: até 12 por estação e '+N' para o resto, os mais urgentes primeiro", async () => {
+    // A espera conta só o expediente: com a Casa fechada (noite, domingo) todas valem 0 e a ordem viraria empate. Casa aberta 24 h no teste.
+    await db.insert(settings).values({ key: "business_hours", value: ALL_DAY });
     const all = [];
     for (let i = 0; i < JOURNEY_PEOPLE_MAX + 3; i++) all.push(await mk("lead", { awaiting: new Date(Date.now() - (i + 1) * 60_000), avatar: i === 0, name: `Pessoa ${i}` }));
     const lead = (await getJourney()).stations.find((s) => s.key === "lead")!;
