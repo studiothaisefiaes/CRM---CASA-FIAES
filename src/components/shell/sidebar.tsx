@@ -6,6 +6,7 @@ import { motion } from "motion/react";
 import { IconChart, IconChat, IconContacts, IconFunnel, IconJourney, IconLogout, IconMore, IconSettings, IconToday } from "@/components/icons";
 import { Sheet } from "@/components/ui/sheet";
 import { AlertsBell } from "./alerts-bell";
+import { SoundUnlockHint } from "./sound-hint";
 import { useLiveAlerts } from "./use-live-alerts";
 import { logoutAction } from "./push-cleanup";
 import { initials } from "@/lib/format";
@@ -32,6 +33,7 @@ export function Sidebar({ user, alerts: initialAlerts }: { user: { name: string;
   const isActive = (href: string) => (href === "/" ? path === "/" : (MATCH[href] ?? [href]).some((p) => path.startsWith(p)));
   // Conversa em tela cheia no celular: sem barra superior nem inferior (o cabeçalho do lead tem o voltar; o sino e o Sair ficam a um toque, na Fila).
   const conversation = isConversationPath(path);
+  const hasUnread = alerts.some((a) => !a.read);
   const moreActive = path.startsWith("/config") || path.startsWith("/jornada"); // /funil (Quadro) acende Atendimento, não "Mais"
   return (
     <>
@@ -40,6 +42,7 @@ export function Sidebar({ user, alerts: initialAlerts }: { user: { name: string;
           <Link href="/" className="font-serif text-[21px] leading-none">Casa <em className="text-gold-ink">Fiaes</em></Link>
           <AlertsBell alerts={alerts} reload={reload} />
         </div>
+        <SoundUnlockHint show={hasUnread} className="self-end mx-3 -mt-5 mb-2" />
         <nav className="flex-1 px-3 flex flex-col gap-0.5" aria-label="Principal">
           {items.map((it) => {
             const active = isActive(it.href);
@@ -66,6 +69,7 @@ export function Sidebar({ user, alerts: initialAlerts }: { user: { name: string;
       {!conversation && <header className="lg:hidden sticky top-0 z-30 flex items-center justify-between h-14 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] bg-paper/90 backdrop-blur border-b border-line">
         <Link href="/" className="font-serif text-[19px] inline-block py-3">Casa <em className="text-gold-ink">Fiaes</em></Link>
         <div className="flex items-center gap-1">
+          <SoundUnlockHint show={hasUnread} />
           <AlertsBell alerts={alerts} reload={reload} />
           <form action={logoutAction}><button className="size-11 grid place-items-center rounded-[var(--radius-control)] text-muted" aria-label="Sair"><IconLogout size={17} /></button></form>
         </div>
