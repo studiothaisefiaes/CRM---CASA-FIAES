@@ -11,7 +11,9 @@ const PORT = Number(process.env.PERF_PORT ?? 3190);
 if ([3000, 3100, 4321, 4400].includes(PORT)) throw new Error(`PERF_PORT ${PORT} é reservada; use outra (padrão 3190).`);
 const DB = (process.env.DATABASE_URL ?? "").replace(/\/crm(\?|$)/, "/crm_e2e$1");
 if (!DB.includes("crm_e2e")) throw new Error("só roda no banco crm_e2e");
-const env = { ...process.env, DATABASE_URL: DB, NEXT_DIST_DIR: ".next-perf", APP_URL: `http://localhost:${PORT}`, PORT: String(PORT) };
+// Nunca a Evolution real (localhost:8080 = WhatsApp da Recepção conectado): endereço morto, igual ao e2e.
+const EVOLUTION_URL = "http://127.0.0.1:9";
+const env = { ...process.env, DATABASE_URL: DB, NEXT_DIST_DIR: ".next-perf", APP_URL: `http://localhost:${PORT}`, PORT: String(PORT), EVOLUTION_URL };
 const N = 100, SECONDS = 10, CPU = 4;
 
 execSync("npx tsx e2e/reset.ts", { env, stdio: "inherit" });

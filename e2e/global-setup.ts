@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { execSync } from "node:child_process";
-import { chromium } from "@playwright/test";
+import { chromium, type FullConfig } from "@playwright/test";
 
 /**
  * Aquece o servidor de dev com um navegador de verdade antes dos testes.
@@ -26,10 +26,12 @@ async function warmUp(baseURL: string) {
   } finally { await browser.close(); }
 }
 
-export default async function globalSetup() {
+export default async function globalSetup(config: FullConfig) {
   const url = (process.env.DATABASE_URL ?? "").replace(/\/crm(\?|$)/, "/crm_e2e$1");
   const env = { ...process.env, DATABASE_URL: url };
   execSync("npx drizzle-kit migrate", { env, stdio: "inherit" });
   execSync(`npx tsx e2e/reset.ts`, { env, stdio: "inherit" });
-  await warmUp("http://localhost:3100");
+  const baseURL = config.projects.find((p) => p.use.baseURL)?.use.baseURL;
+  if (!baseURL) throw new Error("baseURL do e2e não configurada");
+  await warmUp(baseURL);
 }

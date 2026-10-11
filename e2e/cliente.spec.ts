@@ -164,6 +164,48 @@ test("fechar venda: se outra pessoa já fechou, avisa e não duplica", async ({ 
   expect((await deal(id)).value_cents).toBeNull();
 });
 
+test("fechar venda sem serviço cadastrado: a gestão vai à aba Serviços e cadastra; a atendente é orientada a pedir", async ({ page, browser, baseURL, isMobile }) => {
+  test.skip(isMobile, "desktop");
+  const nome = "Serviço e2e sem cadastro";
+  await e2eSql("update lists set active = false where kind = 'service'"); // como no banco real antes do cadastro
+  try {
+    await login(page);
+    const id = await umLead(page, 9);
+    await noEstagio(id, "agendado");
+
+    // Atendente: aviso claro, sem link
+    const ctx = await browser.newContext({ baseURL, storageState: "e2e/.auth/ana.json" });
+    const ana = await ctx.newPage();
+    await ana.goto(`/atendimento?lead=${id}`);
+    await painel(ana).getByRole("button", { name: "Fechar venda" }).click();
+    const dlgAna = ana.getByRole("dialog", { name: "Fechar venda" });
+    await expect(dlgAna.getByRole("note")).toContainText("Nenhum serviço cadastrado");
+    await expect(dlgAna.getByRole("note")).toContainText("Peça à gestão para cadastrar os serviços");
+    await expect(dlgAna.getByRole("link", { name: "Cadastrar serviços" })).toHaveCount(0);
+    await ctx.close();
+
+    // Gestão: o link abre Configurações › Listas já na aba Serviços, e o cadastro funciona
+    await page.goto(`/atendimento?lead=${id}`);
+    await painel(page).getByRole("button", { name: "Fechar venda" }).click();
+    const dlg = page.getByRole("dialog", { name: "Fechar venda" });
+    await expect(dlg.getByRole("note")).toContainText("Nenhum serviço cadastrado");
+    await dlg.getByRole("link", { name: "Cadastrar serviços" }).click();
+    await expect(page).toHaveURL(/\/config\/listas\?aba=service$/);
+    await expect(page.getByRole("tab", { name: "Serviços" })).toHaveAttribute("aria-selected", "true");
+    await page.getByRole("textbox", { name: "Nome" }).last().fill(nome);
+    await page.getByRole("button", { name: "Adicionar" }).click();
+    await expect.poll(async () => (await e2eSql("select count(*)::int as n from lists where kind = 'service' and label = $1 and active", [nome]))[0].n).toBe(1);
+
+    // De volta ao lead: o serviço novo aparece para escolher
+    await page.goto(`/atendimento?lead=${id}`);
+    await painel(page).getByRole("button", { name: "Fechar venda" }).click();
+    await expect(page.getByRole("dialog", { name: "Fechar venda" }).getByRole("radio", { name: nome })).toBeVisible();
+  } finally {
+    await e2eSql("update lists set active = true where kind = 'service'");
+    await e2eSql("delete from lists where kind = 'service' and label = $1", [nome]);
+  }
+});
+
 test("Não é cliente arquiva e o Desfazer devolve o lead", async ({ page, isMobile }) => {
   test.skip(isMobile, "desktop");
   await login(page);
@@ -198,7 +240,7 @@ test("Não é cliente arquiva e o Desfazer devolve o lead", async ({ page, isMob
   await expect(page).not.toHaveURL(/lead=/);
 });
 
-test("Assumir troca o dono exibido; a gestão transfere; a atendente não vê Transferir", async ({ page, browser, isMobile }) => {
+test("Assumir troca o dono exibido; a gestão transfere; a atendente não vê Transferir", async ({ page, browser, baseURL, isMobile }) => {
   test.skip(isMobile, "desktop");
   await login(page);
   const id = await umLead(page, 6);
@@ -224,7 +266,7 @@ test("Assumir troca o dono exibido; a gestão transfere; a atendente não vê Tr
 
   // Atendente: o lead é de outra pessoa → Assumir; sem Transferir
   await e2eSql("update deals set owner_id = (select id from users where email = 'gestao@e2e.local') where id = $1", [id]);
-  const ctx = await browser.newContext({ baseURL: "http://localhost:3100", storageState: "e2e/.auth/ana.json" });
+  const ctx = await browser.newContext({ baseURL, storageState: "e2e/.auth/ana.json" });
   const ana = await ctx.newPage();
   await ana.goto(`/atendimento/${id}`);
   await expect(painel(ana).getByTestId("responsavel")).toHaveText("Thaíse Fiaes");

@@ -94,7 +94,7 @@ test("fila (desktop): abre na hora com os dados do item e a conversa chega depoi
   await expect(lead.getByRole("list", { name: "Etapas" })).toBeVisible();
 });
 
-test("conversa: abre no fim, mensagem nova com a pessoa lá em cima vira aviso e descer limpa o aviso", async ({ page, browser, isMobile }) => {
+test("conversa: abre no fim, mensagem nova com a pessoa lá em cima vira aviso e descer limpa o aviso", async ({ page, browser, baseURL, isMobile }) => {
   test.skip(isMobile, "desktop");
   await login(page);
   await isola("+5571997202");
@@ -112,7 +112,7 @@ test("conversa: abre no fim, mensagem nova com a pessoa lá em cima vira aviso e
 
   // Mensagem nova com a pessoa no fim: desce junto, sem aviso. Sem esperar o segundo seguinte: no mesmo segundo do WhatsApp, a mensagem
   // ao vivo leva a hora de chegada em ms e o servidor desempata pelo id (webhook.ts messageTime, queries/deal.ts).
-  const outra = await (await browser.newContext({ baseURL: "http://localhost:3100", storageState: "e2e/.auth/gestao.json" })).newPage();
+  const outra = await (await browser.newContext({ baseURL, storageState: "e2e/.auth/gestao.json" })).newPage();
   await simulate(outra, { phone: "71 99720-2001", name: "Heloísa Prado", text: "Chegou uma nova" });
   await expect(log.getByText("Chegou uma nova")).toBeVisible();
   await expect.poll(noFim).toBe(true);
