@@ -24,6 +24,7 @@ Primeira instalação, na ordem:
    - `DEV_TOOLS=false`
    - `TRUSTED_PROXY_HOPS=1` (o Caddy fica na frente; sem isso o rate limit usa o IP errado. Em dev local, `0`)
    - `BACKUP_DIR` pode ficar sem definir: o padrão é `$HOME/backups/casa-fiaes-crm` (fora do repositório, sem precisar de root). Se definir, use caminho absoluto, sem `$VAR`
+   - `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` são **opcionais**: sem o par de chaves o push no celular fica desligado, sem erro (o resto dos alertas funciona). Para ligar: `npm run vapid` e colar as três linhas no `.env` (o app e o worker leem o mesmo arquivo)
 2. **Infraestrutura.** `docker compose up -d`
 3. **Extensão `pg_trgm` (busca).** A migração 0008 faz `CREATE EXTENSION IF NOT EXISTS pg_trgm`. Desde o PG13 ela é "trusted", mas se o papel da aplicação não puder criá-la, crie antes como superusuário (no Docker o `POSTGRES_USER` `crm` já é), senão `db:migrate` falha:
    ```bash
@@ -34,20 +35,35 @@ Primeira instalação, na ordem:
    npm ci && npm run db:migrate && npm run db:seed && npm run build
    npm run seed:admin -- --email gestao@<dominio> --name "Gestão"
    ```
-5. **Processos (pm2).** `crm-web` (`next start -p 3000`) e `crm-worker` (`tsx worker/index.ts`), com reinício automático por memória:
+5. **Automações que enviam mensagem ficam desligadas.** O seed cria o lembrete na véspera e a confirmação D-1 por enquete **desligados**, e a resposta fora do horário também nasce desligada. Não ligar nenhuma delas (nem envio em massa) sem a aprovação da Casa; os alertas internos (sem mensagem para a cliente) já vêm ligados.
+6. **Processos (pm2).** `crm-web` (`next start -p 3000`) e `crm-worker` (`tsx worker/index.ts`), com reinício automático por memória:
    ```bash
    pm2 start deploy/ecosystem.config.cjs
    pm2 save && pm2 startup
    ```
-   Smoke test do worker no VPS: `pm2 logs crm-worker --lines 30` sem erro de inicialização e, em até 1 minuto, `worker.ok: true` no `/api/health` (o heartbeat é gravado a cada minuto). Se o `tsx` não subir sob o pm2, o equivalente é `script: "worker/index.ts", interpreter: "node", interpreter_args: "--import tsx"`.
-6. **Caddy.** Copiar `deploy/Caddyfile.example` para `/etc/caddy/Caddyfile`, trocar o domínio e `sudo systemctl reload caddy`. O `flush_interval -1` é necessário para o tempo real (SSE). No DNS do domínio: registro **A** `crm` → IP do VPS.
-7. **Checagem de saúde.**
+   **O worker tem de estar rodando**: é ele que dispara alertas, automações, envios automáticos, push e o reprocessamento de webhooks. Sem ele o app abre normalmente, mas nada avisa ninguém. Smoke test do worker no VPS: `pm2 logs crm-worker --lines 30` sem erro de inicialização e, em até 1 minuto, `worker.ok: true` no `/api/health` (o heartbeat é gravado a cada minuto; `worker.ok: false` com `status: "degraded"` = worker parado). Se o `tsx` não subir sob o pm2, o equivalente é `script: "worker/index.ts", interpreter: "node", interpreter_args: "--import tsx"`.
+7. **Caddy.** Copiar `deploy/Caddyfile.example` para `/etc/caddy/Caddyfile`, trocar o domínio e `sudo systemctl reload caddy`. O `flush_interval -1` é necessário para o tempo real (SSE). No DNS do domínio: registro **A** `crm` → IP do VPS.
+8. **Checagem de saúde.**
    ```bash
    curl -s https://crm.<dominio>/api/health
    ```
    Esperado: HTTP 200 e `"status":"ok"` com `db: true`, `worker.ok: true` e cada número do WhatsApp em `whatsapp`. `degraded` (200) significa worker parado ou número desconectado; `down` (503) é banco fora. Cadastrar um monitor externo (UptimeRobot ou similar) nessa URL.
-8. **Backup diário.** Criar a pasta do log (`mkdir -p ~/backups`), agendar o `scripts/backup.sh` no cron (ver `docs/backup-restauracao.md`) e rodar `bash scripts/restore-test.sh` uma vez para provar que a restauração funciona (ver `docs/backup-restauracao.md`).
-9. **Conectar os números do WhatsApp** (QR code) pela tela de canais.
+9. **Backup diário.** Criar a pasta do log (`mkdir -p ~/backups`), agendar o `scripts/backup.sh` no cron (ver `docs/backup-restauracao.md`) e rodar `bash scripts/restore-test.sh` uma vez para provar que a restauração funciona (ver `docs/backup-restauracao.md`).
+10. **Conectar os números do WhatsApp** (QR code) pela tela de canais.
+
+## Rodada de melhorias (migrações 0008 e 0009)
+
+O banco que está no ar (`crm`) ainda **não** tem as migrações desta rodada. No deploy dela, nesta ordem:
+
+1. **Backup antes de tudo** (com o app ainda na versão antiga): `bash scripts/backup.sh` e anote a pasta impressa na última linha. Confira o `SHA256SUMS` da pasta.
+2. **`pg_trgm`**: veja o passo 3 da primeira instalação (a 0008 cria a extensão).
+3. **Aplicar** `npm run db:migrate`, que roda:
+   - `0008_melhorias.sql`: tabelas novas (`tasks`, `lead_sources`, `outbox`, `push_subscriptions`), colunas novas em `alerts`, `channels`, `contacts`, `lists`, `messages` e `deals` (arquivamento, origem, serviço, pagamento, comparecimento; todas aceitam nulo ou têm padrão), índices trigram de busca e a troca do índice único `deals_one_open_per_contact` (passa a ignorar leads arquivados; é o único `DROP`, e é de índice, recriado na mesma migração);
+   - `0009_indices.sql`: só índices `IF NOT EXISTS` (relatórios, fila e busca por telefone). Roda dentro de uma transação, sem `CONCURRENTLY`: segura as escritas por segundos nas tabelas desta casa.
+4. **Seed** `npm run db:seed` (idempotente: acrescenta automações e listas novas sem sobrescrever o que a gestão editou; as que enviam mensagem entram desligadas).
+5. `npm run build`, `pm2 reload crm-web crm-worker` e a checagem de saúde (`status: "ok"`, `worker.ok: true`).
+
+**Volta (rollback) desta rodada:** as duas migrações são aditivas, então o normal é só voltar o código (seção "Rollback", passo 1): a versão antiga ignora as tabelas e colunas novas, e o índice único novo é menos restritivo que o antigo. Ressalva: a versão antiga não conhece o arquivamento, então para ela os leads arquivados ("Não é cliente", triagem) voltam a contar como abertos enquanto ela estiver no ar. Restaurar o backup do passo 1 só se dados foram corrompidos (passo 2 do "Rollback"); tudo que entrou depois dele se perde. Não há migração "para baixo": desfazer o esquema à mão é migração destrutiva e precisa de aprovação.
 
 ## Atualizar (cada versão)
 
