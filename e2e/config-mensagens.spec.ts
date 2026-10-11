@@ -117,6 +117,9 @@ test("WhatsApp: teto por hora, prazo das mídias e modo quieto por número", asy
   await expect(page.getByText("Limite por hora salvo")).toBeVisible();
   expect(Number((await e2eSql("select value from settings where key = 'envio_teto_hora'"))[0].value)).toBe(45);
 
+  // Padrão: não apaga nada até a gestão escolher um prazo (apagar mídia de clientes é irreversível)
+  await expect(page.getByRole("radio", { name: "Não apagar" })).toBeChecked();
+  await expect(page.getByText("Nenhuma mídia é apagada até você escolher um prazo.")).toBeVisible();
   await page.getByRole("radio", { name: "6 meses" }).click();
   await page.getByRole("button", { name: "Salvar prazo" }).click();
   await expect(page.getByText("Prazo das mídias salvo")).toBeVisible();

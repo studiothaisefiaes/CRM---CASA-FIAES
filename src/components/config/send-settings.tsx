@@ -7,7 +7,8 @@ import { useToast } from "@/components/ui/toast";
 import { saveSendCapAction, saveMediaRetentionAction } from "@/app/(app)/config/actions";
 import type { Retention } from "@/components/config/whatsapp";
 
-const RET_OPTIONS = [{ value: "6", label: "6 meses" }, { value: "12", label: "12 meses" }, { value: "24", label: "24 meses" }, { value: "nunca", label: "Nunca apagar" }];
+// "nunca" = Não apagar (o padrão): nada é apagado até a gestão escolher um prazo.
+const RET_OPTIONS = [{ value: "nunca", label: "Não apagar" }, { value: "6", label: "6 meses" }, { value: "12", label: "12 meses" }, { value: "24", label: "24 meses" }];
 
 /** Limite de envios automáticos por hora e prazo de guarda das mídias (fotos, áudios, vídeos e documentos). */
 export function SendSettings({ sendCap, retention }: { sendCap: number; retention: Retention }) {
@@ -40,7 +41,8 @@ export function SendSettings({ sendCap, retention }: { sendCap: number; retentio
       </section>
       <section className="rounded-[var(--radius-card)] border border-line bg-paper p-5">
         <h2 className="font-serif text-[22px] font-light">Guardar fotos, áudios e documentos</h2>
-        <p className="text-sm text-graphite mt-1">Arquivos mais antigos que o prazo são apagados do disco. A mensagem continua na conversa, só o arquivo some. Quanto menor o prazo, menos espaço o servidor usa.</p>
+        <p className="text-sm text-graphite mt-1">Com um prazo escolhido, arquivos mais antigos que ele são apagados do disco toda madrugada, sem volta. A mensagem continua na conversa, só o arquivo some. Quanto menor o prazo, menos espaço o servidor usa.</p>
+        {retSaved === "nunca" && <p className="text-sm text-ink mt-2">Nenhuma mídia é apagada até você escolher um prazo.</p>}
         <div className="mt-4"><Segmented label="Prazo para guardar as mídias" options={RET_OPTIONS} value={ret} onChange={setRet} /></div>
         <div className="mt-4"><Button className="pointer-coarse:min-h-11" disabled={ret === retSaved} loading={pendingRet} onClick={saveRet}>Salvar prazo</Button></div>
         {retErr && <p className="text-sm text-alert mt-2" role="alert">{retErr}</p>}

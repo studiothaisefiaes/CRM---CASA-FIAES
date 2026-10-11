@@ -80,7 +80,7 @@ Todas estão comentadas no `.env.example`. Obrigatórias: `DATABASE_URL`, `EVOLU
 | `DEV_TOOLS` | `false` | Liga o simulador (ignorado em produção) |
 | `TRUSTED_PROXY_HOPS` | `1` | Proxies confiáveis na frente do app (Caddy = 1; dev local = 0). Define o IP do rate limit |
 | `BACKUP_DIR` | `$HOME/backups/casa-fiaes-crm` | Pasta dos backups, fora do repositório (caminho absoluto) |
-| `MEDIA_DIR` | `./data/media` | Mídia baixada do WhatsApp (entra no backup) |
+| `MEDIA_DIR` | `./data/media` | Mídia baixada do WhatsApp (entra no backup). Nada é apagado dela até a gestão escolher um prazo em Configurações › WhatsApp (padrão "Não apagar") |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | — | Push no celular; sem o par, o push fica desligado sem erro |
 | `VAPID_SUBJECT` | `APP_URL` | Contato (`mailto:`/`https:`) exigido pelo serviço de push |
 | `TZ` | `America/Bahia` | Fuso das datas (o app e o worker já definem se faltar) |

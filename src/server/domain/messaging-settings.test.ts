@@ -46,8 +46,8 @@ describe("teto de envios por hora", () => {
 });
 
 describe("retenção de mídia", () => {
-  it("padrão 12; aceita 6, 12, 24 e nunca", async () => {
-    expect(await getMediaRetentionMonths()).toBe(12);
+  it("padrão 'Não apagar' (null) até a gestão escolher; aceita 6, 12, 24 e nunca", async () => {
+    expect(await getMediaRetentionMonths()).toBeNull();
     await saveMediaRetention(6, gestor); expect(await getMediaRetentionMonths()).toBe(6);
     await saveMediaRetention("nunca", gestor); expect(await getMediaRetentionMonths()).toBeNull();
     await saveMediaRetention(24, gestor); expect(await getMediaRetentionMonths()).toBe(24);

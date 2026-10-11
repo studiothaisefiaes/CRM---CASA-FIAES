@@ -2,7 +2,7 @@ import { it, expect, beforeEach } from "vitest";
 import { mkdtempSync, writeFileSync, existsSync, mkdirSync } from "node:fs"; import { tmpdir } from "node:os"; import path from "node:path";
 import { eq } from "drizzle-orm";
 import { db } from "../db"; import { messages, contacts } from "../db/schema";
-import { purgeExpiredMedia } from "./retention"; import { resetDb } from "../../../test/db";
+import { purgeExpiredMedia, runMediaRetention } from "./retention"; import { resetDb } from "../../../test/db";
 const DIR = mkdtempSync(path.join(tmpdir(), "cf-ret-")); process.env.MEDIA_DIR = DIR;
 const OUTSIDE = mkdtempSync(path.join(tmpdir(), "cf-fora-"));
 const NOW = new Date("2026-10-09T12:00:00Z");
@@ -21,6 +21,22 @@ it("apaga arquivo com mais de 12 meses e mantém o registro", async () => {
   const old = all.find((m) => m.createdAt.getUTCFullYear() === 2025)!;
   expect(old.mediaPurgedAt).not.toBeNull(); expect(old.mediaPath).toBeNull();
   expect(await purgeExpiredMedia(NOW, 12)).toEqual({ purged: 0 }); // idempotente
+});
+it("job diário sem prazo escolhido em Configurações: não apaga nada e registra que a retenção está desligada", async () => {
+  const c = await mk(); writeFileSync(path.join(DIR, "antiga.jpg"), "x");
+  await db.insert(messages).values({ contactId: c.id, direction: "in", kind: "image", mediaPath: "antiga.jpg", createdAt: new Date("2020-01-01T12:00:00Z") });
+  const logs: unknown[][] = []; const orig = console.log; console.log = (...a: unknown[]) => { logs.push(a); };
+  try { expect(await runMediaRetention(NOW)).toEqual({ purged: 0, off: true }); } finally { console.log = orig; }
+  expect(existsSync(path.join(DIR, "antiga.jpg"))).toBe(true);
+  expect(logs.flat().join(" ")).toMatch(/retenção de mídia\] desligada/i);
+});
+it("job diário com prazo escolhido pela gestão: apaga só o que passou do prazo", async () => {
+  const { settings } = await import("../db/schema");
+  await db.insert(settings).values({ key: "retencao_midia_meses", value: 12 });
+  const c = await mk(); writeFileSync(path.join(DIR, "velha.jpg"), "x");
+  await db.insert(messages).values({ contactId: c.id, direction: "in", kind: "image", mediaPath: "velha.jpg", createdAt: new Date("2025-01-01T12:00:00Z") });
+  expect(await runMediaRetention(NOW)).toEqual({ purged: 1, off: false });
+  expect(existsSync(path.join(DIR, "velha.jpg"))).toBe(false);
 });
 it("'nunca' (null) não apaga nada", async () => {
   const c = await mk(); writeFileSync(path.join(DIR, "keep.jpg"), "x");

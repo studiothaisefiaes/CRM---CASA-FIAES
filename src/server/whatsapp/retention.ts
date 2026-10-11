@@ -4,6 +4,7 @@ import { and, asc, eq, isNotNull, isNull, lt, notInArray } from "drizzle-orm";
 import { db } from "../db";
 import { messages } from "../db/schema";
 import { mediaDir } from "./media";
+import { getMediaRetentionMonths } from "../domain/messaging-settings";
 
 /** Caminho do arquivo só se ficar DENTRO de MEDIA_DIR (nada de `..` nem caminho absoluto vindo do banco). */
 export function safeMediaFile(rel: string): string | null {
@@ -25,7 +26,7 @@ export const RETENTION_MAX_BATCHES = 50;
  * `media_purged_at` (o arquivo não é servido mesmo), para não ocupar a janela do lote; não conta em `purged`.
  * Falha ao apagar (permissão, por exemplo) fica de fora do resto da execução e é tentada de novo na próxima.
  */
-export async function purgeExpiredMedia(now: Date, months: number | null = 12, opts: { batch?: number; maxBatches?: number } = {}): Promise<{ purged: number }> {
+export async function purgeExpiredMedia(now: Date, months: number | null, opts: { batch?: number; maxBatches?: number } = {}): Promise<{ purged: number }> {
   if (months == null) return { purged: 0 };
   const batch = opts.batch ?? RETENTION_BATCH, maxBatches = opts.maxBatches ?? RETENTION_MAX_BATCHES;
   const cutoff = monthsBefore(now, months);
@@ -45,4 +46,19 @@ export async function purgeExpiredMedia(now: Date, months: number | null = 12, o
     }
   }
   return { purged };
+}
+
+/**
+ * Job diário `retencao-midia`: usa o prazo escolhido pela gestão em Configurações › WhatsApp.
+ * Sem prazo escolhido ("Não apagar", o padrão) não apaga nada e só registra no log que a retenção está desligada.
+ */
+export async function runMediaRetention(now = new Date()): Promise<{ purged: number; off: boolean }> {
+  const months = await getMediaRetentionMonths();
+  if (months == null) {
+    console.log("[retenção de mídia] desligada: nenhum prazo escolhido em Configurações › WhatsApp (\"Não apagar\"); nada foi apagado.");
+    return { purged: 0, off: true };
+  }
+  const r = await purgeExpiredMedia(now, months);
+  if (r.purged) console.log("[retenção de mídia]", { meses: months, ...r });
+  return { ...r, off: false };
 }

@@ -44,13 +44,14 @@ export async function saveSendCap(input: unknown, userId: string) {
 
 /* ---------- Retenção de mídia ---------- */
 export const RETENTION_OPTIONS = [6, 12, 24, "nunca"] as const;
-export const DEFAULT_RETENTION_MONTHS = 12;
-export const retentionSchema = z.union([z.literal(6), z.literal(12), z.literal(24), z.literal("nunca")], { error: "Escolha 6, 12 ou 24 meses, ou nunca." });
-/** Meses de guarda da mídia (a T23 apaga do disco o que passa disso); `null` = nunca apagar. */
+export const retentionSchema = z.union([z.literal(6), z.literal(12), z.literal(24), z.literal("nunca")], { error: "Escolha 6, 12 ou 24 meses, ou não apagar." });
+/**
+ * Meses de guarda da mídia (o job `retencao-midia` apaga do disco o que passa disso); `null` = não apagar.
+ * Padrão `null`: apagar mídia de clientes é irreversível, então nada é apagado até a gestão escolher um prazo em Configurações.
+ */
 export async function getMediaRetentionMonths(): Promise<number | null> {
   const v = await get("retencao_midia_meses");
-  if (v === "nunca") return null;
-  return v === 6 || v === 12 || v === 24 ? v : DEFAULT_RETENTION_MONTHS;
+  return v === 6 || v === 12 || v === 24 ? v : null;
 }
 export async function saveMediaRetention(input: unknown, userId: string) {
   const v = retentionSchema.parse(input);
