@@ -49,7 +49,7 @@ export async function getContact(id: string, opts: { withValues?: boolean } = {}
     }).from(deals).innerJoin(stages, eq(stages.id, deals.stageId)).leftJoin(users, eq(users.id, deals.ownerId))
       .where(eq(deals.contactId, id)).orderBy(desc(deals.createdAt)).limit(CONTACT_DEAL_LIMIT),
     db.select({ m: messages, sender: users.name }).from(messages).leftJoin(users, eq(users.id, messages.sentByUserId))
-      .where(eq(messages.contactId, id)).orderBy(desc(messages.createdAt)).limit(CONTACT_MESSAGE_LIMIT),
+      .where(eq(messages.contactId, id)).orderBy(desc(messages.createdAt), desc(messages.id)).limit(CONTACT_MESSAGE_LIMIT),
     db.select({ n: sql<number>`count(*)::int` }).from(messages).where(eq(messages.contactId, id)),
     db.select({ id: tasks.id, dealId: tasks.dealId, kind: tasks.kind, title: tasks.title, dueAt: tasks.dueAt, doneAt: tasks.doneAt, assigneeName: assignee.name })
       .from(tasks).leftJoin(assignee, eq(assignee.id, tasks.assigneeId)).where(eq(tasks.contactId, id)).orderBy(asc(sql`${tasks.doneAt} is not null`), asc(tasks.dueAt)).limit(CONTACT_TASK_LIMIT),

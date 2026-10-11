@@ -95,7 +95,7 @@ async function lightRows(conds: SQL[], opts: { lastOfContact?: boolean; limit?: 
     .innerJoin(contacts, eq(contacts.id, deals.contactId))
     .innerJoin(stages, eq(stages.id, deals.stageId))
     .leftJoin(users, eq(users.id, deals.ownerId))
-    .leftJoin(sql`lateral (select m.created_at, m.direction from messages m where m.deal_id = ${deals.id} order by m.created_at desc limit 1) lm`, sql`true`)
+    .leftJoin(sql`lateral (select m.created_at, m.direction from messages m where m.deal_id = ${deals.id} order by m.created_at desc, m.id desc limit 1) lm`, sql`true`)
     .leftJoin(sql`lateral (select t.due_at from tasks t where t.deal_id = ${deals.id} and t.done_at is null and t.kind in ('proxima_acao', 'retorno', 'comparecimento') order by t.due_at asc limit 1) nt`, sql`true`)
     .where(and(...conds))
     .orderBy(asc(deals.awaitingReplySince), asc(deals.createdAt));
@@ -110,7 +110,7 @@ async function details(ids: string[]) {
     lastMessage: sql<string | null>`lm.body`, lastKind: sql<string | null>`lm.kind`, taskTitle: sql<string | null>`nt.title`,
   }).from(deals)
     .innerJoin(contacts, eq(contacts.id, deals.contactId))
-    .leftJoin(sql`lateral (select m.body, m.kind from messages m where m.deal_id = ${deals.id} order by m.created_at desc limit 1) lm`, sql`true`)
+    .leftJoin(sql`lateral (select m.body, m.kind from messages m where m.deal_id = ${deals.id} order by m.created_at desc, m.id desc limit 1) lm`, sql`true`)
     .leftJoin(sql`lateral (select t.title from tasks t where t.deal_id = ${deals.id} and t.done_at is null and t.kind in ('proxima_acao', 'retorno', 'comparecimento') order by t.due_at asc limit 1) nt`, sql`true`)
     .where(inArray(deals.id, ids));
   return new Map(rows.map((r) => [r.id, r]));
@@ -121,7 +121,7 @@ async function signalLabelsFor(ids: string[], now: Date): Promise<Map<string, st
   const out = new Map<string, string[]>();
   if (!ids.length) return out;
   const rows = (await db.execute(sql`select deal_id, direction, body, created_at from (
-      select m.deal_id, m.direction, m.body, m.created_at, row_number() over (partition by m.deal_id order by m.created_at desc) as rn
+      select m.deal_id, m.direction, m.body, m.created_at, row_number() over (partition by m.deal_id order by m.created_at desc, m.id desc) as rn
       from messages m where m.deal_id in (${sql.join(ids.map((i) => sql`${i}::uuid`), sql`, `)})) t where rn <= ${SIGNAL_WINDOW}`)).rows as { deal_id: string; direction: "in" | "out"; body: string | null; created_at: Date }[];
   const by = new Map<string, SignalMessage[]>();
   for (const r of rows) { const l = by.get(r.deal_id) ?? []; l.push({ direction: r.direction, body: r.body, createdAt: r.created_at }); by.set(r.deal_id, l); }

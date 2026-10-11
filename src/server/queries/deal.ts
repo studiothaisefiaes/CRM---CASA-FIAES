@@ -22,7 +22,7 @@ export async function getDealDetail(id: string) {
   const [msgs, events, listRows, people, stageList, history, [src], [nextAction], sourceRows] = await Promise.all([
     db.select({ m: msgCols, sender: users.name, hasMedia: sql<boolean>`(${messages.media} is not null or ${messages.mediaPath} is not null)` })
       .from(messages).leftJoin(users, eq(users.id, messages.sentByUserId))
-      .where(eq(messages.contactId, row.contact.id)).orderBy(desc(messages.createdAt)).limit(200),
+      .where(eq(messages.contactId, row.contact.id)).orderBy(desc(messages.createdAt), desc(messages.id)).limit(200), // id: desempate estável no mesmo instante
     db.select({ e: dealEvents, user: users.name }).from(dealEvents).leftJoin(users, eq(users.id, dealEvents.userId))
       .where(and(eq(dealEvents.dealId, id), notInArray(dealEvents.type, CONVERSATION_EVENTS))).orderBy(desc(dealEvents.createdAt)).limit(HISTORY_EVENT_LIMIT),
     db.select().from(lists).where(eq(lists.active, true)).orderBy(asc(lists.position)),

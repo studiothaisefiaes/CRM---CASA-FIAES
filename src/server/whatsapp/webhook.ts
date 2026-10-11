@@ -1,7 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { asc, eq, isNull, and, lt, gt, ne, sql } from "drizzle-orm";
 import { db } from "../db";
-import { alerts, channels, deals, messages, outbox, webhookEvents } from "../db/schema";
+import { alerts, channels, messages, outbox, webhookEvents } from "../db/schema";
 import { importHistoryChat, recordInbound, recordOutbound, type HistoryMessage, type MediaNode } from "../domain/deals";
 import { emit } from "../domain/events";
 import { startQuietIfPaired } from "../domain/quiet";
@@ -13,6 +13,18 @@ export function checkSecret(received: string | null, expected: string) {
   const a = createHash("sha256").update(received).digest();
   const b = createHash("sha256").update(expected).digest();
   return timingSafeEqual(a, b);
+}
+
+/**
+ * Hora da mensagem para gravar em `messages.created_at`. O WhatsApp manda `messageTimestamp` em segundos: duas mensagens no mesmo segundo
+ * empatavam (S.000) e a conversa podia mostrá-las em ordem trocada. Se o evento chega dentro do próprio segundo (o caso ao vivo), usa a hora
+ * de chegada em milissegundos, que segue a ordem de chegada; se chega atrasado (fila da Evolution, reenvio), fica o segundo do WhatsApp.
+ * Nunca sai do segundo informado pelo WhatsApp, então o prazo e os relatórios não mudam.
+ */
+export function messageTime(timestampSeconds: number | undefined | null, now = Date.now()): Date {
+  if (!timestampSeconds) return new Date(now);
+  const start = timestampSeconds * 1000;
+  return new Date(now >= start && now < start + 1000 ? now : start);
 }
 
 type CtxInfo = { externalAdReply?: object; conversionSource?: string; ctwaClid?: string };
@@ -260,7 +272,7 @@ export async function handleEvolutionEvent(p: EvoPayload) {
     if (await isSelfChat(p.instance, jid)) return { ok: true, ignored: "conversa_consigo_mesmo" };
     const content = parseContent(d.message);
     if (!content) return { ok: true, ignored: "tipo_ignorado" };
-    const at = d.messageTimestamp ? new Date(d.messageTimestamp * 1000) : new Date();
+    const at = messageTime(d.messageTimestamp);
     if (d.key.fromMe) {
       // Enviada pelo CRM: o envio já gravou a mensagem como "enviando"; só vincula o id externo.
       if (event === "send.message" && await claimPendingSend(jid, d.key.id, content, channelId)) return { ok: true, kind: "out", claimed: true };

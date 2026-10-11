@@ -75,7 +75,7 @@ export async function getBoard(filter: BoardFilter = {}, viewer?: Who, now = new
   }).from(deals)
     .innerJoin(contacts, eq(contacts.id, deals.contactId))
     .leftJoin(users, eq(users.id, deals.ownerId))
-    .leftJoin(sql`lateral (select m.body, m.kind, m.created_at, m.direction from ${messages} m where m.deal_id = ${deals.id} order by m.created_at desc limit 1) lm`, sql`true`)
+    .leftJoin(sql`lateral (select m.body, m.kind, m.created_at, m.direction from ${messages} m where m.deal_id = ${deals.id} order by m.created_at desc, m.id desc limit 1) lm`, sql`true`)
     .where(and(...conds))
     .orderBy(sql`${deals.awaitingReplySince} asc nulls last`, desc(deals.stageEnteredAt))
     .limit(600);
