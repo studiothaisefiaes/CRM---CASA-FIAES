@@ -1,5 +1,7 @@
 "use client";
 import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
+import { usePathname } from "next/navigation";
+import { isConversationPath } from "@/lib/lead-href";
 import { AnimatePresence, motion, useIsPresent } from "motion/react";
 import { SPRING_UI } from "@/lib/motion";
 import { pushToast } from "./toast-queue";
@@ -11,11 +13,15 @@ const Ctx = createContext<Push>(() => {});
 export const useToast = () => useContext(Ctx);
 
 /**
- * Avisos curtos. Com "Desfazer", ficam 8 s; erros ficam 7 s. No desktop aparecem no topo (não cobrem o campo de mensagem).
- * No celular o contêiner vai de margem a margem (centraliza com flex): com `left: 50%` + translate o aviso encolhia para meia tela.
+ * Avisos curtos. Com "Desfazer", ficam 8 s; erros ficam 7 s. Nunca cobrem uma ação principal:
+ * - celular: no alto, logo abaixo da barra do app ou, na conversa em tela cheia, abaixo do cabeçalho do lead (voltar, nome, abas). Embaixo
+ *   ficam o "Próximo da fila", o campo de mensagem, as folhas e a navegação. O contêiner vai de margem a margem (centraliza com flex):
+ *   com `left: 50%` + translate o aviso encolhia para meia tela;
+ * - desktop: no alto, centralizado, fora do cabeçalho do painel do cliente (à direita) e longe do campo de mensagem (embaixo).
  */
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<Toast[]>([]);
+  const conversation = isConversationPath(usePathname());
   const dismiss = useCallback((id: number) => setItems((l) => l.filter((t) => t.id !== id)), []);
   const push = useCallback<Push>((text, tone = "ok", action) => {
     const id = Date.now() + Math.random();
@@ -25,7 +31,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={push}>
       {children}
-      <div className="fixed z-[80] bottom-20 left-[max(1rem,env(safe-area-inset-left))] right-[max(1rem,env(safe-area-inset-right))] lg:bottom-auto lg:top-5 lg:left-auto lg:right-6 flex flex-col items-center lg:items-end gap-2 pointer-events-none" aria-live="polite">
+      <div className={`fixed z-[80] ${conversation ? "top-[calc(env(safe-area-inset-top)+6.75rem)]" : "top-[calc(env(safe-area-inset-top)+4.25rem)]"} left-[max(1rem,env(safe-area-inset-left))] right-[max(1rem,env(safe-area-inset-right))] lg:top-3 lg:left-1/2 lg:right-auto lg:-translate-x-1/2 lg:w-max lg:max-w-[28rem] flex flex-col items-center gap-2 pointer-events-none`} aria-live="polite">
         <AnimatePresence initial={false}>
           {items.map((t) => <ToastItem key={t.id} t={t} dismiss={dismiss} />)}
         </AnimatePresence>

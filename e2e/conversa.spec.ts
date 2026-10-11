@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 import { login, simulate, e2eSql, shot, isola } from "./helpers";
 
 const leadId = async (phone: string) => String((await e2eSql("select d.id from deals d join contacts c on c.id = d.contact_id where c.phone_e164 = $1 and d.archived_at is null", [phone]))[0].id);
@@ -14,6 +14,17 @@ async function dois(page: Page, k: number) {
   await e2eSql("update deals set awaiting_reply_since = now() - interval '6 minutes' where contact_id = (select id from contacts where phone_e164 = $1)", [e164(1)]);
   await e2eSql("update deals set awaiting_reply_since = now() - interval '3 minutes' where contact_id = (select id from contacts where phone_e164 = $1)", [e164(2)]);
   return { bianca: e164(1), cintia: e164(2) };
+}
+
+/** O aviso (toast) não pode cobrir uma ação principal: as caixas não se cruzam. */
+async function naoCobre(aviso: Locator, alvos: Locator[]) {
+  const a = (await aviso.boundingBox())!;
+  for (const alvo of alvos) {
+    expect(await alvo.count(), `alvo ausente: ${alvo}`).toBe(1);
+    const b = (await alvo.boundingBox())!;
+    const cruza = a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+    expect(cruza, `aviso ${JSON.stringify(a)} cobre ${await alvo.evaluate((el) => el.getAttribute("aria-label") ?? el.textContent?.slice(0, 40))} ${JSON.stringify(b)}`).toBe(false);
+  }
 }
 
 /** Erros do navegador (hidratação, exceções): a conversa não pode gerar nenhum. */
@@ -52,6 +63,10 @@ test("fila (desktop): responder pela conversa move para Atendimento, oferece o p
   const proximo = lead.getByRole("button", { name: /Próximo da fila/ });
   await expect(proximo).toBeVisible();
   await expect(proximo).toContainText("Cíntia Barreto");
+  // O aviso "Respondido em" não cobre o próximo, o campo nem o painel do cliente
+  const aviso = page.getByRole("status").filter({ hasText: "Respondido em" });
+  await expect(aviso).toBeVisible();
+  await naoCobre(aviso, [proximo, campo, page.getByRole("region", { name: "Dados do cliente" }), page.getByRole("button", { name: "Fechar conversa" })]);
   await shot(page, "03-proximo-da-fila-desktop");
   await proximo.click();
   const cintia = await leadId(fones.cintia);
@@ -201,6 +216,10 @@ test.describe("celular: conversa em 390 px", () => {
     await expect(proximo).toContainText("Cíntia Barreto");
     expect((await caixa(proximo)).height).toBeGreaterThanOrEqual(44);
     await expect(proximo).toBeInViewport({ ratio: 1 });
+    // O aviso "Respondido em" fica no alto, abaixo do cabeçalho da conversa: não cobre o próximo, o campo nem o voltar
+    const aviso = page.getByRole("status").filter({ hasText: "Respondido em" });
+    await expect(aviso).toBeVisible();
+    await naoCobre(aviso, [proximo, campo, voltar, mais, lead.getByRole("tablist")]);
     await shot(page, "07-celular-proximo-da-fila-390");
     await proximo.click();
     const cintia = await leadId(fones.cintia);
