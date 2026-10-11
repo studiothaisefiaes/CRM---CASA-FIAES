@@ -11,6 +11,8 @@ import { ActionSheet, FieldError, SheetLabel } from "./action-sheet";
 
 type Payment = "pix" | "cartao" | "boleto" | "dinheiro";
 const PAYMENTS = (Object.keys(PAYMENT_LABEL) as Payment[]).map((value) => ({ value, label: PAYMENT_LABEL[value] }));
+/** Aba Serviços de Configurações › Listas (onde a gestão cadastra os nomes da Casa). */
+export const SERVICES_HREF = "/config/listas?aba=service";
 const centsToInput = (c: number | null) => (c == null ? "" : (c / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, useGrouping: false }));
 
 /**
@@ -47,7 +49,7 @@ export function CloseSaleSheet({ open, onClose, dealId, name, services, initial,
     if (!v.ok) next.value = v.error;
     else cents = v.cents;
     if (!pay) next.pay = "Escolha a forma de pagamento.";
-    if (!service) next.service = services.length ? "Escolha o serviço." : "Cadastre ao menos um serviço para fechar a venda.";
+    if (!service) next.service = services.length ? "Escolha o serviço." : "Sem serviço cadastrado não dá para fechar a venda.";
     setErrors(next);
     if (Object.keys(next).length) { if (next.value) valueRef.current?.focus(); return; }
     sending.current = true;
@@ -93,7 +95,12 @@ export function CloseSaleSheet({ open, onClose, dealId, name, services, initial,
           {services.length ? (
             <Segmented labelledBy="venda-servico" options={services.map((s) => ({ value: s.id, label: s.label }))} value={service} onChange={(v) => { setService(v); setErrors((x) => ({ ...x, service: undefined, form: undefined })); }} />
           ) : (
-            <p className="text-sm text-graphite">Nenhum serviço cadastrado.{canManage ? <> <Link href="/config/listas" className="font-medium text-ink underline underline-offset-2">Cadastrar serviços</Link></> : " Peça à gestão para cadastrar."}</p>
+            <div role="note" className="rounded-[var(--radius-control)] border border-line bg-gold-soft px-3.5 py-3 text-sm text-ink">
+              <p><b className="font-medium">Nenhum serviço cadastrado.</b> Para fechar a venda é preciso escolher o serviço.</p>
+              {canManage
+                ? <Link href={SERVICES_HREF} className="mt-1 inline-flex items-center min-h-11 lg:min-h-0 font-medium text-gold-ink underline underline-offset-2">Cadastrar serviços</Link>
+                : <p className="mt-1 text-graphite">Peça à gestão para cadastrar os serviços.</p>}
+            </div>
           )}
           <FieldError>{errors.service}</FieldError>
         </div>

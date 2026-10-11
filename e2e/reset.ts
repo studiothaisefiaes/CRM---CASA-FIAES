@@ -4,6 +4,7 @@ import { db, pool } from "../src/server/db";
 import { seed } from "../src/server/db/seed";
 import { settings, users } from "../src/server/db/schema";
 import { hashPassword } from "../src/server/auth/password";
+import { seedTestServices } from "../test/fixture-services";
 
 // Banco de e2e limpo: gestão + uma atendente.
 async function main() {
@@ -11,6 +12,7 @@ async function main() {
   await db.execute(sql`truncate table automation_runs, automation_versions, automations, alerts, deal_events, messages, deals,
     contacts, channels, lists, stages, sessions, users, webhook_events, audit_log, settings, outbox, tasks, lead_sources, push_subscriptions restart identity cascade`);
   await seed(db);
+  await seedTestServices(db);
   await db.insert(users).values([
     { name: "Thaíse Fiaes", email: "gestao@e2e.local", role: "gestor", passwordHash: await hashPassword("senha-e2e-123") },
     { name: "Ana Souza", email: "ana@e2e.local", role: "atendente", passwordHash: await hashPassword("senha-e2e-123") },

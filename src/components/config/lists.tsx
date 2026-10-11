@@ -11,8 +11,9 @@ import { SPRING_UI } from "@/lib/motion";
 type Item = { id: string; kind: "objection" | "lost_reason" | "quick_reply" | "origin" | "service"; label: string; body: string | null; active: boolean; cycleDays: number | null };
 const TABS = [["quick_reply", "Respostas prontas", "Aparecem ao digitar / no card. Use {nome} para o primeiro nome da cliente."], ["objection", "Objeções", "O que a cliente diz quando hesita. Viram relatório."], ["lost_reason", "Motivos de perda", "Pedidos ao marcar um lead como perdido."], ["origin", "Origens", "De onde vêm os leads."], ["service", "Serviços", "Serviços oferecidos pela Casa."]] as const;
 
-export function ListsEditor({ items }: { items: Item[] }) {
-  const [tab, setTab] = useState<Item["kind"]>("quick_reply");
+/** `initialTab`: aba aberta ao chegar (ex.: `?aba=service` vindo do aviso de "nenhum serviço" ao fechar venda). */
+export function ListsEditor({ items, initialTab = "quick_reply" }: { items: Item[]; initialTab?: Item["kind"] }) {
+  const [tab, setTab] = useState<Item["kind"]>(initialTab);
   const [label, setLabel] = useState(""); const [body, setBody] = useState("");
   const [pending, start] = useTransition(); const toast = useToast();
   const current = items.filter((i) => i.kind === tab);

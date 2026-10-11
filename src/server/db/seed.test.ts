@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, ne } from "drizzle-orm";
 import { db } from "./index";
 import { seed } from "./seed";
 import { resetDb } from "../../../test/db";
@@ -12,7 +12,7 @@ describe("seed", () => {
     await seed(db); await seed(db);
     expect((await db.select().from(stages)).length).toBe(9);
     expect((await db.select().from(automations)).length).toBe(10);
-    expect((await db.select().from(lists)).length).toBe(27);
+    expect((await db.select().from(lists).where(ne(lists.kind, "service"))).length).toBe(22);
   });
   it("toda automação que envia mensagem nasce desligada", async () => {
     await seed(db);
@@ -22,10 +22,9 @@ describe("seed", () => {
     expect(sends.every((a) => a.enabled === false)).toBe(true);
     expect(DEFAULT_AUTOMATIONS.filter((a) => a.actions.some((x) => x.type.startsWith("enviar_"))).every((a) => a.enabled === false)).toBe(true);
   });
-  it("serviços recorrentes têm ciclo de retorno", async () => {
+  it("não cria serviços: os nomes vêm da Casa (cadastrados em Configurações › Listas › Serviços)", async () => {
+    await db.delete(lists).where(eq(lists.kind, "service")); // resetDb põe os serviços de teste
     await seed(db);
-    const rows = await db.select().from(lists).where(eq(lists.kind, "service"));
-    const ciclo = Object.fromEntries(rows.map((r) => [r.label, r.cycleDays]));
-    expect(ciclo).toEqual({ "Avaliação capilar": null, "Tratamento de queda": null, "Coloração": 35, "Corte": null, "Hidratação": 30 });
+    expect(await db.select().from(lists).where(eq(lists.kind, "service"))).toHaveLength(0);
   });
 });

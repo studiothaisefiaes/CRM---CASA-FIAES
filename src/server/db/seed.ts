@@ -1,17 +1,14 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import type { Db } from "./index";
 import { stages, lists, automations } from "./schema";
-import { DEFAULT_STAGES, DEFAULT_LISTS, SERVICE_CYCLE_DAYS, DEFAULT_QUICK_REPLIES, DEFAULT_AUTOMATIONS } from "./seed-data";
+import { DEFAULT_STAGES, DEFAULT_LISTS, DEFAULT_QUICK_REPLIES, DEFAULT_AUTOMATIONS } from "./seed-data";
 
 /** Idempotente: pode rodar quantas vezes quiser sem duplicar nem sobrescrever edições do gestor. */
 export async function seed(db: Db) {
   await db.insert(stages).values(DEFAULT_STAGES.map((s) => ({ ...s }))).onConflictDoNothing({ target: stages.key });
   const listRows = [
     ...Object.entries(DEFAULT_LISTS).flatMap(([kind, labels]) =>
-      labels.map((label, position) => ({
-        kind: kind as "objection" | "lost_reason" | "origin" | "service", label, position,
-        ...(kind === "service" && SERVICE_CYCLE_DAYS[label] ? { cycleDays: SERVICE_CYCLE_DAYS[label] } : {}),
-      }))),
+      labels.map((label, position) => ({ kind: kind as keyof typeof DEFAULT_LISTS, label, position }))),
     ...DEFAULT_QUICK_REPLIES.map((q, position) => ({ kind: "quick_reply" as const, label: q.label, body: q.body, position })),
   ];
   await db.insert(lists).values(listRows).onConflictDoNothing();
