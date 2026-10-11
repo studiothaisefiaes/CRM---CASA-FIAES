@@ -42,6 +42,8 @@ export function AutomationsList({ items, stages, runs }: { items: Item[]; stages
   const [editing, setEditing] = useState<Item | "new" | null>(null);
   const [picking, setPicking] = useState(false);
   const [confirmOn, setConfirmOn] = useState<Item | null>(null);
+  const [reach, setReach] = useState<number | null>(null);
+  const askOn = (a: Item) => { setReach(null); setConfirmOn(a); void previewAutomationAction({ name: a.name, enabled: true, trigger: a.trigger as Trigger, conditions: a.conditions as AutomationInput["conditions"], actions: a.actions as Action[] }).then((r) => { if (r.ok) setReach(r.data!.sendCount); }); };
   const [pendingOn, startOn] = useTransition();
   const [, start] = useTransition(); const toast = useToast();
   const toggle = (a: Item, v: boolean) => start(async () => { const r = await toggleAutomationAction(a.id, v); toast(r.ok ? (v ? "Automação ligada" : "Automação desligada") : r.error, r.ok ? "ok" : "error"); });
@@ -78,7 +80,7 @@ export function AutomationsList({ items, stages, runs }: { items: Item[]; stages
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
                   <button className="text-sm text-graphite hover:text-ink underline-offset-2 hover:underline" onClick={() => setEditing(a)}>Editar</button>
-                  <Switch checked={a.enabled} label={`${a.enabled ? "Desligar" : "Ligar"} ${a.name}`} onChange={(v) => (v && sendsMessages(a.actions as Action[]) ? setConfirmOn(a) : toggle(a, v))} />
+                  <Switch checked={a.enabled} label={`${a.enabled ? "Desligar" : "Ligar"} ${a.name}`} onChange={(v) => (v && sendsMessages(a.actions as Action[]) ? askOn(a) : toggle(a, v))} />
                 </div>
               </motion.li>
             );
@@ -87,7 +89,7 @@ export function AutomationsList({ items, stages, runs }: { items: Item[]; stages
       </ul>
       </section>); })}
       <TemplatePicker open={picking} onClose={() => setPicking(false)} onCreated={(it) => { setPicking(false); setEditing(it); }} />
-      <SendConfirmDialog open={!!confirmOn} pending={pendingOn} onClose={() => setConfirmOn(null)} what={`A automação “${confirmOn?.name ?? ""}” passa a mandar mensagem para as clientes, só no horário de atendimento e respeitando o limite por hora.`}
+      <SendConfirmDialog open={!!confirmOn} pending={pendingOn} reach={reach} onClose={() => setConfirmOn(null)} what={`A automação “${confirmOn?.name ?? ""}” passa a mandar mensagem para as clientes, só no horário de atendimento e respeitando o limite por hora.`}
         onConfirm={() => startOn(async () => { if (confirmOn) { const r = await toggleAutomationAction(confirmOn.id, true); toast(r.ok ? "Automação ligada" : r.error, r.ok ? "ok" : "error"); } setConfirmOn(null); })} />
       <Editor key={editing === "new" ? "new" : editing?.id ?? "none"} item={editing} stages={stages} onClose={() => setEditing(null)} />
     </div>
@@ -106,6 +108,7 @@ function Editor({ item, stages, onClose }: { item: Item | "new" | null; stages: 
   const [pending, start] = useTransition(); const toast = useToast();
   const [confirmDel, setConfirmDel] = useState(false);
   const [confirmSend, setConfirmSend] = useState(false);
+  const [reachSave, setReachSave] = useState<number | null>(null);
   const open = item !== null;
   // Ligada e passando a mandar mensagem (nova, ou antes sem envio): pede a confirmação de envio real antes de salvar.
   const wasSending = !!item && item !== "new" && item.enabled && sendsMessages(item.actions as Action[]);
@@ -135,7 +138,7 @@ function Editor({ item, stages, onClose }: { item: Item | "new" | null; stages: 
           ? <span className="mr-auto flex items-center gap-2 text-sm">Apagar de vez?<Button size="sm" variant="danger" onClick={() => start(async () => { const r = await deleteAutomationAction((item as Item).id); if (r.ok) { toast("Automação apagada"); onClose(); } else toast(r.error, "error"); })}>Apagar</Button><Button size="sm" variant="ghost" onClick={() => setConfirmDel(false)}>Não</Button></span>
           : <Button variant="ghost" className="mr-auto text-alert hover:bg-alert-soft" onClick={() => setConfirmDel(true)}>Apagar</Button>)}
         <Button variant="secondary" onClick={() => start(async () => { const r = await previewAutomationAction(v); setPreview(r.ok ? `Agora, ${r.data!.count} lead${r.data!.count === 1 ? "" : "s"} se encaixa${r.data!.count === 1 ? "" : "m"} nesta regra${r.data!.sample.length ? `: ${r.data!.sample.join(", ")}` : ""}.` : r.error); })}>Testar</Button>
-        <Button onClick={() => (needsSendConfirm ? setConfirmSend(true) : save())} loading={pending}>Salvar</Button>
+        <Button onClick={() => { if (!needsSendConfirm) return save(); setReachSave(null); setConfirmSend(true); void previewAutomationAction(v).then((r) => { if (r.ok) setReachSave(r.data!.sendCount); }); }} loading={pending}>Salvar</Button>
       </>}>
       <div className="flex flex-col gap-5">
         <label className="block"><span className="text-sm font-medium text-graphite">Nome</span>
@@ -192,7 +195,7 @@ function Editor({ item, stages, onClose }: { item: Item | "new" | null; stages: 
                 <div><p className="font-semibold mb-1.5">Versões</p>
                   <ul className="flex flex-col gap-1">{details.versions.map((x) => (
                     <li key={x.version} className="flex justify-between gap-2"><span>v{x.version} · {relTime(x.createdAt)}{x.user ? ` · ${x.user.split(" ")[0]}` : ""}</span>
-                      {x.version !== (item as Item).version && <button className="text-gold-ink hover:underline" onClick={() => start(async () => { const r = await restoreAutomationAction((item as Item).id, x.version); if (r.ok) { toast(`Voltou para a versão ${x.version}`); onClose(); } else toast(r.error, "error"); })}>Voltar a esta</button>}</li>
+                      {x.version !== (item as Item).version && <button className="text-gold-ink hover:underline" onClick={() => start(async () => { const r = await restoreAutomationAction((item as Item).id, x.version); if (r.ok) { toast(r.data?.disabled ? `Versão ${x.version} restaurada (desligada). Ligue quando quiser.` : `Voltou para a versão ${x.version}`); onClose(); } else toast(r.error, "error"); })}>Voltar a esta</button>}</li>
                   ))}{details.versions.length === 0 && <li className="text-muted">Versão original (nunca editada).</li>}</ul>
                 </div>
                 <div><p className="font-semibold mb-1.5">Últimas execuções</p>
@@ -205,7 +208,7 @@ function Editor({ item, stages, onClose }: { item: Item | "new" | null; stages: 
         )}
       </div>
     </Dialog>
-    <SendConfirmDialog open={confirmSend} pending={pending} onClose={() => setConfirmSend(false)} onConfirm={save}
+    <SendConfirmDialog open={confirmSend} pending={pending} reach={reachSave} onClose={() => setConfirmSend(false)} onConfirm={save}
       what="Salvar deixa esta automação ligada, mandando mensagem para as clientes, só no horário de atendimento e respeitando o limite por hora." />
     </>
   );

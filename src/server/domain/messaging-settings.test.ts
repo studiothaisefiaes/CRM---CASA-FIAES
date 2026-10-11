@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../db";
 import { auditLog, automations, lists, users } from "../db/schema";
 import { resetDb } from "../../../test/db";
-import { saveAutomation, toggleAutomation } from "./config";
+import { saveAutomation, toggleAutomation, restoreAutomation } from "./config";
 import { AUTOMATION_TEMPLATES } from "../rules/templates";
 import {
   getAutoReply, saveAutoReply, getSendCap, saveSendCap, getMediaRetentionMonths, saveMediaRetention, saveServiceCycleDays,
@@ -86,5 +86,24 @@ describe("automações com envio: auditoria", () => {
     const [a] = await auditOf("automation", "ligou");
     expect(a.userId).toBe(gestor);
     expect(a.data).toMatchObject({ envia: true });
+  });
+});
+
+describe("restaurar versão", () => {
+  it("grava desligada quando o snapshot tem ação de envio, sem ligar o envio por trás", async () => {
+    const t = AUTOMATION_TEMPLATES.find((x) => x.id === "aniversario")!;
+    const id = await saveAutomation(null, { ...t.rule, enabled: true }, gestor); // v1: ligada, com envio
+    await saveAutomation(id, { ...t.rule, enabled: true, actions: [{ type: "alertar_gestao", message: "Aniversário de {nome}" }] }, gestor); // v2
+    await restoreAutomation(id, 1, gestor);
+    const [cur] = await db.select().from(automations).where(eq(automations.id, id));
+    expect(cur.enabled).toBe(false);
+    expect(JSON.stringify(cur.actions)).toContain("enviar_mensagem");
+  });
+  it("sem envio no snapshot, mantém o estado do snapshot", async () => {
+    const t = AUTOMATION_TEMPLATES.find((x) => x.id === "parado-alerta")!;
+    const id = await saveAutomation(null, { ...t.rule, enabled: true }, gestor);
+    await saveAutomation(id, { ...t.rule, enabled: false }, gestor);
+    await restoreAutomation(id, 1, gestor);
+    expect((await db.select().from(automations).where(eq(automations.id, id)))[0].enabled).toBe(true);
   });
 });

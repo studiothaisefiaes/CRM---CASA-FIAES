@@ -59,7 +59,7 @@ export function AutoReplyEditor({ initial, hoursSummary, hoursSaved }: { initial
           onClick={() => (saved.enabled ? persist(true, "Texto salvo") : persist(false, "Texto salvo. A resposta continua desligada"))}>Salvar texto</Button>
       </div>
       <SendConfirmDialog open={confirm} pending={pending} onClose={() => setConfirm(false)} onConfirm={() => persist(true, "Resposta fora do horário ligada")}
-        what="A resposta fora do horário passa a ser enviada sozinha sempre que uma cliente escrever com a Casa fechada." />
+        what="Responde automaticamente quando a Casa está fechada, uma vez a cada 12 h por cliente." />
     </section>
   );
 }

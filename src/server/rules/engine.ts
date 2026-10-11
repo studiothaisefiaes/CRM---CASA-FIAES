@@ -14,7 +14,7 @@ export const TZ_OFFSET_MIN = -180; // America/Bahia (UTC-3, sem horário de ver�
 
 type Candidate = {
   dealId: string; ownerId: string | null; stageKey: string; stageName: string; contactName: string | null; phone: string;
-  windowKey: string; minutes?: number; days?: number; since?: string | Date | null;
+  windowKey: string; lastOutboundAt?: string | Date | null; minutes?: number; days?: number; since?: string | Date | null;
   /** Só nos gatilhos de espera: desde quando a cliente aguarda resposta. */
   awaitingSince?: Date;
 };
@@ -26,7 +26,7 @@ export { getBusinessHours };
 export async function candidatesFor(trigger: Trigger, now: Date, hours?: BusinessHours): Promise<Candidate[]> {
   const bh = hours ?? (await getBusinessHours());
   const base = sql`select d.id as "dealId", d.owner_id as "ownerId", s.key as "stageKey", s.name as "stageName",
-    c.name as "contactName", c.phone_e164 as phone, s.sla_minutes as "slaMinutes"`;
+    c.name as "contactName", c.phone_e164 as phone, s.sla_minutes as "slaMinutes", d.last_outbound_at as "lastOutboundAt"`;
   // Arquivado ("não é cliente") e canal em modo quieto (histórico recém-importado) ficam fora do motor.
   const from = sql`from deals d join stages s on s.id = d.stage_id join contacts c on c.id = d.contact_id
     left join channels ch on ch.id = d.channel_id`;
@@ -101,9 +101,31 @@ export async function candidatesFor(trigger: Trigger, now: Date, hours?: Busines
   });
 }
 
+/**
+ * Teto de idade dos envios automáticos: ligar uma automação não pode disparar mensagem para o histórico antigo.
+ * Silêncio da cliente: no máximo 7 dias depois do limiar; espera sem resposta: no máximo 24 h. Alertas internos não passam por aqui.
+ */
+export const SEND_MAX_AGE_SILENCE_MS = 7 * 86_400_000;
+export const SEND_MAX_AGE_WAIT_MS = 24 * 3_600_000;
+export function tooOldForSend(trigger: Trigger, c: Pick<Candidate, "since" | "awaitingSince" | "lastOutboundAt">, now: Date): boolean {
+  if (trigger.type === "sem_resposta_minutos") return !!c.awaitingSince && now.getTime() - c.awaitingSince.getTime() > SEND_MAX_AGE_WAIT_MS;
+  if (trigger.type === "sem_retorno_cliente_dias") {
+    const base = Math.max(c.since ? new Date(c.since).getTime() : 0, c.lastOutboundAt ? new Date(c.lastOutboundAt).getTime() : 0);
+    return base > 0 && now.getTime() > base + trigger.days * 86_400_000 + SEND_MAX_AGE_SILENCE_MS;
+  }
+  return false;
+}
+
 const NEXT_FOLLOWUP: Record<string, string | undefined> = {
   atendimento: "followup_1", followup_1: "followup_2", followup_2: "followup_3", followup_3: "followup_4",
 };
+
+/** Texto para a cliente: sem nome cadastrado, "Oi, {nome}!" vira "Oi!" (nunca o telefone no lugar). */
+function renderForClient(tpl: string, c: Candidate, stageName: string) {
+  const hasName = !!c.contactName?.trim();
+  const t = hasName ? tpl : tpl.replace(/,?\s*\{nome\}/g, "").replace(/\{nome\}/g, "").replace(/ {2,}/g, " ").replace(/\s+([!?.,])/g, "$1");
+  return render(t, c, stageName);
+}
 
 function render(tpl: string, c: Candidate, stageName: string) {
   const when = c.since ? new Date(c.since) : null;
@@ -163,13 +185,14 @@ async function execute(tx: Tx, a: Action, c: Candidate, auto: Automation, trigge
     }
     case "enviar_mensagem":
     case "enviar_enquete_confirmacao": {
+      if (tooOldForSend(trigger, c, now)) return "antigo"; // histórico: ligar a automação não dispara para ele
       // Só entra na fila, na mesma transação da execução: quem envia é o worker (teto por hora, reconferências na hora de enviar).
       const source = `automacao:${auto.id}`;
       // Lembrete de agendamento: guarda o horário e a etapa de agora; a fila cancela se mudarem até a hora de enviar.
       const guard = trigger.type === "agendamento_em_horas" ? { scheduledAt: c.since ? new Date(c.since) : null, stage: c.stageKey } : undefined;
-      if (a.type === "enviar_mensagem") await enqueueAutomated({ dealId: c.dealId, kind: "text", text: fit(render(a.message, c, ctx.stageName), 4000), source, guard }, tx);
+      if (a.type === "enviar_mensagem") await enqueueAutomated({ dealId: c.dealId, kind: "text", text: fit(renderForClient(a.message, c, ctx.stageName), 4000), source, guard }, tx);
       // Título da enquete: o WhatsApp aceita 255; depois das variáveis pode passar, então corta (nunca lança dentro da transação do motor).
-      else await enqueueAutomated({ dealId: c.dealId, kind: "poll", text: fit(render(a.message, c, ctx.stageName), 255), options: [CONFIRMACAO_OPCOES.confirmo, CONFIRMACAO_OPCOES.remarcar], source, guard }, tx);
+      else await enqueueAutomated({ dealId: c.dealId, kind: "poll", text: fit(renderForClient(a.message, c, ctx.stageName), 255), options: [CONFIRMACAO_OPCOES.confirmo, CONFIRMACAO_OPCOES.remarcar], source, guard }, tx);
       return "mensagem";
     }
     case "mover_para_proximo_followup": {

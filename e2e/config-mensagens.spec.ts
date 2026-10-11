@@ -32,6 +32,7 @@ test("modelo cria a automação desligada; ligar mostra o aviso e cancelar mant�
   await sw.click();
   const aviso = page.getByRole("dialog", { name: "Ligar o envio automático?" });
   await expect(aviso).toContainText("Isto vai enviar mensagens reais para clientes.");
+  await expect(aviso).toContainText(/Agora isto atingiria \d+ clientes?\./);
   await shot(page, "02-dialogo-envio-real");
   await aviso.getByRole("button", { name: "Cancelar" }).click();
   await expect(aviso).toHaveCount(0);
@@ -85,6 +86,8 @@ test("resposta fora do horário: prévia, aviso ao ligar, cancelar mantém desli
   await sw.click();
   const aviso = page.getByRole("dialog", { name: "Ligar o envio automático?" });
   await expect(aviso).toContainText("Isto vai enviar mensagens reais para clientes.");
+  await expect(aviso).toContainText("Responde automaticamente quando a Casa está fechada, uma vez a cada 12 h por cliente.");
+  await expect(aviso).not.toContainText("só no horário de atendimento");
   await aviso.getByRole("button", { name: "Cancelar" }).click();
   expect((await e2eSql("select value from settings where key = 'auto_resposta'"))[0].value).toMatchObject({ enabled: false });
   await sw.click();

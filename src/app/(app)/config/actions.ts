@@ -39,7 +39,7 @@ export const setSourceActiveAction = async (id: string, active: boolean) => run(
 async function runSafe<T>(fn: (uid: string) => Promise<T>, path: string, fallback: string): Promise<R<T>> {
   try { const u = await assertUser("gestor"); const data = await fn(u.id); revalidatePath(path); return { ok: true, data }; } catch (e) {
     if (e instanceof z.ZodError) return { ok: false, error: e.issues[0]?.message ?? fallback };
-    if (e instanceof Error && /sessão expirou|só a gestão/i.test(e.message)) return { ok: false, error: e.message };
+    if (e instanceof Error && /sessão expirou|só a gestão|não encontrad/i.test(e.message)) return { ok: false, error: e.message };
     console.error("[config]", fallback, e);
     return { ok: false, error: fallback };
   }

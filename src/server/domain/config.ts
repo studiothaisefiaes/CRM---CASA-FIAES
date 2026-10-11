@@ -101,7 +101,11 @@ export async function toggleAutomation(id: string, enabled: boolean, userId: str
 export async function restoreAutomation(id: string, version: number, userId: string) {
   const [v] = await db.select().from(automationVersions).where(and(eq(automationVersions.automationId, id), eq(automationVersions.version, version)));
   if (!v) throw new Error("Versão não encontrada");
-  return saveAutomation(id, automationInputSchema.parse(v.snapshot), userId);
+  const snap = automationInputSchema.parse(v.snapshot);
+  // Restaurar nunca liga envio por trás: com ação de mensagem, volta desligada (a gestão liga depois, com o aviso de envio real).
+  const disabled = sendsMessages(snap.actions);
+  await saveAutomation(id, disabled ? { ...snap, enabled: false } : snap, userId);
+  return { id, disabled };
 }
 export async function deleteAutomation(id: string, userId: string) {
   await db.delete(automations).where(eq(automations.id, id));

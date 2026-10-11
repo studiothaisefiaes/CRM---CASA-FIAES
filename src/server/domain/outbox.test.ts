@@ -402,6 +402,7 @@ describe("fix round 1: título da enquete e item preso", () => {
   const t0 = new Date("2026-10-13T13:00:00Z");
   it("título maior que 255 depois das variáveis é truncado com reticências, sem erro no motor", async () => {
     const id = await lead("71999990801", t0);
+    await db.update(contacts).set({ name: "Mariana Souza" }); // sem nome, {nome} some do texto da cliente
     await db.update(deals).set({ scheduledAt: new Date(t0.getTime() + 20 * 3_600_000), stageId: sql`(select id from stages where key = 'agendado')` }).where(eq(deals.id, id));
     await db.update(automations).set({ enabled: true, actions: [{ type: "enviar_enquete_confirmacao", message: "{data} {hora} " + "{nome}".repeat(38) }] }).where(eq(automations.key, "confirmacao_d1"));
     const s = await runRules(t0);
