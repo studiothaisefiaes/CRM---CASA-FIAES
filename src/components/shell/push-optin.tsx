@@ -1,18 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { savePushSubscriptionAction } from "@/app/(app)/push/actions";
-
-const KEY = "cf-push-optin";
-const remember = () => { try { localStorage.setItem(KEY, "1"); } catch { /* sem storage */ } };
-const remembered = () => { try { return localStorage.getItem(KEY) === "1"; } catch { return false; } };
-
-function keyBytes(b64url: string) {
-  const b64 = (b64url + "=".repeat((4 - (b64url.length % 4)) % 4)).replaceAll("-", "+").replaceAll("_", "/");
-  const raw = atob(b64);
-  const out = new Uint8Array(new ArrayBuffer(raw.length));
-  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
-  return out;
-}
+import { pushOptInRemembered, rememberPushOptIn, resubscribeIfGranted, subscribeAndSave } from "./push-sync";
 
 const supported = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 
@@ -26,13 +15,19 @@ export function PushOptIn({ publicKey }: { publicKey: string }) {
     if (!supported()) return;
     // Em produção mantém o service worker em dia; em dev só registra quando a pessoa toca no convite (não atrapalha o HMR).
     if (process.env.NODE_ENV === "production") navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {});
+    // Permissão já concedida (ex.: depois de Sair, que apaga a inscrição deste aparelho): reinscreve em silêncio para quem entrou.
+    void resubscribeIfGranted({
+      permission: Notification.permission, publicKey,
+      getRegistration: () => navigator.serviceWorker.getRegistration("/"),
+      save: savePushSubscriptionAction,
+    });
     // eslint-disable-next-line react-hooks/set-state-in-effect -- depende de APIs do navegador, só existem após montar
-    if (Notification.permission === "default" && !remembered()) setShow(true);
-  }, []);
+    if (Notification.permission === "default" && !pushOptInRemembered()) setShow(true);
+  }, [publicKey]);
 
   if (!show) return null;
 
-  const dismiss = () => { remember(); setShow(false); };
+  const dismiss = () => { rememberPushOptIn(); setShow(false); };
   const enable = async () => {
     setBusy(true); setError(null);
     try {
@@ -40,9 +35,7 @@ export function PushOptIn({ publicKey }: { publicKey: string }) {
       await navigator.serviceWorker.ready;
       const perm = await Notification.requestPermission();
       if (perm !== "granted") { dismiss(); return; }
-      const sub = (await reg.pushManager.getSubscription()) ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(publicKey) }));
-      const json = sub.toJSON();
-      const r = await savePushSubscriptionAction({ endpoint: sub.endpoint, p256dh: json.keys?.p256dh ?? "", auth: json.keys?.auth ?? "" });
+      const r = await subscribeAndSave(reg, publicKey, savePushSubscriptionAction);
       if (!r.ok) { setError(r.error); return; }
       dismiss();
     } catch {
