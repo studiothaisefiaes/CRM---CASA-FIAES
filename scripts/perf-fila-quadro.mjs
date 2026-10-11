@@ -7,6 +7,8 @@ import { chromium } from "@playwright/test";
 import pg from "pg";
 
 const PORT = Number(process.env.PERF_PORT ?? 3190);
+// O stop() mata quem escuta na porta: nunca usar as portas do dev do usuário.
+if ([3000, 3100, 4321, 4400].includes(PORT)) throw new Error(`PERF_PORT ${PORT} é reservada; use outra (padrão 3190).`);
 const DB = (process.env.DATABASE_URL ?? "").replace(/\/crm(\?|$)/, "/crm_e2e$1");
 if (!DB.includes("crm_e2e")) throw new Error("só roda no banco crm_e2e");
 const env = { ...process.env, DATABASE_URL: DB, NEXT_DIST_DIR: ".next-perf", APP_URL: `http://localhost:${PORT}`, PORT: String(PORT) };
