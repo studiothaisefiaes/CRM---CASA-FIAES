@@ -36,10 +36,26 @@ it("caminho fora de MEDIA_DIR é ignorado (.. e absoluto)", async () => {
     { contactId: c.id, direction: "in", kind: "image", mediaPath: target, createdAt: new Date("2020-01-01T12:00:00Z") }]);
   expect(await purgeExpiredMedia(NOW, 12)).toEqual({ purged: 0 });
   expect(existsSync(target)).toBe(true);
-  expect((await db.select().from(messages).where(eq(messages.contactId, c.id))).every((m) => m.mediaPurgedAt === null)).toBe(true);
+  // marcadas (nunca servidas) e sem apagar nada fora; não ocupam mais a janela
+  expect((await db.select().from(messages).where(eq(messages.contactId, c.id))).every((m) => m.mediaPurgedAt !== null)).toBe(true);
 });
 it("arquivo que já sumiu do disco só é marcado", async () => {
   const c = await mk();
   await db.insert(messages).values({ contactId: c.id, direction: "in", kind: "image", mediaPath: "sumiu.jpg", createdAt: new Date("2020-01-01T12:00:00Z") });
   expect(await purgeExpiredMedia(NOW, 12)).toEqual({ purged: 1 });
+});
+it("roda em lotes até esvaziar; o teto de lotes limita a execução", async () => {
+  const c = await mk();
+  for (let i = 0; i < 5; i++) { writeFileSync(path.join(DIR, `l${i}.jpg`), "x"); await db.insert(messages).values({ contactId: c.id, direction: "in", kind: "image", mediaPath: `l${i}.jpg`, createdAt: new Date(`2020-01-0${i + 1}T12:00:00Z`) }); }
+  expect(await purgeExpiredMedia(NOW, 12, { batch: 2, maxBatches: 2 })).toEqual({ purged: 4 });
+  expect(await purgeExpiredMedia(NOW, 12, { batch: 2 })).toEqual({ purged: 1 });
+});
+it("caminhos inválidos não travam a janela: os válidos depois deles são apagados", async () => {
+  const c = await mk(); writeFileSync(path.join(DIR, "ok.jpg"), "x");
+  await db.insert(messages).values([
+    { contactId: c.id, direction: "in", kind: "image", mediaPath: "../x1", createdAt: new Date("2019-01-01T12:00:00Z") },
+    { contactId: c.id, direction: "in", kind: "image", mediaPath: "../x2", createdAt: new Date("2019-01-02T12:00:00Z") },
+    { contactId: c.id, direction: "in", kind: "image", mediaPath: "ok.jpg", createdAt: new Date("2020-01-01T12:00:00Z") }]);
+  expect(await purgeExpiredMedia(NOW, 12, { batch: 2, maxBatches: 2 })).toEqual({ purged: 1 });
+  expect(existsSync(path.join(DIR, "ok.jpg"))).toBe(false);
 });

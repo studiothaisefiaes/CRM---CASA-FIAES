@@ -13,7 +13,7 @@ export function ImportPreviewView({ preview }: { preview: ImportPreview }) {
         <Stat n={preview.invalid.length} label="telefone inválido" tone="bg-alert-soft text-alert" testid="previa-invalidos" />
       </div>
       {preview.invalid.length > 0 && (
-        <p className="text-sm text-graphite">Linhas ignoradas: {preview.invalid.slice(0, 12).map((i) => `${i.line} (${i.value || "vazio"})`).join(", ")}{preview.invalid.length > 12 ? "…" : ""}</p>
+        <p className="text-sm text-graphite">Registros ignorados: {preview.invalid.slice(0, 12).map((i) => `linha ${i.line} (${i.value || "vazio"})`).join(", ")}{preview.invalid.length > 12 ? "…" : ""}</p>
       )}
       {preview.sample.length > 0 && (
         <ul className="text-sm text-ink-2 divide-y divide-line rounded-[var(--radius-control)] border border-line">

@@ -6,13 +6,13 @@ import { IconButton } from "@/components/ui/icon-button";
 import { T, EASE, SPRING_UI } from "@/lib/motion";
 
 export type Msg = { id: string; externalId?: string | null; direction: "in" | "out"; kind: string; body: string | null; status: string; createdAt: string; sender: string | null; fromPhone: boolean; error?: string | null; hasMedia?: boolean; quotedBody?: string | null; edited?: boolean; deleted?: boolean;
-  /** Meses de guarda quando a mídia já foi apagada pela retenção ("Mídia expirada"). */ expiredMonths?: number };
+  /** Quando a retenção apagou o arquivo da mídia (ISO): a tela mostra \"Mídia expirada\". */ purgedAt?: string };
 
 /** Foto, figurinha, áudio, vídeo ou documento vindos do WhatsApp (arquivo servido por /api/media/[id]). */
 function Media({ m }: { m: Msg }) {
   const [failed, setFailed] = useState(false);
   const src = `/api/media/${m.id}`;
-  if (m.expiredMonths) return <span data-testid="midia-expirada" className="text-graphite italic">Mídia expirada (mais de {m.expiredMonths} meses)</span>;
+  if (m.purgedAt) return <span data-testid="midia-expirada" className="text-graphite italic">Mídia expirada · apagada em {new Date(m.purgedAt).toLocaleDateString("pt-BR", { timeZone: "America/Bahia" })}</span>;
   if (failed) return <span className="text-graphite italic">{KIND_LABEL[m.kind] ?? "Mídia"} (não foi possível carregar)</span>;
   switch (m.kind) {
     case "image": return <a href={src} target="_blank" rel="noreferrer" className="block -mx-1.5 -mt-0.5 mb-1"><img src={src} alt={m.body ?? "Foto enviada"} loading="lazy" onError={() => setFailed(true)} className="rounded-[var(--radius-control)] max-h-72 w-auto max-w-full object-cover bg-paper-2" /></a>;
@@ -40,7 +40,7 @@ export const quotePreview = (m: Msg) => (m.body?.trim() || KIND_LABEL[m.kind] ||
 /** Os campos que mudam o que o balão mostra. A lista recria os objetos a cada carga; só re-renderiza quem mudou de verdade. */
 const sameMsg = (a: Msg, b: Msg) =>
   a === b || (a.id === b.id && a.status === b.status && a.body === b.body && a.kind === b.kind && a.error === b.error && a.quotedBody === b.quotedBody && a.edited === b.edited
-    && a.deleted === b.deleted && a.expiredMonths === b.expiredMonths && a.hasMedia === b.hasMedia && a.externalId === b.externalId && a.sender === b.sender && a.fromPhone === b.fromPhone && a.direction === b.direction && a.createdAt === b.createdAt);
+    && a.deleted === b.deleted && a.purgedAt === b.purgedAt && a.hasMedia === b.hasMedia && a.externalId === b.externalId && a.sender === b.sender && a.fromPhone === b.fromPhone && a.direction === b.direction && a.createdAt === b.createdAt);
 
 type BubbleProps = { m: Msg; /** Rótulo do dia, quando este balão abre um dia novo. */ day: string | null; onReply?: (m: Msg) => void; /** Entra com animação (mensagem que chegou depois da abertura). */ animateIn: boolean };
 

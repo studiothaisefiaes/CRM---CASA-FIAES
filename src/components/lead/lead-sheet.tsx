@@ -207,9 +207,9 @@ export function LeadSheet({ d, nextId, viewer, swap = false }: { d: DealDetail; 
   const name = d.contact.name?.trim() || formatPhoneClient(d.contact.phoneE164);
   const firstName = d.contact.name?.trim().split(/\s+/)[0] ?? "";
   const msgs: Msg[] = useMemo(() => {
-    const base = d.messages.map((m) => ({ id: m.id, externalId: m.externalId, direction: m.direction, kind: m.kind, body: m.body, status: m.status, createdAt: new Date(m.createdAt).toISOString(), sender: m.sender, fromPhone: m.fromPhone, error: m.error, hasMedia: m.hasMedia, quotedBody: m.quotedBody, edited: !!m.editedAt, deleted: !!m.deletedAt, expiredMonths: m.mediaPurgedAt ? d.mediaRetentionMonths : undefined }));
+    const base = d.messages.map((m) => ({ id: m.id, externalId: m.externalId, direction: m.direction, kind: m.kind, body: m.body, status: m.status, createdAt: new Date(m.createdAt).toISOString(), sender: m.sender, fromPhone: m.fromPhone, error: m.error, hasMedia: m.hasMedia, quotedBody: m.quotedBody, edited: !!m.editedAt, deleted: !!m.deletedAt, purgedAt: m.mediaPurgedAt ? new Date(m.mediaPurgedAt).toISOString() : undefined }));
     return optimistic ? [...base, { id: "optimistic", direction: "out" as const, kind: "text", body: optimistic, status: "pending", createdAt: new Date().toISOString(), sender: null, fromPhone: false }] : base;
-  }, [d.messages, d.mediaRetentionMonths, optimistic]);
+  }, [d.messages, optimistic]);
 
   // Agendar, fechar venda e perdido abrem as mesmas folhas da Fila; o servidor não move para essas etapas sem os dados.
   const { moveTo, sheets } = useLeadActions({ d, name, viewer, reload: async () => router.refresh() });

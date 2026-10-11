@@ -5,7 +5,6 @@ import { contacts, dealEvents, deals, leadSources, lists, messages, stages, task
 import { SOURCE_EXPR } from "../reports/common";
 import { NOT_IDENTIFIED } from "../../lib/source-kinds";
 import { HISTORY_EVENT_LIMIT } from "../../lib/history";
-import { getMediaRetentionMonths, DEFAULT_RETENTION_MONTHS } from "../domain/messaging-settings";
 
 // O nó de mídia (com miniatura) fica no servidor; a tela pede o arquivo em /api/media/[id].
 const { media: _media, ...msgCols } = getTableColumns(messages);
@@ -42,7 +41,6 @@ export async function getDealDetail(id: string) {
   ]);
   return {
     ...row,
-    mediaRetentionMonths: (await getMediaRetentionMonths()) ?? DEFAULT_RETENTION_MONTHS,
     messages: msgs.reverse().map(({ m, sender, hasMedia }) => ({ ...m, sender, hasMedia })),
     events: events.map(({ e, user }) => ({ ...e, user })),
     objections: listRows.filter((l) => l.kind === "objection"),

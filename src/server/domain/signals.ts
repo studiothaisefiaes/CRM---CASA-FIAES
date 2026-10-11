@@ -15,10 +15,11 @@ export const GHOST_AFTER_PRICE_MS = 24 * HOUR_MS;
 export const FAST_REPLY_MS = 2 * 60_000;
 
 const fold = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
-const ASKS_PRICE = /\b(precos?|valor(es)?|quanto( custa| e| fica| sai| cobra| ta| esta|s)?|custa(m)?|custo|orcamento|tabela|investimento)\b/;
+// "quanto" só conta com verbo de preço ("quanto tempo dura?" não é pedido de preço); custo, tabela e investimento pedem contexto.
+const ASKS_PRICE = /\b(precos?|valor(es)?|quanto (custa|custam|e|fica|sai|cobra|que e|ta|esta)|custa(m)?|orcamento|(qual|quais) (o|e o|a|as) (custo|investimento|tabela de (precos?|valores?))|(custo|investimento) (da|do|de|para|pra)|tabela de (precos?|valores?))\b/;
 const ASKS_TIME = /\b(horarios?|vagas?|disponivel|disponibilidade|agenda|agendar|agendamento|encaixe|que horas|tem (hoje|amanha|sabado|domingo|segunda|terca|quarta|quinta|sexta))\b/;
 const MONEY = /r\s?\$\s*\d|\b\d+([.,]\d+)?\s*(reais|conto|contos)\b/;
-const PRICE_CONTEXT = /\b(valor|preco|custa|sai por|fica|investimento|por apenas|a partir de)\b[^\d]{0,25}\d/;
+const PRICE_CONTEXT = /\b(valor|preco|custa|sai por|investimento|por apenas|a partir de)\b[^\d]{0,25}\d/; // sem "fica": casa com endereço ("fica na Rua X, 123")
 const sentPrice = (body: string) => { const t = fold(body); return MONEY.test(t) || PRICE_CONTEXT.test(t); };
 const ts = (d: Date | string) => new Date(d).getTime();
 

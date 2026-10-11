@@ -8,6 +8,17 @@ it("pediu preço e horário, com acento e variações", () => {
   expect(signalsOf([m("in", "tem vaga amanha de manhã", 0)])).toContain("pediu_horario");
   expect(signalsOf([m("in", "bom dia, tudo bem?", 0)])).toEqual([]);
 });
+it("não confunde: 'quanto tempo', tabela de horários, endereço", () => {
+  expect(signalsOf([m("in", "quanto tempo dura?", 0)])).not.toContain("pediu_preco");
+  expect(signalsOf([m("in", "qual a tabela de horários?", 0)])).not.toContain("pediu_preco");
+  expect(signalsOf([m("in", "qual a tabela de horários?", 0)])).toContain("pediu_horario");
+  expect(signalsOf([m("in", "qual o custo da progressiva?", 0)])).toContain("pediu_preco");
+  expect(signalsOf([m("in", "quanto é a escova?", 0)])).toContain("pediu_preco");
+  expect(signalsOf([m("in", "tabela de preços?", 0)])).toContain("pediu_preco");
+  const longe = new Date(Date.UTC(2026, 9, 20));
+  expect(signalsOf([m("out", "A gente fica na Rua das Flores, 123", 0)], longe)).not.toContain("sumiu_apos_preco");
+  expect(signalsOf([m("out", "Fica no 2º andar, sala 12", 0)], longe)).not.toContain("sumiu_apos_preco");
+});
 it("sumiu depois do preço: Casa mandou valor e cliente não respondeu há > 24 h", () => {
   const msgs = [m("in", "quanto é?", 0), m("out", "A avaliação é R$ 150", 2)];
   expect(signalsOf(msgs, new Date(Date.UTC(2026, 9, 14, 14, 0)))).toContain("sumiu_apos_preco");

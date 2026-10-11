@@ -49,7 +49,7 @@ export function ImportButton() {
             <div className="rounded-[var(--radius-control)] bg-ok-soft p-3"><p className="font-serif text-[30px] leading-none text-ok">{report.imported}</p><p className="text-xs text-ok mt-1">novos</p></div>
             <div className="rounded-[var(--radius-control)] bg-paper-2 p-3"><p className="font-serif text-[30px] leading-none">{report.updated}</p><p className="text-xs text-graphite mt-1">atualizados</p></div>
             <div className="rounded-[var(--radius-control)] bg-alert-soft p-3"><p className="font-serif text-[30px] leading-none text-alert">{report.invalid.length}</p><p className="text-xs text-alert mt-1">telefone inválido</p></div>
-            {report.invalid.length > 0 && <p className="col-span-3 text-left text-sm text-graphite mt-2">Linhas ignoradas: {report.invalid.slice(0, 12).map((i) => `${i.line} (${i.value || "vazio"})`).join(", ")}{report.invalid.length > 12 ? "…" : ""}</p>}
+            {report.invalid.length > 0 && <p className="col-span-3 text-left text-sm text-graphite mt-2">Registros ignorados: {report.invalid.slice(0, 12).map((i) => `linha ${i.line} (${i.value || "vazio"})`).join(", ")}{report.invalid.length > 12 ? "…" : ""}</p>}
           </div>
         )}
       </Dialog>

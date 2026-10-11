@@ -37,7 +37,7 @@ test("importar CSV mostra a prévia e só grava depois de confirmar", async ({ p
   await expect(previa).toBeVisible();
   await expect(page.getByTestId("previa-duplicados")).toHaveText("1");
   await expect(page.getByTestId("previa-invalidos")).toHaveText("1");
-  await expect(previa).toContainText("4 (123)");
+  await expect(previa).toContainText("linha 4 (123)");
   expect(await e2eSql("select 1 from contacts where phone_e164 like '+5571988877%'")).toHaveLength(0);
   await shot(page, "01-previa-importacao");
   await page.getByRole("button", { name: "Confirmar importação" }).click();
@@ -52,6 +52,6 @@ test("mídia apagada pela retenção mostra 'Mídia expirada'", async ({ page, i
   const id = await dealDe(`${FONE}002`);
   await e2eSql("update messages set kind = 'image', media = '{}'::jsonb, media_purged_at = now() where contact_id = (select id from contacts where phone_e164 = $1)", [`${FONE}002`]);
   await page.goto(`/atendimento/${id}`);
-  await expect(page.getByTestId("midia-expirada").first()).toHaveText("Mídia expirada (mais de 12 meses)");
+  await expect(page.getByTestId("midia-expirada").first()).toContainText(/^Mídia expirada · apagada em \d{2}\/\d{2}\/\d{4}$/);
   await shot(page, "03-midia-expirada");
 });
