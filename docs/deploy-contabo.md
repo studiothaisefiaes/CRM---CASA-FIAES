@@ -99,7 +99,7 @@ Os números de WhatsApp precisam ser **conectados de novo** (QR code) no servido
 ## Backup e operação
 
 - Backup diário às 03h via cron (`scripts/backup.sh`), 14 dias de retenção, fora do repositório, com cópia fora do VPS. Roteiro completo em `docs/backup-restauracao.md`.
-- Testar a restauração uma vez por mês: `bash scripts/restore-test.sh` (usa só o banco temporário `crm_restore_test`).
+- Testar a restauração uma vez por mês: `bash scripts/restore-test.sh` (restaura banco do CRM, banco da Evolution, mídia e sessão só em alvos temporários: `crm_restore_test`, `crm_restore_evolution` e pastas `mktemp`).
 - Logs do Docker com driver `local` (já configurado) para o disco não encher.
 - Atualizações e volta: seções "Atualizar" e "Rollback" acima.
 - Alerta de falha silenciosa: o CRM já avisa a gestão quando um número desconecta; o monitor externo de `/api/health` cobre o resto.

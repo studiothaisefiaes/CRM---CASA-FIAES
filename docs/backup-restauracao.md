@@ -80,4 +80,13 @@ Depois: `docker compose start evolution && pm2 restart crm-web crm-worker` e con
 bash scripts/restore-test.sh
 ```
 
-Faz um backup novo, restaura o `crm.dump` no banco temporário `crm_restore_test`, compara `count(*)` de `deals`, `messages` e `contacts` com o banco original, imprime `restauração OK` e apaga o banco temporário. Sai com erro se algo divergir. Só esse banco é criado e apagado. O backup gerado fica em `BACKUP_DIR` (é um backup válido).
+Faz um backup novo e restaura as quatro partes em alvos temporários, sem parar nem tocar no que está no ar:
+
+| Parte | Restaurada em | Conferência |
+| --- | --- | --- |
+| `crm.dump` | banco `crm_restore_test` | `count(*)` de `deals`, `messages` e `contacts` igual ao `crm` (até a linha mais nova do backup, porque o CRM continua recebendo mensagens) |
+| `evolution.dump` | banco `crm_restore_evolution` | `Instance`, `Message` e `Contact` da Evolution: nunca mais linhas que o banco no ar e nunca vazio se ele tem dados |
+| `media.tgz` | pasta temporária (`mktemp`) | todos os arquivos do pacote saem inteiros |
+| `evolution_instances.tgz` | pasta temporária (`mktemp`) | a sessão de cada instância está no pacote (sem ela, QR code de novo) |
+
+Imprime `restauração OK` e apaga os bancos e as pastas temporárias. Sai com erro se algo divergir. Os bancos `crm` e `evolution` só são lidos e o volume da Evolution é montado só para leitura. O backup gerado fica em `BACKUP_DIR` (é um backup válido); para testar sem guardar, rode com `BACKUP_DIR=$(mktemp -d)` e apague a pasta depois.
