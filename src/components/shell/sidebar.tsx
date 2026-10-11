@@ -38,11 +38,12 @@ export function Sidebar({ user, alerts: initialAlerts }: { user: { name: string;
   return (
     <>
       <aside className="hidden lg:flex fixed inset-y-0 left-0 w-[232px] flex-col bg-paper-2 border-r border-line z-30">
-        <div className="flex items-center justify-between px-5 pt-5 pb-6">
+        <div className="relative flex items-center justify-between px-5 pt-5 pb-6">
           <Link href="/" className="font-serif text-[21px] leading-none">Casa <em className="text-gold-ink">Fiaes</em></Link>
           <AlertsBell alerts={alerts} reload={reload} />
+          {/* Fora do fluxo: ao sumir (o próprio toque libera o som) nada da barra se mexe sob o cursor. */}
+          <SoundUnlockHint show={hasUnread} className="absolute right-3 top-14 lg:min-h-6" />
         </div>
-        <SoundUnlockHint show={hasUnread} className="self-end mx-3 -mt-5 mb-2" />
         <nav className="flex-1 px-3 flex flex-col gap-0.5" aria-label="Principal">
           {items.map((it) => {
             const active = isActive(it.href);

@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useSyncExternalStore } from "react";
+import { cn } from "@/lib/cn";
 import { audioState, installAudioUnlock, isMuted, subscribeAudio, unlockAudio } from "./sound";
 
 /**
@@ -12,7 +13,7 @@ export function SoundUnlockHint({ show, className = "" }: { show: boolean; class
   if (!show || state !== "locked" || isMuted()) return null;
   return (
     <button type="button" onClick={unlockAudio}
-      className={`inline-flex items-center min-h-11 lg:min-h-8 px-2 rounded-[var(--radius-control)] text-[13px] lg:text-xs text-gold-ink whitespace-nowrap hover:bg-paper-3 underline-offset-2 hover:underline ${className}`}>
+      className={cn("inline-flex items-center min-h-11 lg:min-h-8 px-2 rounded-[var(--radius-control)] text-[13px] lg:text-xs text-gold-ink whitespace-nowrap hover:bg-paper-3 underline-offset-2 hover:underline", className)}>
       <span className="min-[375px]:hidden">Ativar som</span>
       <span className="hidden min-[375px]:inline">Toque para ativar o som</span>
     </button>
