@@ -29,7 +29,7 @@ describe("auditoria do número real", () => {
     await ingestEvolution(up("CLI", false, text("Hh"), new Date(t + 12_000)));
     await ingestEvolution(up("CASA", true, text("Me manda uma mensagem aí"), new Date(t)));
     const [d] = await db.select().from(deals);
-    expect(d.awaitingReplySince?.getTime()).toBe(sec(new Date(t + 12_000)) * 1000);
+    expect(sec(d.awaitingReplySince!)).toBe(sec(new Date(t + 12_000))); // o segundo que o WhatsApp informou (os ms vêm da chegada: webhook.messageTime)
     expect(await db.select().from(dealEvents).where(eq(dealEvents.type, "resposta"))).toHaveLength(0);
     expect(await stageOf()).toBe("lead");
     expect((await db.select().from(messages)).length).toBe(2);

@@ -17,14 +17,17 @@ export function checkSecret(received: string | null, expected: string) {
 
 /**
  * Hora da mensagem para gravar em `messages.created_at`. O WhatsApp manda `messageTimestamp` em segundos: duas mensagens no mesmo segundo
- * empatavam (S.000) e a conversa podia mostrá-las em ordem trocada. Se o evento chega dentro do próprio segundo (o caso ao vivo), usa a hora
- * de chegada em milissegundos, que segue a ordem de chegada; se chega atrasado (fila da Evolution, reenvio), fica o segundo do WhatsApp.
- * Nunca sai do segundo informado pelo WhatsApp, então o prazo e os relatórios não mudam.
+ * empatavam (S.000) e a conversa podia mostrá-las trocadas. Usa a hora de chegada (ms), presa dentro do segundo informado pelo WhatsApp:
+ * - chegou dentro do próprio segundo (ao vivo): a hora de chegada, que segue a ordem de chegada;
+ * - chegou depois (fila da Evolution, reenvio): o fim do segundo (S.999). Se fosse S.000, uma resposta que chega atrasada ficaria "antes"
+ *   da mensagem da cliente que chegou ao vivo no mesmo segundo, e não contaria como resposta;
+ * - relógio do servidor atrás do WhatsApp: o início do segundo.
+ * Nunca sai do segundo do WhatsApp, então prazos e relatórios não mudam.
  */
 export function messageTime(timestampSeconds: number | undefined | null, now = Date.now()): Date {
   if (!timestampSeconds) return new Date(now);
   const start = timestampSeconds * 1000;
-  return new Date(now >= start && now < start + 1000 ? now : start);
+  return new Date(Math.min(Math.max(now, start), start + 999));
 }
 
 type CtxInfo = { externalAdReply?: object; conversionSource?: string; ctwaClid?: string };
