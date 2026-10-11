@@ -530,6 +530,24 @@ describe("fix round 3: eco x timeout", () => {
     expect(out).toHaveLength(1);
     expect(out[0]).toMatchObject({ status: "sent", externalId: "ECO1", error: null });
   });
+  for (const last of [false, true]) {
+    it(`400 explícito com o eco já recebido${last ? " (última tentativa)" : ""}: entregue, 1 envio, item 'sent', sem retry`, async () => {
+      const id = await lead("71999991105", t0);
+      await enqueueAutomated({ dealId: id, kind: "text", text: "saiu mesmo assim" });
+      if (last) await db.update(outbox).set({ attempts: 2 });
+      // Evolution 2.x responde 400 para erros que acontecem DEPOIS do envio pelo Baileys.
+      failWith = () => new ProviderError("Evolution respondeu 400: erro depois do envio", 400);
+      beforeFail = async () => { await echo("7199991105", "ECO5", "saiu mesmo assim"); };
+      await drainOutbox(t0);
+      expect((await db.select().from(outbox))[0]).toMatchObject({ status: "sent" });
+      const out = (await db.select().from(messages).where(eq(messages.dealId, id))).filter((m) => m.direction === "out");
+      expect(out).toHaveLength(1);
+      expect(out[0]).toMatchObject({ status: "sent", externalId: "ECO5", error: null });
+      expect(await db.select().from(alerts)).toHaveLength(0);
+      await drainOutbox(new Date(t0.getTime() + 3 * 3_600_000));
+      expect(textCalls).toBe(1);
+    });
+  }
   it("eco depois do incerto promove a linha: 1 bolha 'sent', item 'sent', alerta resolvido, sem virar resposta humana", async () => {
     const id = await lead("71999991102", t0);
     await enqueueAutomated({ dealId: id, kind: "text", text: "tardia" });

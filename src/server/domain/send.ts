@@ -269,6 +269,12 @@ export async function deliverAutomated(dealId: string, channel: Channel | null, 
   if (p.kind === "poll" && !prov.sendPoll) throw new SendError("Este WhatsApp ainda não envia enquetes.");
   const [pending] = await db.insert(messages).values({ dealId, contactId: row.deal.contactId, channelId: channel.id, direction: "out", kind: p.kind, body, status: "pending" }).returning({ id: messages.id });
   await onPending?.(pending.id).catch((e) => console.error("[fila] não guardou o id da mensagem pendente", e instanceof Error ? e.message : e));
+  type Echoed = { externalId: string | null } | null;
+  // O eco chegou antes da resposta de erro: entregue. Registra como qualquer envio automático (sem contar como resposta humana).
+  const recordEchoed = async (echoed: NonNullable<Echoed>): Promise<DeliverResult> => {
+    await recordOutbound({ dealId, channelId: channel.id, externalId: echoed.externalId, body, kind: p.kind, status: "sent", claimMessageId: pending.id, automated: true }).catch(() => {});
+    return {};
+  };
   let externalId: string | null = null;
   try {
     ({ externalId } = p.kind === "poll"
@@ -278,26 +284,24 @@ export async function deliverAutomated(dealId: string, channel: Channel | null, 
     if (!isNotSent(e)) {
       // Pode ter saído (timeout, rede, 408/502/503/504, erro desconhecido). Fail-closed: nunca reenviar.
       // Só vira "falhou" se ainda estiver pendente: se o eco do WhatsApp chegou antes, a mensagem foi entregue.
-      let delivered = false;
+      let echoed: Echoed = null;
       try {
         const done = await db.update(messages).set({ status: "failed", error: UNCERTAIN_SEND_MESSAGE }).where(and(eq(messages.id, pending.id), eq(messages.status, "pending"))).returning({ id: messages.id });
-        if (done.length === 0) {
-          const [cur] = await db.select({ status: messages.status, externalId: messages.externalId }).from(messages).where(eq(messages.id, pending.id));
-          delivered = cur?.status === "sent";
-          if (delivered) externalId = cur.externalId;
-        }
+        if (done.length === 0) echoed = await claimedByEcho(pending.id);
       } catch (dbErr) {
         console.error("[fila] não marcou a mensagem como incerta", pending.id, errMsg(dbErr)); // o item falha do mesmo jeito
       }
-      if (delivered) {
-        // O eco chegou antes: entregue. Registra como qualquer envio automático (sem contar como resposta humana).
-        await recordOutbound({ dealId, channelId: channel.id, externalId, body, kind: p.kind, status: "sent", claimMessageId: pending.id, automated: true }).catch(() => {});
-        return {};
-      }
+      if (echoed) return recordEchoed(echoed);
       throw new UncertainSendError();
     }
-    if (keepFailed) await db.update(messages).set({ status: "failed", error: errMsg(e).slice(0, 300) }).where(eq(messages.id, pending.id));
-    else await db.delete(messages).where(eq(messages.id, pending.id));
+    // Só mexe na linha se ela ainda estiver pendente: a Evolution 2.x responde 400 para erros que acontecem DEPOIS do envio,
+    // e o eco do WhatsApp pode já ter reivindicado a linha como "sent". Nesse caso ela foi entregue e NÃO pode voltar para a fila.
+    const stillPending = and(eq(messages.id, pending.id), eq(messages.status, "pending"));
+    const changed = keepFailed
+      ? await db.update(messages).set({ status: "failed", error: errMsg(e).slice(0, 300) }).where(stillPending).returning({ id: messages.id })
+      : await db.delete(messages).where(stillPending).returning({ id: messages.id });
+    const echoed = changed.length === 0 ? await claimedByEcho(pending.id) : null;
+    if (echoed) return recordEchoed(echoed);
     throw e instanceof SendError ? e : new NotSentError(errMsg(e));
   }
   try {
@@ -308,5 +312,10 @@ export async function deliverAutomated(dealId: string, channel: Channel | null, 
     await db.update(messages).set({ status: "sent", ...(externalId ? { externalId } : {}) }).where(and(eq(messages.id, pending.id), eq(messages.status, "pending"))).catch(() => {});
     return { confirmError: errMsg(e) };
   }
+}
+/** A linha pendente já foi reivindicada pelo eco do WhatsApp (SEND_MESSAGE)? Então a mensagem saiu. */
+async function claimedByEcho(messageId: string): Promise<{ externalId: string | null } | null> {
+  const [cur] = await db.select({ status: messages.status, externalId: messages.externalId }).from(messages).where(eq(messages.id, messageId));
+  return cur?.status === "sent" ? { externalId: cur.externalId } : null;
 }
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
