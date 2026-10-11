@@ -41,6 +41,15 @@ describe("motor de automações", () => {
     expect(rows[0].escalatedAt).not.toBeNull();
   });
 
+  it("contato marcado como 'não é cliente' (ignored) sem lead arquivado fica fora do motor", async () => {
+    const id = await lead("71999812299");
+    const [d] = await db.select().from(deals).where(eq(deals.id, id));
+    await db.update(contacts).set({ ignored: true }).where(eq(contacts.id, d.contactId));
+    await runRules(min(15));
+    expect(await db.select().from(alerts)).toHaveLength(0);
+    expect((await db.select().from(automationRuns)).filter((r) => r.dealId === id)).toHaveLength(0);
+  });
+
   it("prazo da etapa editado vale para o alerta", async () => {
     await db.update(stages).set({ slaMinutes: 5 }).where(eq(stages.key, "lead"));
     await lead();
