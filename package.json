@@ -18,7 +18,12 @@
     "infra:up": "docker compose up -d",
     "infra:down": "docker compose down",
     "typecheck": "tsc --noEmit",
-    "vapid": "tsx scripts/vapid.ts"
+    "vapid": "tsx scripts/vapid.ts",
+    "demo:seed": "bash scripts/demo.sh seed",
+    "demo:start": "bash scripts/demo.sh start",
+    "demo:refresh": "bash scripts/demo.sh refresh",
+    "demo:stop": "bash scripts/demo.sh stop",
+    "demo:status": "bash scripts/demo.sh status"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

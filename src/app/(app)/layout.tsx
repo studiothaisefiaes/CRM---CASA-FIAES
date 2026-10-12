@@ -10,6 +10,7 @@ import { ShellBannersView } from "@/components/shell/connection-banner";
 import { ToastProvider } from "@/components/ui/toast";
 import { HoursProvider } from "@/components/pipeline/timer";
 import { getBusinessHours } from "@/server/rules/engine";
+import { env } from "@/server/env";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const user = await requireUser();
@@ -18,7 +19,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
     <ToastProvider>
       <LiveProvider>
         <HoursProvider hours={hours}>
-          <Sidebar user={user} alerts={alerts} />
+          <Sidebar user={user} alerts={alerts} demo={env().DEMO} />
           <LateWatch initial={late} />
           {/* Banners de conexão (channels) vêm do servidor; o sino busca /api/alertas sozinho (useLiveAlerts) e o atrasado, /api/alertas/atrasados. */}
           <LiveRefresh scopes={["channels"]} />

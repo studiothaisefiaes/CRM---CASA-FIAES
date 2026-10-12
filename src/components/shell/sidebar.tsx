@@ -6,6 +6,7 @@ import { motion } from "motion/react";
 import { IconChart, IconChat, IconContacts, IconLogout, IconMore, IconSettings, IconToday } from "@/components/icons";
 import { Sheet } from "@/components/ui/sheet";
 import { AlertsBell } from "./alerts-bell";
+import { DemoBadge } from "./demo-badge";
 import { SoundUnlockHint } from "./sound-hint";
 import { useLiveAlerts } from "./use-live-alerts";
 import { logoutAction } from "./push-cleanup";
@@ -24,7 +25,8 @@ const NAV = [
   { href: "/relatorios", label: "Relatórios", icon: IconChart },
 ];
 
-export function Sidebar({ user, alerts: initialAlerts }: { user: { name: string; role: string }; alerts: AlertItem[] }) {
+/** `demo`: ambiente de demonstração (DEMO=true), mostra a etiqueta "Demonstração" no menu e no cabeçalho do celular. */
+export function Sidebar({ user, alerts: initialAlerts, demo = false }: { user: { name: string; role: string }; alerts: AlertItem[]; demo?: boolean }) {
   const path = usePathname();
   const { alerts, reload } = useLiveAlerts(initialAlerts);
   const [more, setMore] = useState(false);
@@ -56,6 +58,7 @@ export function Sidebar({ user, alerts: initialAlerts }: { user: { name: string;
             );
           })}
         </nav>
+        {demo && <div className="px-5 pb-3"><DemoBadge /></div>}
         <div className="p-3 border-t border-line flex items-center gap-3">
           <span className="size-8 rounded-full bg-ink text-paper grid place-items-center text-xs font-semibold">{initials(user.name)}</span>
           <div className="min-w-0 flex-1">
@@ -68,7 +71,10 @@ export function Sidebar({ user, alerts: initialAlerts }: { user: { name: string;
 
       {/* Celular: barra superior + navegação inferior */}
       {!conversation && <header className="lg:hidden sticky top-0 z-30 flex items-center justify-between h-14 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] bg-paper/90 backdrop-blur border-b border-line">
-        <Link href="/" className="font-serif text-[19px] inline-block py-3">Casa <em className="text-gold-ink">Fiaes</em></Link>
+        <div className="flex items-center gap-2 min-w-0">
+          <Link href="/" className="font-serif text-[19px] inline-block py-3">Casa <em className="text-gold-ink">Fiaes</em></Link>
+          {demo && <DemoBadge />}
+        </div>
         <div className="flex items-center gap-1">
           <SoundUnlockHint show={hasUnread} />
           <AlertsBell alerts={alerts} reload={reload} />

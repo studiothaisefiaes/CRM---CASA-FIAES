@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { businessDayLabel, businessMinutesBetween, isOpen } from "./business-hours";
+import { businessDayLabel, businessInstantBefore, businessMinutesBetween, businessSecondsBetween, isOpen } from "./business-hours";
 
 const at = (iso: string) => new Date(iso).getTime(); // horários em UTC; Salvador = UTC-3
 
@@ -27,5 +27,29 @@ describe("businessDayLabel", () => {
     expect(businessDayLabel(at("2026-10-10T21:00:00Z"))).toBe("sábado, das 8:00 às 17:00"); // sáb 18:00 local
     expect(businessDayLabel(at("2026-10-11T15:00:00Z"))).toBe("domingo, a Casa não abre");
     expect(businessDayLabel(at("2026-10-07T17:00:00Z"))).toBe("quarta, das 8:00 às 20:00");
+  });
+});
+
+describe("businessInstantBefore (demonstração: posicionar esperas em relação ao agora)", () => {
+  const iso = (ms: number) => new Date(ms).toISOString();
+  it("no expediente, é só voltar o relógio", () => {
+    // segunda 12/10/2026 10:00 em Salvador = 13:00Z
+    expect(iso(businessInstantBefore(at("2026-10-12T13:00:00Z"), 600))).toBe("2026-10-12T12:50:00.000Z");
+  });
+  it("de madrugada, cai no fim do último expediente (sábado 17h)", () => {
+    // segunda 02:00 em Salvador = 05:00Z; sábado 10/10 às 17:00 = 20:00Z; 10 min antes = 19:50Z
+    expect(iso(businessInstantBefore(at("2026-10-12T05:00:00Z"), 600))).toBe("2026-10-10T19:50:00.000Z");
+  });
+  it("atravessa o fechamento: 5 min de segunda + 5 min de sábado", () => {
+    expect(iso(businessInstantBefore(at("2026-10-12T11:05:00Z"), 600))).toBe("2026-10-10T19:55:00.000Z");
+  });
+  it("é o inverso de businessSecondsBetween", () => {
+    for (const now of ["2026-10-12T05:00:00Z", "2026-10-12T11:01:30Z", "2026-10-14T22:59:00Z", "2026-10-11T15:00:00Z"]) {
+      for (const s of [1, 75, 600, 1080]) {
+        const from = businessInstantBefore(at(now), s);
+        expect(businessSecondsBetween(from, at(now))).toBe(s);
+        expect(isOpen(from)).toBe(true);
+      }
+    }
   });
 });

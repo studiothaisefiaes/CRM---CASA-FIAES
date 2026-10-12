@@ -5,9 +5,9 @@ import { simulateAction } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Textarea } from "@/components/ui/field";
 
-export function Simulator() {
-  const [phone, setPhone] = useState("71 99981-2244"); const [name, setName] = useState("Mariana Couto");
-  const [text, setText] = useState("Oi! Vi o vídeo do preenchimento e queria saber o valor 😊"); const [fromMe, setFromMe] = useState(false); const [ad, setAd] = useState(false);
+export function Simulator({ defaults }: { defaults: { phone: string; name: string; text: string } }) {
+  const [phone, setPhone] = useState(defaults.phone); const [name, setName] = useState(defaults.name);
+  const [text, setText] = useState(defaults.text); const [fromMe, setFromMe] = useState(false); const [ad, setAd] = useState(false);
   const [out, setOut] = useState<string>(""); const [pending, start] = useTransition();
   return (
     <div className="flex flex-col gap-4">

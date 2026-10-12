@@ -35,6 +35,30 @@ export function businessSecondsBetween(fromMs: number, toMs: number, hours: Busi
   return Math.floor(total);
 }
 
+/**
+ * O instante em que, contando só o expediente, faltam `seconds` segundos para chegar em `toMs` (o inverso de `businessSecondsBetween`).
+ * Com a Casa fechada, volta para dentro do último expediente. A demonstração usa para pôr as esperas da Fila "há X min" em relação ao agora.
+ */
+export function businessInstantBefore(toMs: number, seconds: number, hours: BusinessHours = DEFAULT_HOURS): number {
+  let remaining = seconds * 1000;
+  let cursor = toMs - OFFSET_MS; // horário local de Salvador
+  for (let guard = 0; guard < 400; guard++) {
+    const d = new Date(cursor - 1);
+    const dayStart = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+    const win = hours[String(d.getUTCDay()) as keyof BusinessHours];
+    if (win) {
+      const open = dayStart + toMin(win[0]) * 60_000, close = dayStart + toMin(win[1]) * 60_000;
+      const end = Math.min(cursor, close);
+      if (end > open) {
+        if (end - open >= remaining) return end - remaining + OFFSET_MS;
+        remaining -= end - open;
+      }
+    }
+    cursor = dayStart;
+  }
+  throw new Error("Sem expediente configurado para voltar no tempo");
+}
+
 export function isOpen(atMs: number, hours: BusinessHours = DEFAULT_HOURS) {
   const d = new Date(atMs - OFFSET_MS);
   const win = hours[String(d.getUTCDay()) as keyof BusinessHours];

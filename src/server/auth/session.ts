@@ -3,13 +3,15 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { deleteSession, findSessionUser, insertSession, type SessionUser } from "./sessions-store";
+import { secureSessionCookie } from "./cookie";
+import { env } from "../env";
 
 export const SESSION_COOKIE = "cf_session";
 
 export async function createSession(userId: string) {
   const { token, expiresAt } = await insertSession(userId);
   (await cookies()).set(SESSION_COOKIE, token, {
-    httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/", expires: expiresAt,
+    httpOnly: true, secure: secureSessionCookie({ nodeEnv: process.env.NODE_ENV, demo: env().DEMO }), sameSite: "lax", path: "/", expires: expiresAt,
   });
 }
 

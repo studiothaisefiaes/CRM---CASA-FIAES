@@ -1,4 +1,5 @@
-import { env } from "../env";
+import { env, type Env } from "../env";
+import { DemoProvider } from "./demo-provider";
 import { toWhatsappNumber } from "../domain/phone";
 import { ProviderError, type ConnState, type QrResult, type QuotedMessage, type WhatsAppProvider } from "./provider";
 
@@ -124,10 +125,14 @@ export class EvolutionProvider implements WhatsAppProvider {
 }
 
 let provider: WhatsAppProvider | null = null;
+/** A Evolution de verdade ou, na demonstração (DEMO=true), o WhatsApp de mentira, que não sai pela rede. */
+export function providerFor(e: Env): WhatsAppProvider {
+  if (e.DEMO) return new DemoProvider();
+  return new EvolutionProvider(e.EVOLUTION_URL, e.EVOLUTION_API_KEY, `${e.WEBHOOK_PUBLIC_URL}/api/webhooks/evolution`, e.WEBHOOK_SECRET);
+}
 export function whatsapp(): WhatsAppProvider {
   if (provider) return provider;
-  const e = env();
-  provider = new EvolutionProvider(e.EVOLUTION_URL, e.EVOLUTION_API_KEY, `${e.WEBHOOK_PUBLIC_URL}/api/webhooks/evolution`, e.WEBHOOK_SECRET);
+  provider = providerFor(env());
   return provider;
 }
 /** Só para testes. */

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DEMO_DATABASE, isDemoDatabaseUrl } from "./demo";
 
 const schema = z.object({
   DATABASE_URL: z.string().url(),
@@ -9,6 +10,8 @@ const schema = z.object({
   SESSION_SECRET: z.string().min(32),
   APP_URL: z.string().url(),
   DEV_TOOLS: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
+  /** Ambiente de demonstração (scripts/demo.sh): dados fictícios no banco crm_demo, WhatsApp de mentira e etiqueta "Demonstração". */
+  DEMO: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   /** Onde ficam fotos, áudios e figurinhas baixados do WhatsApp (entra no backup). */
   MEDIA_DIR: z.string().optional(),
@@ -25,17 +28,25 @@ const schema = z.object({
 
 export type Env = z.infer<typeof schema>;
 
-let cached: Env | null = null;
-export function env(): Env {
-  if (cached) return cached;
-  const parsed = schema.safeParse(process.env);
+/** Lê e confere a configuração (sem cache; `env()` guarda o resultado de `process.env`). */
+export function parseEnv(source: Record<string, string | undefined>): Env {
+  const parsed = schema.safeParse(source);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
     throw new Error(`Configuração inválida no .env: ${issues}`);
   }
-  cached = parsed.data;
-  // Simulador nunca liga em produção, mesmo com a flag esquecida.
-  if (cached.NODE_ENV === "production") cached.DEV_TOOLS = false;
+  const e = parsed.data;
+  // A demonstração troca o WhatsApp por um de mentira: só pode rodar no banco dela, nunca no real.
+  if (e.DEMO && !isDemoDatabaseUrl(e.DATABASE_URL)) throw new Error(`DEMO=true só roda no banco ${DEMO_DATABASE}.`);
+  // Simulador nunca liga em produção, mesmo com a flag esquecida (exceto na demonstração, que é um build de produção com dados fictícios).
+  if (e.NODE_ENV === "production" && !e.DEMO) e.DEV_TOOLS = false;
+  return e;
+}
+
+let cached: Env | null = null;
+export function env(): Env {
+  if (cached) return cached;
+  cached = parseEnv(process.env);
   return cached;
 }
 
