@@ -160,7 +160,7 @@ test.describe("Quadro", () => {
     await expect(page.getByRole("link", { name: /Helena Dela/ })).toBeVisible();
     await expect(page.getByRole("link", { name: /Irene Semdono/ })).toBeVisible();
     await expect(page.getByRole("link", { name: /Julia Dagestao/ })).toHaveCount(0);
-    await expect(page.getByRole("radio", { name: "Jornada" })).toHaveCount(0); // a Jornada é só da gestão
+    await expect(page.getByRole("navigation", { name: "Formas de ver os leads" }).getByRole("link", { name: "Jornada" })).toHaveCount(0); // a Jornada é só da gestão
   });
 
   test("id malformado nunca vira erro 500", async ({ page }) => {
@@ -170,7 +170,7 @@ test.describe("Quadro", () => {
     expect((await page.request.get(`/api/media/${feio}`)).status()).toBe(404);
     const r = await page.goto(`/funil?lead=${feio}&dono=${feio}`);
     expect(r?.status()).toBe(200);
-    await expect(page.getByRole("heading", { name: "Quadro" })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Formas de ver os leads" }).getByRole("link", { name: "Quadro" })).toHaveAttribute("aria-current", "page");
     expect((await page.goto(`/atendimento?dono=${feio}&filtro=atrasados&lead=${feio}`))?.status()).toBe(200);
     expect((await page.goto(`/relatorios?dono=${feio}`))?.status()).toBeLessThan(500);
   });

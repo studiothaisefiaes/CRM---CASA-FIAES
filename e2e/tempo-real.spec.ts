@@ -56,7 +56,7 @@ test("com Relatórios aberto, mensagem não gera GET /relatorios; venda sim; sin
   // 4. Funil: mensagem recarrega; tipo desconhecido também (fail-open). Reaproveita o login (o limite de tentativas é por IP).
   const funil = countPage(page, "/funil");
   await openStream(page, () => page.goto("/funil"));
-  await expect(page.getByRole("heading", { name: "Quadro" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Formas de ver os leads" }).getByRole("link", { name: "Quadro" })).toHaveAttribute("aria-current", "page");
   await page.waitForTimeout(500);
   funil.length = 0;
   await notify({ type: "mensagem_recebida", dealId: "00000000-0000-4000-8000-000000000002" });

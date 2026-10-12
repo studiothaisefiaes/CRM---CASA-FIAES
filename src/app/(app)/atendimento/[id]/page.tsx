@@ -5,6 +5,7 @@ import { getBulkOptions, getQueue, getQueueItem } from "@/server/queries/queue";
 import { getShellBanners } from "@/server/queries/banners";
 import { LiveRefresh } from "@/components/shell/live";
 import { QueueColumn } from "@/components/queue/queue-column";
+import { WorkspaceBar } from "@/components/queue/workspace-bar";
 import { ConversationPane } from "@/components/queue/conversation-pane";
 import { isMobileUserAgent } from "@/lib/device";
 import { isUuid } from "@/lib/uuid";
@@ -29,12 +30,15 @@ export default async function ConversaPage({ params, searchParams }: PageProps<"
   if (!item) notFound();
   const cols = withList ? "lg:grid-cols-[340px_minmax(0,1fr)] xl:grid-cols-[340px_minmax(0,1fr)_300px]" : "xl:grid-cols-[minmax(0,1fr)_300px]";
   return (
-    <main className={`h-dvh overflow-hidden grid grid-cols-1 grid-rows-[minmax(0,1fr)] ${cols}`}>
-      <h1 className={withList ? "sr-only lg:hidden" : "sr-only"}>Conversa</h1>{/* com a lista na tela (≥ lg) o h1 é o "Atendimento" dela */}
+    <main className="h-dvh overflow-hidden flex flex-col">
+      <h1 className={withList ? "sr-only lg:hidden" : "sr-only"}>Conversa</h1>{/* com a lista na tela (≥ lg) o h1 é o "Atendimento" da barra */}
+      {withList && <WorkspaceBar current="fila" journey={user.role === "gestor"} className="hidden lg:flex" />}
       <LiveRefresh scopes={["queue"]} />
-      {queue && bulk && <QueueColumn queue={queue} query="" view="todos" foco={null} filtro={null} q={null} fonte={null} journey={user.role === "gestor"} onlyOwnLabel={false} selectedId={id} className="hidden lg:flex" bulk={bulk} />}
+      <div className={`flex-1 min-h-0 grid grid-cols-1 grid-rows-[minmax(0,1fr)] ${cols}`}>
+      {queue && bulk && <QueueColumn queue={queue} query="" view="todos" foco={null} filtro={null} q={null} fonte={null} onlyOwnLabel={false} selectedId={id} className="hidden lg:flex" bulk={bulk} />}
       <ConversationPane key={id} dealId={id} initial={queue?.sections.flatMap((s) => s.items).find((i) => i.dealId === id) ?? item} back={withList ? "below-lg" : "always"} focusComposer={compose}
         wa={{ down: banners.disconnected, href: user.role === "gestor" ? "/config/whatsapp" : "/atendimento" }} />
+      </div>
     </main>
   );
 }

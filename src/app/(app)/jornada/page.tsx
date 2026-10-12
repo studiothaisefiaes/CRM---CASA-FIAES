@@ -1,10 +1,9 @@
 import { notFound } from "next/navigation";
 import { requireUser } from "@/server/auth/session";
 import { getJourney } from "@/server/queries/journey";
-import { PageHeader } from "@/components/page-header";
 import { Journey } from "@/components/journey/journey";
 import { LiveRefresh } from "@/components/shell/live";
-import { ViewSwitch } from "@/components/queue/view-switch";
+import { WorkspaceBar } from "@/components/queue/workspace-bar";
 
 export const metadata = { title: "Jornada" };
 
@@ -17,8 +16,8 @@ export default async function JornadaPage() {
   const total = open.reduce((n, s) => n + s.count, 0), late = open.reduce((n, s) => n + s.late, 0);
   return (
     <main>
-      <PageHeader title="Jornada" subtitle={`${total} lead${total === 1 ? "" : "s"} em andamento${late ? ` · ${late} atrasado${late === 1 ? "" : "s"}` : ""} · abra uma etapa para ver a Fila`}
-        actions={<ViewSwitch current="jornada" journey />} />
+      <WorkspaceBar current="jornada" journey />
+      <p className="px-5 lg:px-8 pt-5 pb-4 text-graphite text-base">{`${total} lead${total === 1 ? "" : "s"} em andamento${late ? ` · ${late} atrasado${late === 1 ? "" : "s"}` : ""} · abra uma etapa para ver a Fila`}</p>
       <LiveRefresh scopes={["queue"]} />
       <Journey journey={journey} />
     </main>

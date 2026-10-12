@@ -2,7 +2,6 @@ import { requireUser } from "@/server/auth/session";
 import { getBoard, getOrigins } from "@/server/queries/board";
 import { getDealDetail } from "@/server/queries/deal";
 import { activeUsers } from "@/server/domain/deals";
-import { PageHeader } from "@/components/page-header";
 import { Board } from "@/components/pipeline/board";
 import { Toolbar } from "@/components/pipeline/toolbar";
 import { LiveRefresh } from "@/components/shell/live";
@@ -10,7 +9,7 @@ import { LeadSheetPresence } from "@/components/lead/lead-sheet";
 import { parseFunilFilter } from "@/lib/report-links";
 import Link from "next/link";
 import { isUuid } from "@/lib/uuid";
-import { ViewSwitch } from "@/components/queue/view-switch";
+import { WorkspaceBar } from "@/components/queue/workspace-bar";
 
 const FILTER_LABEL = { atrasados: "Leads atrasados", esperando: "Leads esperando resposta", parados: "Leads parados" } as const;
 
@@ -34,7 +33,11 @@ export default async function FunilPage({ searchParams }: PageProps<"/funil">) {
   const nextId = waiting[0]?.id ?? null;
   return (
     <main>
-      <PageHeader title="Quadro" subtitle={`${open} lead${open === 1 ? "" : "s"} em andamento`} actions={<><ViewSwitch current="quadro" journey={user.role === "gestor"} /><Toolbar people={people} origins={origins} /></>} />
+      <WorkspaceBar current="quadro" journey={user.role === "gestor"} />
+      <div className="flex flex-wrap items-center justify-between gap-3 px-5 lg:px-8 pt-5 pb-4">
+        <p className="text-graphite text-base">{open} lead{open === 1 ? "" : "s"} em andamento</p>
+        <div className="flex items-center gap-2"><Toolbar people={people} origins={origins} /></div>
+      </div>
       {filtro && (
         <p className="mx-5 lg:mx-8 mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm" role="status">
           <span className="rounded-full bg-gold-soft text-gold-ink px-3 py-1 font-medium">Mostrando: {FILTER_LABEL[filtro].toLowerCase()}{user.role !== "gestor" ? " (só os seus)" : ""}{str("fonte") ? ` · origem ${str("fonte")}` : ""}</span>

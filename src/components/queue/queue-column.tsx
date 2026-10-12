@@ -3,31 +3,24 @@ import type { BulkOptions, QueueResult } from "@/server/queries/queue";
 import { QueueListRoute } from "./queue-route";
 import { QueueSummary } from "./queue-summary";
 import { QueueFilters } from "./queue-filters";
-import { ViewSwitch } from "./view-switch";
 import { HideWhileSelecting, QueueSelectionProvider, SelectToggle } from "./queue-selection";
 import { AttendanceStrip } from "./attendance-strip";
 import { FILTER_LABEL, type QueueFilter } from "@/lib/report-links";
 import type { QueueFoco, QueueView } from "@/lib/queue";
 import { cn } from "@/lib/cn";
 
-/** O painel da esquerda da Fila: título, resumo, busca, visões e a lista. Usado por /atendimento e por /atendimento/[id] (no desktop). */
-export function QueueColumn({ queue, query, view, foco, filtro, q, fonte, etapaName, journey, onlyOwnLabel, selectedId, className, bulk }: {
+/** O painel da esquerda da Fila: resumo, busca, visões e a lista (o título e as abas ficam na `WorkspaceBar`, acima). Usado por /atendimento e por /atendimento/[id] (no desktop). */
+export function QueueColumn({ queue, query, view, foco, filtro, q, fonte, etapaName, onlyOwnLabel, selectedId, className, bulk }: {
   queue: QueueResult; query: string; view: QueueView; foco: QueueFoco | null; filtro: QueueFilter | null; q: string | null; fonte: string | null;
   /** Nome da etapa do `?etapa=` (link da Jornada): vira o aviso "Mostrando: etapa …". */
   etapaName?: string | null;
-  /** A gestão vê a aba Jornada ao lado de Fila e Quadro. */
-  journey?: boolean;
   /** "(só os seus)" no aviso do filtro vindo de relatório, para a atendente. */
   onlyOwnLabel: boolean; selectedId: string | null; className?: string; bulk: BulkOptions;
 }) {
   return (
     <QueueSelectionProvider>
     <section aria-label="Fila de atendimento" className={cn("min-h-0 flex-col bg-paper lg:border-r border-line", className ?? "flex")}>
-      <div className="shrink-0 px-4 pt-3 lg:pt-5 pb-3 border-b border-line">
-        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-          <h1 className="font-serif text-[28px] leading-none font-light tracking-[-0.01em]">Atendimento</h1>
-          <ViewSwitch current="fila" journey={journey} />
-        </div>
+      <div className="shrink-0 px-4 pt-2 pb-3 border-b border-line">
         <div className="flex items-start justify-between gap-2">
           <HideWhileSelecting className="min-w-0 flex-1"><QueueSummary counts={queue.counts} view={view} foco={foco} filtro={filtro} /></HideWhileSelecting>
           <SelectToggle className="mt-2.5 ml-auto shrink-0" />

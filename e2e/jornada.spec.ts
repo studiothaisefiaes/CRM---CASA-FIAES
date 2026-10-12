@@ -34,14 +34,21 @@ const contagem = async (page: Page, nome: string) => Number((await page.locator(
 test.describe("Jornada (desktop)", () => {
   test.beforeEach(({ isMobile }) => { test.skip(isMobile, "desktop"); });
 
-  test("a gestão abre pelo menu, vê as estações com as contagens do Quadro e clica numa para abrir a Fila filtrada", async ({ page }) => {
+  test("a gestão abre pela aba, vê as estações com as contagens do Quadro e clica numa para abrir a Fila filtrada", async ({ page }) => {
     await login(page);
     await cenario(page);
     await page.goto("/atendimento");
-    await expect(page.getByRole("radio", { name: "Jornada" })).toBeVisible();
-    await page.getByRole("navigation", { name: "Principal" }).first().getByRole("link", { name: "Jornada" }).click();
+    // Jornada é uma aba de Atendimento (não fica mais no menu lateral) e as abas não mudam de lugar entre as telas
+    await expect(page.getByRole("navigation", { name: "Principal" }).first().getByRole("link", { name: "Jornada" })).toHaveCount(0);
+    const abas = page.getByRole("navigation", { name: "Formas de ver os leads" });
+    const naFila = await abas.boundingBox();
+    await page.getByRole("navigation", { name: "Formas de ver os leads" }).getByRole("link", { name: "Jornada" }).click();
     await expect(page).toHaveURL(/\/jornada$/);
-    await expect(page.getByRole("heading", { name: "Jornada", level: 1 })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Formas de ver os leads" }).getByRole("link", { name: "Jornada" })).toHaveAttribute("aria-current", "page");
+    await expect(page.getByRole("heading", { name: "Atendimento", level: 1 })).toBeVisible();
+    const naJornada = await abas.boundingBox();
+    expect([naJornada!.x, naJornada!.y]).toEqual([naFila!.x, naFila!.y]);
+    await expect(page.getByRole("navigation", { name: "Principal" }).first().getByRole("link", { name: "Atendimento" })).toHaveAttribute("aria-current", "page");
 
     // As estações, na ordem das etapas, e o atraso do lead que passou do prazo
     const estacoes = await page.locator("[data-station]").evaluateAll((els) => els.map((e) => e.getAttribute("data-station")));
@@ -67,11 +74,12 @@ test.describe("Jornada (desktop)", () => {
 
     // Os números batem com o Quadro
     const jornada = { lead: await contagem(page, "lead"), atendimento: await contagem(page, "atendimento"), agendado: await contagem(page, "agendado"), followup: await contagem(page, "followup"), fechado: await contagem(page, "fechado") };
-    await page.getByRole("radio", { name: "Quadro" }).click();
+    await page.getByRole("navigation", { name: "Formas de ver os leads" }).getByRole("link", { name: "Quadro" }).click();
     await expect(page).toHaveURL(/\/funil$/);
+    expect([(await abas.boundingBox())!.x, (await abas.boundingBox())!.y]).toEqual([naFila!.x, naFila!.y]);
     const noQuadro = async (re: RegExp) => Number((await page.getByRole("region", { name: re }).getAttribute("aria-label"))!.match(/(\d+) leads?$/)![1]);
     expect(jornada).toEqual({ lead: await noQuadro(/^Lead,/), atendimento: await noQuadro(/^Atendimento,/), agendado: await noQuadro(/^Agendado,/), followup: await noQuadro(/^Follow-up,/), fechado: 1 });
-    await page.getByRole("radio", { name: "Jornada" }).click();
+    await page.getByRole("navigation", { name: "Formas de ver os leads" }).getByRole("link", { name: "Jornada" }).click();
     await expect(page).toHaveURL(/\/jornada$/);
 
     // Clicar na estação abre a Fila só com aquela etapa
@@ -113,7 +121,7 @@ test.describe("Jornada (desktop)", () => {
   test("a atendente não acessa a Jornada: sem aba, sem menu e a rota dá 404", async ({ page }) => {
     await login(page, "ana@e2e.local");
     await page.goto("/atendimento");
-    await expect(page.getByRole("radio", { name: "Jornada" })).toHaveCount(0);
+    await expect(page.getByRole("navigation", { name: "Formas de ver os leads" }).getByRole("link", { name: "Jornada" })).toHaveCount(0);
     await expect(page.getByRole("navigation", { name: "Principal" }).first().getByRole("link", { name: "Jornada" })).toHaveCount(0);
     const r = await page.goto("/jornada");
     expect(r?.status()).toBe(404);
@@ -132,7 +140,7 @@ test.describe("Jornada (desktop)", () => {
 
 test.describe("Jornada (celular 390)", () => {
   test.use({ deviceScaleFactor: 2 });
-  test("as estações empilham, sem rolagem lateral, com alvos de 44 px, e o menu Mais leva à Jornada", async ({ page, isMobile }) => {
+  test("as estações empilham, sem rolagem lateral, com alvos de 44 px, e a aba de Atendimento leva à Jornada", async ({ page, isMobile }) => {
     test.skip(!isMobile, "celular");
     await login(page);
     await cenario(page);
@@ -147,9 +155,10 @@ test.describe("Jornada (celular 390)", () => {
     for (const l of await page.locator("[data-station] > a").all()) expect((await l.boundingBox())!.height).toBeGreaterThanOrEqual(44);
     await shot(page, "jornada-celular-390-topo", { clip: { x: 0, y: 0, width: 390, height: 844 } });
     await page.locator('[data-station="lead"]').scrollIntoViewIfNeeded();
-    // Mais → Jornada
-    await page.getByRole("button", { name: "Mais" }).click();
-    await page.getByRole("dialog", { name: "Mais" }).getByRole("link", { name: "Jornada" }).click();
+    // Atendimento → aba Jornada
+    await page.getByRole("navigation", { name: "Principal" }).last().getByRole("link", { name: "Atendimento" }).click();
+    await expect(page).toHaveURL(/\/atendimento/);
+    await page.getByRole("navigation", { name: "Formas de ver os leads" }).getByRole("link", { name: "Jornada" }).click();
     await expect(page).toHaveURL(/\/jornada$/);
     await page.locator('[data-station="lead"]').getByRole("link", { name: /^Lead: 3 leads/ }).click();
     await expect(page).toHaveURL(/etapa=lead$/);

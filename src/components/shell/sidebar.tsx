@@ -3,7 +3,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "motion/react";
-import { IconChart, IconChat, IconContacts, IconFunnel, IconJourney, IconLogout, IconMore, IconSettings, IconToday } from "@/components/icons";
+import { IconChart, IconChat, IconContacts, IconLogout, IconMore, IconSettings, IconToday } from "@/components/icons";
 import { Sheet } from "@/components/ui/sheet";
 import { AlertsBell } from "./alerts-bell";
 import { SoundUnlockHint } from "./sound-hint";
@@ -14,8 +14,8 @@ import { isConversationPath } from "@/lib/lead-href";
 import { SPRING_UI } from "@/lib/motion";
 import type { AlertItem } from "@/server/queries/alerts";
 
-/** O Quadro (/funil) fica dentro de Atendimento: acende o mesmo item da barra. */
-const MATCH: Record<string, string[]> = { "/atendimento": ["/atendimento", "/funil"] };
+/** Quadro (/funil) e Jornada ficam dentro de Atendimento (abas da `WorkspaceBar`): acendem o mesmo item da barra. */
+const MATCH: Record<string, string[]> = { "/atendimento": ["/atendimento", "/funil", "/jornada"] };
 
 const NAV = [
   { href: "/", label: "Hoje", icon: IconToday },
@@ -29,12 +29,12 @@ export function Sidebar({ user, alerts: initialAlerts }: { user: { name: string;
   const { alerts, reload } = useLiveAlerts(initialAlerts);
   const [more, setMore] = useState(false);
   const gestor = user.role === "gestor";
-  const items = gestor ? [...NAV, { href: "/jornada", label: "Jornada", icon: IconJourney }, { href: "/config", label: "Configurações", icon: IconSettings }] : NAV;
+  const items = gestor ? [...NAV, { href: "/config", label: "Configurações", icon: IconSettings }] : NAV;
   const isActive = (href: string) => (href === "/" ? path === "/" : (MATCH[href] ?? [href]).some((p) => path.startsWith(p)));
   // Conversa em tela cheia no celular: sem barra superior nem inferior (o cabeçalho do lead tem o voltar; o sino e o Sair ficam a um toque, na Fila).
   const conversation = isConversationPath(path);
   const hasUnread = alerts.some((a) => !a.read);
-  const moreActive = path.startsWith("/config") || path.startsWith("/jornada"); // /funil (Quadro) acende Atendimento, não "Mais"
+  const moreActive = path.startsWith("/config"); // Quadro e Jornada acendem Atendimento, não "Mais"
   return (
     <>
       <aside className="hidden lg:flex fixed inset-y-0 left-0 w-[232px] flex-col bg-paper-2 border-r border-line z-30">
@@ -92,8 +92,6 @@ export function Sidebar({ user, alerts: initialAlerts }: { user: { name: string;
       </nav>}
       <Sheet open={more} onClose={() => setMore(false)} title="Mais" side="bottom">
         <ul className="flex flex-col -my-1">
-          <li><Link href="/funil" onClick={() => setMore(false)} className="flex items-center gap-3 min-h-12 text-base"><IconFunnel size={19} className="text-graphite" />Quadro de leads</Link></li>
-          {gestor && <li><Link href="/jornada" onClick={() => setMore(false)} className="flex items-center gap-3 min-h-12 text-base"><IconJourney size={19} className="text-graphite" />Jornada</Link></li>}
           {gestor && <li><Link href="/config" onClick={() => setMore(false)} className="flex items-center gap-3 min-h-12 text-base"><IconSettings size={19} className="text-graphite" />Configurações</Link></li>}
           <li><form action={logoutAction}><button className="flex w-full items-center gap-3 min-h-12 text-base text-left"><IconLogout size={19} className="text-graphite" />Sair</button></form></li>
         </ul>

@@ -160,9 +160,9 @@ test("fila (desktop): filtro vem do resumo, volta pela barra lateral e /funil?le
   await expect(page).toHaveURL(/view=sem-dono/);
   await expect(page.getByRole("button", { name: "Visão da fila" })).toContainText("Sem dono");
   // O Quadro fica dentro de Atendimento
-  await page.getByRole("radio", { name: "Quadro" }).click();
+  await page.getByRole("navigation", { name: "Formas de ver os leads" }).getByRole("link", { name: "Quadro" }).click();
   await expect(page).toHaveURL(/\/funil$/);
-  await expect(page.getByRole("heading", { name: "Quadro" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Formas de ver os leads" }).getByRole("link", { name: "Quadro" })).toHaveAttribute("aria-current", "page");
   const [row] = await e2eSql("select d.id from deals d join contacts c on c.id = d.contact_id where c.phone_e164 = '+5571997101001'");
   await page.goto(`/funil?lead=${row.id}`);
   await expect(page.getByRole("dialog", { name: /Lead Valéria Nogueira/ })).toBeVisible(); // links antigos seguem abrindo o lead no Quadro
@@ -220,7 +220,7 @@ test.describe("celular: lista em 390 px", () => {
     await expect(page.getByRole("region", { name: /Lead Valéria Nogueira/ })).toBeVisible();
     await page.addStyleTag({ content: "nextjs-portal { display: none !important }" });
     await shot(page, "04-celular-conversa-390");
-    // O Quadro acende "Atendimento" na barra de baixo, não "Mais"
+    // O Quadro (aba de Atendimento) acende "Atendimento" na barra de baixo, não "Mais"
     await page.goto("/funil");
     const nav = page.getByRole("navigation", { name: "Principal" }).last();
     await expect(nav.getByRole("link", { name: "Atendimento" })).toHaveAttribute("aria-current", "page");

@@ -6,6 +6,7 @@ import { LiveRefresh } from "@/components/shell/live";
 import { ConversationPaneRoute } from "@/components/queue/conversation-pane";
 import { QueueRestore } from "@/components/queue/queue-route";
 import { QueueColumn } from "@/components/queue/queue-column";
+import { WorkspaceBar } from "@/components/queue/workspace-bar";
 import { parseQueueFilter } from "@/lib/report-links";
 import { parseQueueFoco, parseQueueView, queueQuery } from "@/lib/queue";
 import { isMobileUserAgent } from "@/lib/device";
@@ -30,11 +31,14 @@ export default async function AtendimentoPage({ searchParams }: PageProps<"/aten
   // O painel abre com o item da Fila (nome, foto, espera, última mensagem) e busca a conversa depois. Fora da lista (filtro, busca), pede só esse lead.
   const serverItem = leadId ? queue.sections.flatMap((s) => s.items).find((i) => i.dealId === leadId) ?? await getQueueItem(leadId) : null;
   return (
-    <main className="h-[calc(100dvh-3.5rem-5rem)] lg:h-dvh overflow-hidden grid grid-cols-1 lg:grid-cols-[340px_minmax(0,1fr)] xl:grid-cols-[340px_minmax(0,1fr)_300px]">
+    <main className="h-[calc(100dvh-3.5rem-5rem)] lg:h-dvh overflow-hidden flex flex-col">
+      <WorkspaceBar current="fila" journey={user.role === "gestor"} />
       <QueueRestore hasParams={Object.keys(sp).length > 0} />
       <LiveRefresh scopes={["queue"]} />
-      <QueueColumn queue={queue} query={query} view={view} foco={foco} filtro={filtro} q={q} fonte={fonte} etapaName={etapaName} journey={user.role === "gestor"} onlyOwnLabel={user.role !== "gestor"} selectedId={leadId} bulk={bulk} />
-      <ConversationPaneRoute serverLead={leadId} serverItem={serverItem} />
+      <div className="flex-1 min-h-0 grid grid-cols-1 grid-rows-[minmax(0,1fr)] lg:grid-cols-[340px_minmax(0,1fr)] xl:grid-cols-[340px_minmax(0,1fr)_300px]">
+        <QueueColumn queue={queue} query={query} view={view} foco={foco} filtro={filtro} q={q} fonte={fonte} etapaName={etapaName} onlyOwnLabel={user.role !== "gestor"} selectedId={leadId} bulk={bulk} />
+        <ConversationPaneRoute serverLead={leadId} serverItem={serverItem} />
+      </div>
     </main>
   );
 }
