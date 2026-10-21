@@ -125,7 +125,7 @@ flowchart LR
 |---|---|
 | Interface | React 19, Tailwind CSS, Motion |
 | Servidor | Next.js 16, Zod, Drizzle ORM |
-| Banco | PostgreSQL 17, 90 migrações versionadas |
+| Banco | PostgreSQL 17, quase 90 migrações versionadas |
 | Filas | pg-boss (no próprio Postgres) |
 | WhatsApp | Evolution API 2.3 |
 | IA | Claude Sonnet (sugestão), Whisper local (transcrição) |
