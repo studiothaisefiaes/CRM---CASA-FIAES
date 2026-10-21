@@ -160,7 +160,7 @@ export function PaneHeader({ item, d, name, answered, back, actions, viewer, wa,
 
   return (
     <>
-      <div className="flex items-center gap-1 h-14 pl-1 pr-1.5 lg:h-auto lg:min-h-14 lg:gap-x-3 lg:px-4 lg:pt-2.5 lg:pb-1">
+      <div className="flex flex-wrap items-center gap-1 min-h-14 pl-1 pr-1.5 lg:flex-nowrap lg:min-h-12 lg:gap-x-3 lg:px-4 lg:py-1.5">
         <div className="flex items-center gap-1 lg:gap-0">
           {back && <BackToQueue compact className={back === "always" ? "lg:-ml-2" : "lg:hidden"} />}
           {contactId ? (
@@ -169,7 +169,7 @@ export function PaneHeader({ item, d, name, answered, back, actions, viewer, wa,
             </ClientLink>
           ) : <ContactAvatar contactId={contactId} hasAvatar={hasAvatar} version={avatarV} name={name} size={40} className={back ? undefined : "ml-2 lg:ml-0"} />}
         </div>
-        <div className="min-w-0 flex-1 ml-1.5 lg:ml-0">
+        <div className="min-w-0 flex-1 ml-1.5 lg:ml-0 lg:min-w-[150px]">
           <div className="flex min-w-0 items-center gap-1">
             <NameHeading as="h2" name={name} contactId={contactId || undefined} className="line-clamp-1 text-base leading-tight font-semibold lg:text-[17px]" />
             {/* Selo discreto do tipo (Equipe, Fornecedor, Spam); cliente não tem selo. */}
@@ -186,6 +186,12 @@ export function PaneHeader({ item, d, name, answered, back, actions, viewer, wa,
           </div>
           <p className="hidden lg:block text-xs text-graphite mt-0.5 truncate">{formatPhoneClient(phone)}{since0 ? ` · Cliente desde ${since0}` : ""}</p>
         </div>
+        {/* 21/10 (dono): no computador os controles sobem para a linha do nome (a conversa ganha a altura de uma faixa inteira). */}
+        {d && (
+          <div className="order-last basis-full flex items-center gap-1.5 overflow-x-auto px-2 pb-1.5 [scrollbar-width:none] lg:order-none lg:basis-auto lg:min-w-0 lg:shrink lg:flex-wrap lg:justify-end lg:overflow-visible lg:p-0" data-testid="faixa-conversa">
+            <HeaderControls d={d} viewer={viewer} actions={actions} />
+          </div>
+        )}
         <SlaChip since={since} slaMinutes={sla} alert={alert} hidden={answered} />
         {onInfo && d && (
           <button type="button" onClick={onInfo} className="2xl:hidden inline-flex h-9 items-center gap-1.5 rounded-full border border-line-strong px-3 text-sm font-medium text-ink hover:bg-paper-2 pointer-coarse:min-h-11" aria-label="Ver dados da cliente">
@@ -195,11 +201,6 @@ export function PaneHeader({ item, d, name, answered, back, actions, viewer, wa,
         {items.length > 0 && <Menu label="Mais ações" trigger={<IconMore size={18} />} items={items} triggerClassName="size-9 pointer-coarse:size-11" />}
         <button type="button" onClick={onClose} className="hidden lg:grid size-8 pointer-coarse:size-11 place-items-center rounded-[var(--radius-control)] text-muted hover:bg-paper-2 hover:text-ink" aria-label="Fechar conversa"><IconClose /></button>
       </div>
-      {d && (
-        <div className="flex items-center gap-1.5 overflow-x-auto px-3 pb-1.5 [scrollbar-width:none] lg:px-4 lg:pb-2.5" data-testid="faixa-conversa">
-          <HeaderControls d={d} viewer={viewer} actions={actions} />
-        </div>
-      )}
 
       {/* Celular: a conversa em tela cheia não tem a faixa global de conexão; o aviso fica aqui, numa linha só, e leva a quem resolve. */}
       {wa && wa.down.length > 0 && (

@@ -38,3 +38,30 @@ export function WorkspaceBar({ current, quadro = false, programadas, className, 
     </div>
   );
 }
+
+/**
+ * A mesma barra, compacta, no topo da coluna da Fila (desktop). 21/10 (dono): a faixa de cima comia altura da conversa,
+ * que tem que ir até o alto da tela. O h1 continua lá, só para leitor de tela.
+ */
+export function WorkspaceTabsCompact({ current, quadro = false, programadas, action }: { current: View; quadro?: boolean; programadas?: number; action?: ReactNode }) {
+  const tabs = TABS.filter((t) => (t.value === "quadro" ? quadro : true));
+  return (
+    <div className="flex items-center gap-1.5">
+      <h1 className="sr-only">Conversas</h1>
+      <nav aria-label="Formas de ver as conversas" className="flex min-w-0 items-center gap-1">
+        {tabs.map((t) => {
+          const on = t.value === current;
+          return (
+            <Link key={t.value} href={t.href} aria-current={on ? "page" : undefined}
+              className={cn("inline-flex items-center h-8 px-2.5 rounded-full border text-[13px] font-medium select-none transition-[background,color,border-color] duration-150",
+                on ? "bg-ink text-paper border-ink" : "bg-paper text-graphite border-control hover:border-graphite hover:text-ink")}>
+              {t.label}
+              {t.value === "programadas" && programadas != null && <b className={cn("ml-1 font-semibold tabular", !on && "text-gold-ink")}>{programadas}</b>}
+            </Link>
+          );
+        })}
+      </nav>
+      {action}
+    </div>
+  );
+}

@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { can } from "@/lib/permissions";
 import { useState, useTransition } from "react";
+import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import { resumeAlertsAction } from "@/app/(app)/quiet/actions";
 import { ResumeAlertsDialog } from "@/components/shell/resume-alerts-dialog";
@@ -19,7 +20,9 @@ export function ShellBannersView({ banners, perms }: { banners: ShellBanners; pe
   const [resumed, setResumed] = useState<Set<string>>(new Set());
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const down = banners.disconnected;
-  const quiet = banners.quiet.filter((q) => !resumed.has(q.id));
+  // 21/10 (dono): nada por cima da tela de Conversas; o modo quieto aparece nas outras telas.
+  const onQueue = usePathname()?.startsWith("/atendimento") ?? false;
+  const quiet = onQueue ? [] : banners.quiet.filter((q) => !resumed.has(q.id));
   const resume = (id: string) => start(async () => {
     setError(null);
     const r = await resumeAlertsAction(id);

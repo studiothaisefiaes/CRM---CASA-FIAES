@@ -7,7 +7,7 @@ import { LiveRefresh } from "@/components/shell/live";
 import { ConversationPaneRoute } from "@/components/queue/conversation-pane";
 import { QueueRestore } from "@/components/queue/queue-route";
 import { QueueColumn } from "@/components/queue/queue-column";
-import { WorkspaceBar } from "@/components/queue/workspace-bar";
+import { WorkspaceBar, WorkspaceTabsCompact } from "@/components/queue/workspace-bar";
 import { NewConversationButton } from "@/components/queue/new-conversation";
 import { parseQueueFilter } from "@/lib/report-links";
 import { parseDias, parseEtiquetaRegra, parseQueueAba, parseQueueFoco, parseQueueView, queueQuery } from "@/lib/queue";
@@ -51,13 +51,12 @@ export default async function AtendimentoPage({ searchParams }: PageProps<"/aten
   const serverItem = leadId ? queue.sections.flatMap((s) => s.items).find((i) => i.dealId === leadId) ?? await getQueueItem(leadId) : null;
   return (
     <main className="h-[calc(100dvh-3.5rem-5rem)] lg:h-dvh overflow-hidden flex flex-col">
-      <WorkspaceBar current="fila" quadro={can(user.perms, "quadro.ver")} programadas={programadas} action={<div className="ml-auto flex items-center gap-2 max-lg:hidden">
-        <NewConversationButton />
-      </div>} />
+      <WorkspaceBar className="lg:hidden" current="fila" quadro={can(user.perms, "quadro.ver")} programadas={programadas} />
       <QueueRestore hasParams={Object.keys(sp).length > 0} />
       <LiveRefresh scopes={["queue", "team"]} />
       <div className="flex-1 min-h-0 grid grid-cols-1 grid-rows-[minmax(0,1fr)] lg:grid-cols-[300px_minmax(0,1fr)] 2xl:grid-cols-[340px_minmax(0,1fr)_320px]">
-        <QueueColumn queue={queue} query={query} params={params} onlyOwnLabel={!can(user.perms, "atendimento.todas")} selectedId={leadId} bulk={bulk} team={team} options={{ ...options, tags: tagList }} programadas={programadas} progress={dayProgress} />
+        <QueueColumn queue={queue} query={query} params={params} onlyOwnLabel={!can(user.perms, "atendimento.todas")} selectedId={leadId} bulk={bulk} team={team} options={{ ...options, tags: tagList }} programadas={programadas} progress={dayProgress}
+          top={<WorkspaceTabsCompact current="fila" quadro={can(user.perms, "quadro.ver")} programadas={programadas} action={<NewConversationButton compact className="ml-auto size-8 rounded-full" />} />} />
         <ConversationPaneRoute serverLead={leadId} serverItem={serverItem} />
       </div>
     </main>

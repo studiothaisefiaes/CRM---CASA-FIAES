@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { BulkOptions, QueueResult } from "@/server/queries/queue";
 import { QueueListRoute } from "./queue-route";
 import { QueueSelectionProvider } from "./queue-selection";
@@ -21,7 +22,7 @@ function expectedOf(queue: QueueResult, p: QueueParams): number | null {
   return t === "todas" ? c.todasTotal ?? c.total : t === "esperando" ? c.aguardando : t === "nao-lidas" ? c.naoLidas : t === "retomar" ? c.retomar : c.views.arquivadas;
 }
 
-export function QueueColumn({ queue, query, params, onlyOwnLabel, selectedId, className, bulk, team, options, programadas, progress }: {
+export function QueueColumn({ queue, query, params, onlyOwnLabel, selectedId, className, bulk, team, options, programadas, progress, top }: {
   queue: QueueResult; query: string;
   /** Os parâmetros da Fila que estão na URL (abas, filtros, busca). */ params: QueueParams;
   /** "(só os seus)" no chip do filtro vindo de relatório, para a atendente. */
@@ -30,11 +31,13 @@ export function QueueColumn({ queue, query, params, onlyOwnLabel, selectedId, cl
   options: QueueFilterOptions;
   /** Mensagens programadas pendentes no escopo dela: a aba "Programadas N" (abre /atendimento/programadas). */ programadas?: number;
   /** "12 de 15 respondidas hoje" (Casa toda, sem ranking). */ progress?: { text: string; done: boolean } | null;
+  /** Abas Fila | Quadro | Programadas e "+" no topo da coluna (desktop; no celular fica a barra de cima). */ top?: ReactNode;
 }) {
   return (
     <QueueSelectionProvider>
     <section aria-label="Fila de atendimento" className={cn("min-h-0 flex-col bg-paper lg:border-r border-line", className ?? "flex")}>
       <div className="shrink-0 flex flex-col gap-2 px-3.5 pt-3 pb-2.5 border-b border-line">
+        {top && <div className="max-lg:hidden">{top}</div>}
         <QueueTop params={params} counts={queue.counts} options={options} team={team} onlyOwn={onlyOwnLabel && !!params.filtro} programadas={programadas} progress={progress} />
         {queue.truncated && <p role="status" className="text-xs text-muted">Mostrando {queue.truncated.shown} de {queue.truncated.total} conversas. Use a busca ou um filtro para ver as outras.</p>}
       </div>
