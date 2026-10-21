@@ -7,15 +7,15 @@
  * - é igual, começa ou termina o primeiro nome da outra, ou está dentro dele ("Lu"/"Luciana", "Neide"/"Marineide", "Isa"/"Adalgisa");
  * - difere por 1 letra (2 em nomes de 5+ letras) ou letras trocadas: erro de digitação ("Maiana"/"Mariana", "Ari"/"Air");
  * - é o começo dele com 1 letra diferente ("Jacy"/"Jacineide", "Gaby"/"Gabriela", "Mary"/"Marilucia");
- * - é um apelido conhecido ("Bia"/"Beatriz", "Bela"/"Isabela", "Malu"/"Carla Igarashi") ou o apelido entre parênteses ("(LOLI) Maria Iolanda");
- * - aparece entre os nomes da outra ("Clara"/"Carla Barros Vidal", "Cristiane Atualizar"/"Linda Cristiane").
- * "Maria"/"Ana" + outro nome: vale o segundo ("Carla Werneck" não é "Carla Ingrid").
- * Sobrenome igual NÃO faz ser a mesma pessoa: mãe e filha costumam ter ("Wanda Rezende"/"Helena Rezende").
+ * - é um apelido conhecido ("Bia"/"Beatriz", "Bela"/"Isabela", "Malu"/"Carla Quintela") ou o apelido entre parênteses ("(LOLI) Maria Iolanda");
+ * - aparece entre os nomes da outra ("Clara"/"Carla Salgado Zanetti", "Cristiane Atualizar"/"Linda Cristiane").
+ * "Maria"/"Ana" + outro nome: vale o segundo ("Carla Zanetti" não é "Carla Quênia").
+ * Sobrenome igual NÃO faz ser a mesma pessoa: mãe e filha costumam ter ("Tânia Klein"/"Patrícia Klein").
  */
 
 const CONNECTORS = new Set(["de", "da", "do", "das", "dos", "e", "d"]);
 const TITLES = new Set(["dra", "dr", "sra", "sr", "srta", "prof", "profa"]);
-/** Primeiro nome comum que costuma vir com um segundo ("Carla Barros", "Ana Luisa"): quem decide é o segundo. */
+/** Primeiro nome comum que costuma vir com um segundo ("Carla Salgado", "Ana Luisa"): quem decide é o segundo. */
 const COMPOUND = new Set(["maria", "ana", "anna"]);
 /** Parêntese que diz quem ela é para outra pessoa ("(mãe de Aline)") não é apelido. */
 const RELATION_WORDS = /\b(mae|filha|filho|pai|irma|irmao|esposa|marido|avo|neta|tia|sobrinha|cliente|amiga)\b/;
@@ -74,7 +74,7 @@ function firstNamesMatch(a: string, b: string): boolean {
 const inOther = (w: string, others: string[]) => others.some((o) => o === w || (w.length >= 5 && o.length >= 5 && dist(w, o) <= 1)
   || (w.length >= 4 && o.length > w.length && dist(w, o.slice(0, w.length)) <= 1));
 
-/** "Malu" = Carla Igarashi/Luisa (as duas primeiras letras de cada nome). */
+/** "Malu" = Carla Quintela/Luisa (as duas primeiras letras de cada nome). */
 const maluLike = (w: string, t: string[]) => w.length === 4 && t.length >= 2 && t[0].startsWith(w.slice(0, 2)) && t[1].startsWith(w.slice(2));
 
 /** Os dois nomes são da mesma pessoa? Nome vazio (ou sem letras) nunca separa ninguém: conta como a mesma. */
@@ -84,7 +84,7 @@ export function samePerson(a: string | null | undefined, b: string | null | unde
   const alA = aliases(a), alB = aliases(b);
   if (alA.some((x) => firstNamesMatch(x, tb[0])) || alB.some((x) => firstNamesMatch(x, ta[0]))) return true;
   if (maluLike(ta[0], tb) || maluLike(tb[0], ta)) return true;
-  // "Carla Werneck" × "Carla Ingrid": o primeiro nome comum não decide, vale o segundo.
+  // "Carla Zanetti" × "Carla Quênia": o primeiro nome comum não decide, vale o segundo.
   if (ta.length >= 2 && tb.length >= 2 && ta[0] === tb[0] && COMPOUND.has(ta[0])) { ta = ta.slice(1); tb = tb.slice(1); }
   // "Ana Carolina" × "Anna Carolina": primeiro nome curto quase igual e o segundo igual.
   if (ta.length >= 2 && tb.length >= 2 && ta[1] === tb[1] && ta[1].length >= 4 && dist(ta[0], tb[0]) <= 1) return true;

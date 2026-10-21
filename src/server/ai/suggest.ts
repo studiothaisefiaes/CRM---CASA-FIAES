@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, ne, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "../db";
-import { aiSuggestions, appointments, contacts, deals, lists, messages, professionals, stages, users } from "../db/schema";
+import { aiSuggestions, appointments, contacts, deals, lists, messages, professionals, stages, tasks, users } from "../db/schema";
 import { emit } from "../domain/events";
 import { numberContactIds } from "../domain/people-on-number";
 import { getBusinessHours } from "../domain/hours";
@@ -18,9 +18,10 @@ import { buildSystem, buildUser, greetState, MAX_EXAMPLES, MAX_MESSAGES, MAX_PED
 import { loadEquipeContext } from "./contexto";
 import { loadAusencias, loadClienteContext } from "./cliente";
 import { costMicros } from "./pricing";
-import { AGENDA_TAG, asksForSlots, dayMentions, hourLabel, hourMentions, isAgreement, mentionsTime, offeredSlot, pediuHorarioNovo, proFirstName } from "./horarios";
+import { AGENDA_TAG, asksForSlots, cancelouSemData, dayMentions, hourLabel, hourMentions, isAgreement, mentionsTime, offeredSlot, pediuHorarioNovo, proFirstName } from "./horarios";
 import { freeHoursLine, planSlots, slotStillFree } from "./horarios-agenda";
 import { todayBahia } from "@/lib/agenda";
+import { openDayAt } from "@/lib/next-action";
 import { slotMs } from "@/lib/schedule";
 import { confirmText, isConfirmation, type ProposedSlot } from "@/lib/proposed-slot";
 import { aiEnv, aiSpend, budgetState, getAiSettings } from "./settings";
@@ -402,6 +403,37 @@ export function finalizar(sugestao0: string, horarioId: string | null | undefine
   return { sugestao: text, horario, garantido: !!g?.trocou };
 }
 
+/** Sem o número de dias da IA: 3 semanas (o meio dos 15 a 30 dias que a Cati pediu). A IA pode dizer de 7 a 45. */
+export const RETOMAR_PADRAO_DIAS = 21;
+/** Horário desta pessoa (ou de outra no mesmo número) cancelado na agenda nos últimos 14 dias. */
+async function canceladoNaAgenda(contactId: string, now: Date): Promise<boolean> {
+  const [a] = await db.select({ id: appointments.id }).from(appointments).where(and(inArray(appointments.contactId, await numberContactIds(contactId)),
+    eq(appointments.status, "cancelado"), gt(appointments.cancelledAt, new Date(now.getTime() - 14 * 86_400_000)))).limit(1);
+  return !!a;
+}
+/** As últimas mensagens da cliente (a leva do fim; com a Casa por último, a leva dela antes da resposta da Casa). */
+function ultimaLevaDaCliente(msgs: ConversationData["messages"]): string[] {
+  let i = msgs.length - 1;
+  while (i >= 0 && msgs[i].direction === "out") i--;
+  const out: string[] = [];
+  for (; i >= 0 && msgs[i].direction === "in" && out.length < 6; i--) out.unshift(textOf(msgs[i]));
+  return out;
+}
+/**
+ * Cancelou sem nova data (Cati 17/10: "a IA programa um retorno mais para frente"): QUANDO retomar o contato, às 10h de um dia em que a Casa
+ * abre. Só proposta (a retomada nasce no toque "Programar retomada"). Nunca com horário futuro marcado, retomada já aberta ou horário proposto.
+ * A IA diz os dias (`retomar_dias`) e o servidor confere que houve cancelamento (mensagens dela ou a agenda); a IA esqueceu, mas a última
+ * leva dela cancela sem pedir outra data → 3 semanas.
+ */
+export async function retomadaProposta(d: Pick<DealRow, "contactId">, data: ConversationData, dias: number | null | undefined, horario: ProposedSlot | null, now: Date): Promise<Date | null> {
+  if (data.nextAppointment || data.equipe?.retomada || horario) return null;
+  const n = dias && dias > 0 ? dias : 0;
+  const leva = cancelouSemData(ultimaLevaDaCliente(data.messages));
+  const ok = leva || (n > 0 && (cancelouSemData(data.messages.slice(-12).filter((m) => m.direction === "in").map(textOf)) || await canceladoNaAgenda(d.contactId, now)));
+  if (!ok) return null;
+  return openDayAt(now.getTime(), n > 0 ? Math.min(45, Math.max(7, n)) : RETOMAR_PADRAO_DIAS, 10, await getBusinessHours());
+}
+
 /** Faz a chamada da reserva e grava o resultado (ou libera a reserva). Avisa a tela em qualquer caso. */
 export async function fillSuggestion(claim: Claim, opts: { caller?: Caller; now?: Date } = {}): Promise<GenerateResult> {
   const now = opts.now ?? new Date();
@@ -423,8 +455,10 @@ export async function fillSuggestion(claim: Claim, opts: { caller?: Caller; now?
     const { sugestao, horario } = robo ? { sugestao: r.data.sugestao, horario: null } : finalizar(r.data.sugestao, r.data.horario, { ...req, temaDado: !!claim.tema?.trim() }, now, casa.assistentes);
     // Ofereceu horário da lista: marca no motivo (sem coluna nova) para a tela avisar "confira antes de enviar".
     const usedAgenda = !!req.free?.options.length && mentionsTime(sugestao);
+    // Cancelou sem nova data: quando retomar (proposta; nada é criado aqui).
+    const retomarEm = robo ? null : await retomadaProposta(conv.deal, data, r.data.retomar_dias, horario, now);
     await db.update(aiSuggestions).set({
-      resumo: r.data.resumo, sugestao, precisaHumano: r.data.precisa_humano, motivo: usedAgenda ? `${AGENDA_TAG}${motivo ?? ""}` : motivo, model: r.model, horario,
+      resumo: r.data.resumo, sugestao, precisaHumano: r.data.precisa_humano, motivo: usedAgenda ? `${AGENDA_TAG}${motivo ?? ""}` : motivo, model: r.model, horario, retomarEm,
       inputTokens: r.usage.inputTokens, cachedTokens: r.usage.cachedTokens, cacheWriteTokens: r.usage.cacheWriteTokens, outputTokens: r.usage.outputTokens, costUsdMicros: r.costMicros,
       // Resposta vazia (não devia acontecer): fica registrada e descartada.
       dismissedAt: sugestao ? null : now,
@@ -461,7 +495,9 @@ export async function generateForDeal(dealId: string, opts: { origin?: "auto" | 
 /** `agendaAt`: a sugestão ofereceu horários lidos da agenda nesse instante (a tela pede para conferir). */
 export type CurrentSuggestion = { id: string; resumo: string; sugestao: string; precisaHumano: boolean; motivo: string | null; lastMessageId: string; createdAt: Date; agendaAt: Date | null;
   /** O horário que a sugestão propôs (botão "Marcar este horário"). */
-  horario: ProposedSlot | null };
+  horario: ProposedSlot | null;
+  /** Cancelou sem nova data: quando retomar (botão "Programar retomada"). */
+  retomarEm: Date | null };
 /**
  * O que a tela mostra para a ÚLTIMA mensagem da conversa (seja da cliente ou da Casa):
  * - "pronta": a sugestão mais nova dessa mensagem (de qualquer pedido; com `pedido`, só desse), se não foi usada nem fechada;
@@ -490,8 +526,10 @@ async function pedidoState(dealId: string, pedido: Pedido | null, now = new Date
   if (!s.sugestao && !s.dismissedAt) return now.getTime() - s.createdAt.getTime() < STALE_CLAIM_MS ? { state: "escrevendo" } : { state: "pode_pedir" };
   if (s.usedAt || s.dismissedAt || !s.sugestao) return { state: "pode_pedir", again: true };
   const agenda = !!s.motivo?.startsWith(AGENDA_TAG);
+  // Retomada proposta: some quando a conversa já tem retomada aberta (a atendente já programou, por aqui ou pelo Retomar…).
+  const retomarEm = s.retomarEm && !(await db.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.dealId, dealId), eq(tasks.kind, "proxima_acao"), isNull(tasks.doneAt))).limit(1)).length ? s.retomarEm : null;
   const motivo = agenda ? s.motivo!.slice(AGENDA_TAG.length) || null : s.motivo;
-  return { state: "pronta", suggestion: { id: s.id, resumo: s.resumo, sugestao: s.sugestao, precisaHumano: s.precisaHumano, motivo, lastMessageId: s.lastMessageId ?? last.id, createdAt: s.createdAt, agendaAt: agenda ? s.createdAt : null, horario: s.horario ?? null } };
+  return { state: "pronta", suggestion: { id: s.id, resumo: s.resumo, sugestao: s.sugestao, precisaHumano: s.precisaHumano, motivo, lastMessageId: s.lastMessageId ?? last.id, createdAt: s.createdAt, agendaAt: agenda ? s.createdAt : null, horario: s.horario ?? null, retomarEm } };
 }
 
 /** "Usar" (o texto foi para a caixa de mensagem) ou fechar (X). Só marca; nada é enviado. */

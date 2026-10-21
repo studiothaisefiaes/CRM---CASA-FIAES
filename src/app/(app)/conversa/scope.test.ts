@@ -70,6 +70,7 @@ describe("atendente com a conversa de uma colega: recusa", () => {
       ["etiqueta", () => funil.addTagAction(d, "vip")],
       ["sugestão da IA (ler)", () => ia.getAiSuggestionAction(d)],
       ["sugestão da IA (pedir)", () => ia.requestAiSuggestionAction(d, "primeira")],
+      ["retomada proposta pela IA", () => ia.programarRetomadaAction({ id: "00000000-0000-4000-8000-000000000000", dealId: d })],
       ["folha do lead", () => atendimento.getDealForSheet(d)],
     ];
     for (const [nome, call] of calls) expect(await call(), nome).toEqual({ ok: false, error: OUT_OF_SCOPE });

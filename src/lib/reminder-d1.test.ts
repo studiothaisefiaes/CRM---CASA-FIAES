@@ -58,12 +58,12 @@ describe("texto arejado (17/10: 'tudo junto, bagunçadinho')", () => {
   it("o texto padrão: data e hora em negrito do WhatsApp, cada serviço numa linha", async () => {
     const { DEFAULT_REMINDER_TEXT, DEFAULT_RESCHEDULED_TEXT } = await import("@/server/domain/client-link/settings");
     expect(renderReminder(DEFAULT_REMINDER_TEXT, v, null)).toBe([
-      "Oi, Paula! 💛", "", "Podemos confirmar sua presença amanhã na Casa Fiaes?", "", "📅 *sexta, 16/10* às *10:00*", "Corte com Maiara", "Escova com Bia", "",
-      "Temos tolerância de 15 minutos. Se precisar remarcar, é só responder por aqui.", // Fase B: o texto da Casa; sem endereço, sem 📍 nem mapa
+      "Olá, Paula! 💛", "", "Passando para lembrar do seu horário amanhã na Casa Fiaes:", "", "📅 *sexta, 16/10*", "⏰ às *10:00*", "✨ Corte com Maiara", "✨ Escova com Bia", "",
+      "Temos tolerância de 15 minutos.", "", "Você confirma sua presença? Se precisar remarcar, é só responder por aqui.", // Fase B: o texto da Casa; sem endereço, sem 📍 nem mapa
     ].join("\n"));
     expect(renderReminder(DEFAULT_RESCHEDULED_TEXT, v, null)).toBe([
-      "Oi, Paula! 💛", "", "Seu horário na Casa Fiaes foi remarcado para:", "", "📅 *sexta, 16/10* às *10:00*", "Corte com Maiara", "Escova com Bia", "",
-      "Se o novo horário não ficar bom para você, é só me avisar por aqui.",
+      "Olá, Paula! 💛", "", "Seu horário na Casa Fiaes foi remarcado para:", "", "📅 *sexta, 16/10*", "⏰ às *10:00*", "✨ Corte com Maiara", "✨ Escova com Bia", "",
+      "Se o novo horário não ficar bom para você, é só responder por aqui.",
     ].join("\n"));
   });
 });

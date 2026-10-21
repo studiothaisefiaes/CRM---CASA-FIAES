@@ -13,7 +13,7 @@ const at = (hm: string) => new Date(`2026-10-17T${hm}:00-03:00`).toISOString();
 
 it("visita de quem passou da hora: texto discreto 'passou 2h30, sem Chegou', sem pílula vermelha de atraso (Hoje v3)", () => {
   const v: DayVisit = {
-    key: "k", visitId: "v", contactId: "c", dealId: null, name: "Helena Esteves", day: "2026-10-17", entry: at("09:00"), cancelled: [], comanda: null, values: false,
+    key: "k", visitId: "v", contactId: "c", dealId: null, name: "Fabiana Otero", day: "2026-10-17", entry: at("09:00"), cancelled: [], comanda: null, values: false,
     services: [{ appointmentId: "a1", serviceId: null, service: "Avaliação", professionalId: "p", pro: "Gilvan", assistant: null, start: at("09:00"), end: at("10:00"), status: "confirmado", priceCents: null }],
   };
   render(<DayVisitView data={{ visit: v, canMark: true, agendaMode: "dupla" }} nowMs={new Date(at("11:30")).getTime()} onChanged={() => {}} />);

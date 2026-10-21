@@ -21,7 +21,8 @@ const allDay: [string, string] = ["00:00", "24:00"];
 const HOURS: BusinessHours = { 0: allDay, 1: allDay, 2: allDay, 3: allDay, 4: allDay, 5: allDay, 6: allDay };
 const future = new Date(Date.now() + 3 * 86_400_000).toISOString();
 
-const d = (over: { deal?: object; stage?: object; context?: object; contact?: object; nextAction?: object | null; scheduled?: object[]; attempt?: object | null } = {}) => ({
+const d = (over: { deal?: object; stage?: object; context?: object; contact?: object; nextAction?: object | null; scheduled?: object[]; attempt?: object | null; phonePeople?: object | null } = {}) => ({
+  phonePeople: over.phonePeople ?? null,
   deal: { id: "d1", ownerId: "sara", awaitingReplySince: new Date(Date.now() - 12 * 60_000).toISOString(), conversationArchivedAt: null, resolvedAt: null, lastInboundAt: null, lastReplyById: null, scheduledAt: null, attendance: null, followupAttempt: 0, followupDueAt: null, serviceId: null, observations: null, ...over.deal },
   contact: { id: "c1", name: "Thamires Lopes", phoneE164: "+5571990000003", avatarPath: null, isClient: true, kind: "cliente", email: null, instagram: null, notes: null, importedFields: null,
     nickname: null, phoneAlt: null, hairType: null, alertNotes: null, cpf: null, birthDay: null, birthMonth: null, birthYear: null, ...(over as { contact?: object }).contact },
@@ -150,4 +151,34 @@ it("Automáticas pausadas: o interruptor aparece com a função ligada e a permi
   cleanup();
   r(withPause({}), gestora);
   expect(screen.queryByTestId("pausa")).toBeNull();
+});
+
+/** Mãe (titular, a conversa) e a filha no mesmo celular (0051). */
+const maeEFilha = (filhaNext: object | null, maeNext: object | null = null) => ({ holderId: "c1", holderName: "Thamires Lopes", holderPhone: "+5571990000003", people: [
+  { id: "c1", name: "Thamires Lopes", relation: null, isHolder: true, next: maeNext },
+  { id: "c2", name: "Vera Klein", relation: "filha", isHolder: false, next: filhaNext },
+] });
+
+it("mãe e filha no mesmo número (21/10): a aba Agora diz quem usa o número e o próximo horário de cada uma", () => {
+  const amanha = new Date(Date.now() + 86_400_000).toISOString();
+  pane(d({ phonePeople: maeEFilha({ id: "a2", startsAt: amanha, serviceLabel: "Escova", professionalName: "BIA" }) }));
+  const bloco = screen.getByRole("region", { name: "Neste número" });
+  const linhas = within(bloco).getAllByRole("listitem").map((li) => li.textContent);
+  expect(linhas[0]).toMatch(/^Thamires.*a conversa é dela.*Sem horário marcado$/);
+  expect(linhas[1]).toMatch(/^Bruna.*filha.*Escova com Bia$/);
+  expect(within(bloco).getByRole("link", { name: "Vera Klein" }).getAttribute("href")).toContain("c2");
+});
+
+it("só ela no número: nada de bloco Neste número", () => {
+  pane(d({ phonePeople: { holderId: "c1", holderName: "Thamires Lopes", holderPhone: "+5571990000003", people: [{ id: "c1", name: "Thamires Lopes", relation: null, isHolder: true, next: null }] } }));
+  expect(screen.queryByRole("region", { name: "Neste número" })).toBeNull();
+});
+
+it("a mãe sem horário e a filha com horário: o próximo passo mostra o horário da filha, dizendo de quem é", () => {
+  const amanha = new Date(Date.now() + 86_400_000).toISOString();
+  pane(d({ context: { nextAppointment: null, nextVisit: [] }, stage: { key: "agendado", kind: "agendado" }, deal: { scheduledAt: amanha },
+    phonePeople: maeEFilha({ id: "a2", startsAt: amanha, serviceLabel: "Escova", professionalName: "BIA" }) }));
+  const card = screen.getByTestId("cartao-horario");
+  expect(card.textContent).toContain("Horário de Vera Klein (filha)");
+  expect(card.textContent).toContain("Escova · com Bia");
 });

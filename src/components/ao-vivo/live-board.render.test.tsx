@@ -28,7 +28,7 @@ const DATA: LiveBoardData = {
   ],
   startedAt: { [agora.appointmentId]: at("10:00") },
   visits: [
-    v("Yara Duarte", [agora]),
+    v("Carla Henriques", [agora]),
     v("Larissa Couto", [s({ start: at("10:30"), professionalId: "sidney", assistant: "Sidney", service: "escova" })]),
     v("Rita Souza", [s({ start: at("13:00") })]),
     v("Bruna Lima", [s({ start: at("15:00") })]),
@@ -44,7 +44,7 @@ describe("Ao vivo: a tela da recepção", () => {
     const col = screen.getByRole("region", { name: "Thaise" });
     expect(within(col).getByText("com Sidney")).toBeTruthy();
     const now = within(col).getByTestId("agora");
-    expect(within(now).getByText("Yara Duarte")).toBeTruthy();
+    expect(within(now).getByText("Carla Henriques")).toBeTruthy();
     expect(within(now).getByText("Luzes e Mechas")).toBeTruthy();
     expect(within(now).getByText("há 20 min")).toBeTruthy();
     expect(within(now).getByText("faltam 40 min")).toBeTruthy();
@@ -77,7 +77,7 @@ describe("Ao vivo: a tela da recepção", () => {
 
   it("tocar na cliente abre a visita do dia", () => {
     render(<LiveBoard data={DATA} nowMs={NOW} frozen caixaOn />);
-    fireEvent.click(screen.getByRole("button", { name: "Abrir a visita de Yara Duarte" }));
+    fireEvent.click(screen.getByRole("button", { name: "Abrir a visita de Carla Henriques" }));
     expect(screen.getByRole("dialog")).toBeTruthy();
   });
 });

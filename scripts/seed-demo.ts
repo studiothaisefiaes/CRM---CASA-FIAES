@@ -377,10 +377,10 @@ async function generate() {
   const juliana = P("Juliana Andrade", { email: "juliana.andrade@exemplo.com", instagram: "ju.andrade.ssa", birthday: [14, 3, 1991] });
   const closed: Closed[] = [
     { p: juliana, service: "Coloração", ago: 35, slot: "10:30", who: "ana", pay: "pix", src: "Indicação", before: 2 },
-    { p: P("Úrsula Duarte", { birthday: bdayIn(3) }), service: "Hidratação", ago: 30, slot: "15:00", who: "thaise", pay: "cartao", src: "Instagram", before: 1 },
+    { p: P("Fabiana Henriques", { birthday: bdayIn(3) }), service: "Hidratação", ago: 30, slot: "15:00", who: "thaise", pay: "cartao", src: "Instagram", before: 1 },
     { p: P("Camila Rocha", { instagram: "camilarocha" }), service: "Progressiva", ago: 1, slot: "09:00", who: "ana", pay: "cartao", src: "Instagram", before: 3, bump: 4000 },
     { p: P("Patrícia Nascimento"), service: "Mechas/Luzes", ago: 2, slot: "09:00", who: "bruna", pay: "pix", src: "link", before: 4 },
-    { p: P("Alice Xavier"), service: "Botox capilar", ago: 3, slot: "14:00", who: "ana", pay: "pix", src: "Google", before: 2 },
+    { p: P("Fabiana Rezende"), service: "Botox capilar", ago: 3, slot: "14:00", who: "ana", pay: "pix", src: "Google", before: 2 },
     { p: P("Aline Barreto", { birthday: [22, 7, 1988] }), service: "Corte feminino", ago: 5, slot: "17:30", who: "bruna", pay: "dinheiro", src: "Passou na frente", before: 1 },
     { p: P("Renata Moura"), service: "Manicure e pedicure", ago: 6, slot: "16:00", who: "bruna", pay: "pix", src: "Indicação", before: 1 },
     { p: P("Bianca Carvalho", { email: "bianca.c@exemplo.com" }), service: "Progressiva", ago: 8, slot: "09:00", who: "thaise", pay: "cartao", paid: false, src: "Anúncio", before: 3 },
@@ -452,7 +452,7 @@ async function generate() {
 
   // ── Fila agora: atrasados (alerta sai do motor no fim) ──
   const late: { p: Person; who: Uid | null; src: Src; wait: number; steps: Step[]; ad?: boolean }[] = [
-    { p: P("Ingrid Henriques", { instagram: "tati.santos" }), who: null, src: "link", wait: 18, steps: [
+    { p: P("Yara Henriques", { instagram: "tati.santos" }), who: null, src: "link", wait: 18, steps: [
       I("Oi! Quanto tá a progressiva pra cabelo longo?"), I("Meu cabelo vai até a cintura, bem grosso", 1)] },
     { p: P("Lorena Silveira"), who: "ana", src: "Google", wait: 12, steps: [
       I("Bom dia! Vocês atendem hoje? Preciso de uma escova pra um evento à noite")] },

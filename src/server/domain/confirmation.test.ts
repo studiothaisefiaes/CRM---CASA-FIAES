@@ -17,10 +17,10 @@ const stageOf = async (id: string) => (await db.select({ k: stages.kind }).from(
 const openTitles = async (id: string) => (await db.select().from(tasks).where(and(eq(tasks.dealId, id), eq(tasks.kind, "proxima_acao"), isNull(tasks.doneAt)))).map((t) => t.title);
 
 it("a confirmação padrão enviada pelo celular marca Agendado com o dia e a hora e fecha o combinado de remarcar/confirmar", async () => {
-  const r = await recordInbound({ channelId: null, externalId: "IN1", phoneRaw: "71977770001", pushName: "Wanda Rezende", body: "Pode ser sábado?", at: T0 });
+  const r = await recordInbound({ channelId: null, externalId: "IN1", phoneRaw: "71977770001", pushName: "Úrsula Duarte", body: "Pode ser sábado?", at: T0 });
   if (!("dealId" in r)) throw new Error();
   await db.update(deals).set({ ownerId: sara }).where(eq(deals.id, r.dealId));
-  await combinado(r.dealId, "Confirmar horário com Wanda Rezende", new Date(T0.getTime() - 3_600_000));
+  await combinado(r.dealId, "Confirmar horário com Úrsula Duarte", new Date(T0.getTime() - 3_600_000));
   await recordOutbound({ phoneRaw: "71977770001", channelId: null, externalId: "OUT1", fromPhone: true, at: new Date(T0.getTime() + 60_000),
     body: "*SARA - CASA FIAES:*\nConfirmado agendamento , aqui na Casa Fiaes, com o Especialista , para dia 17/10 (SÁBADO ) às 9h Avisos importantes" });
   expect(await stageOf(r.dealId)).toBe("agendado");

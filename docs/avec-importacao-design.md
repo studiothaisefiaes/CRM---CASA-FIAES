@@ -14,7 +14,7 @@ Atenção: a maioria dos relatórios cobre só 01/10 a 14/10/2026 (período padr
 ## Formato dos arquivos
 
 - 1ª planilha, linha 1 = cabeçalho, sem linhas de título. Datas "dd/mm/aaaa" (string), hora "HH:MM", dinheiro em REAIS como número (150 = R$ 150,00; guardar em centavos), telefone como número (71990000001 → +55…, usar `normalizePhone` de `src/server/domain/phone.ts`).
-- Nome da cliente pode vir com sufixo de observação entre parênteses: "Úrsula Xavier Henriques (T. USO DE IMAGEM)". Para casar com contato, comparar sem o parêntese final; o sufixo "USO DE IMAGEM" vira a etiqueta "Uso de imagem" na cliente.
+- Nome da cliente pode vir com sufixo de observação entre parênteses: "Úrsula Duarte Abreu (T. USO DE IMAGEM)". Para casar com contato, comparar sem o parêntese final; o sufixo "USO DE IMAGEM" vira a etiqueta "Uso de imagem" na cliente.
 - Profissional: na agenda vem o apelido ("MAIARA"), na comanda o nome completo ("MAIARA DA SILVA SANTANA"). O relatório de profissionais (`cdc646d8`: ID, Nome, Cargo, CPF, Apelido, Especialidade…) liga os dois. Cadastrar profissional pelo apelido (nome de tela), guardando nome completo e cargo; nunca CPF/banco.
 - Cliente sem telefone na linha: casar por nome normalizado (sem acento, minúsculas, sem parêntese, espaços únicos) com contato existente SÓ se houver exatamente um; senão guarda `client_name` sem contato.
 

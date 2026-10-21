@@ -5,7 +5,7 @@ import {
 
 describe("normalize (Avec)", () => {
   it("normText: sem acento, minúsculas, sem o parêntese final, espaços únicos", () => {
-    expect(normText("  Ana  Cláudia Rapatoni (T. USO DE IMAGEM) ")).toBe("wanda rezende gomes");
+    expect(normText("  Ana  Cláudia Rapatoni (T. USO DE IMAGEM) ")).toBe("úrsula duarte abreu");
     expect(normText("CORTE  FEMININO")).toBe("corte feminino");
     expect(normText(null)).toBe("");
   });
@@ -14,7 +14,7 @@ describe("normalize (Avec)", () => {
     expect(normHeader("Última Visita")).toBe("ultima visita");
   });
   it("splitClientName: tira o sufixo e reconhece uso de imagem (com e sem espaço)", () => {
-    expect(splitClientName("Wanda Rezende Gomes (T. USO DE IMAGEM)")).toMatchObject({ name: "Wanda Rezende Gomes", imageUse: true });
+    expect(splitClientName("Úrsula Duarte Abreu (T. USO DE IMAGEM)")).toMatchObject({ name: "Úrsula Duarte Abreu", imageUse: true });
     expect(splitClientName("Rita (T.USO DE IMAGEM)")).toMatchObject({ name: "Rita", imageUse: true });
     expect(splitClientName("Bia (indicação da Rita)")).toMatchObject({ name: "Bia", imageUse: false });
     expect(splitClientName("  Sol   Lua ")).toMatchObject({ name: "Sol Lua", imageUse: false });

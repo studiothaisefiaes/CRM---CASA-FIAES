@@ -30,7 +30,7 @@ describe("o Atendimento do lead se junta à visita do Avec do mesmo dia", () => 
   });
 
   it("confirmado no CRM: a confirmação passa para os do Avec que estão agendados", async () => {
-    const p = await cliente("Zélia Xavier", { stage: "agendado" });
+    const p = await cliente("Vera Rezende", { stage: "agendado" });
     const at = bahia(16, 12);
     await atendimento(p.contactId, p.dealId, { status: "confirmado", confirmedAt: at, confirmedVia: "link" });
     const a = await ap({ startsAt: bahia(20, 9), contactId: p.contactId, professionalId: s.ana.id });
@@ -71,7 +71,7 @@ describe("18/10: só junta com o horário do Avec a até 2 h do Atendimento", ()
   });
 
   it("junta e passa o lead só para os do Avec a até 2 h (2 h em ponto vale)", async () => {
-    const p = await cliente("Kelly Xavier", { stage: "agendado" });
+    const p = await cliente("Gisele Rezende", { stage: "agendado" });
     const crm = await atendimento(p.contactId, p.dealId);
     const perto = await ap({ startsAt: bahia(20, 9), contactId: p.contactId, professionalId: s.ana.id });
     const duasHoras = await ap({ startsAt: bahia(20, 12), contactId: p.contactId, professionalId: s.bia.id, serviceLabel: "Hidratação" });
@@ -99,9 +99,9 @@ describe("na importação do Avec", () => {
   it("o lote junta o Atendimento do lead com a reserva que acabou de entrar", async () => {
     const { applyAvecFiles } = await import("../avec/apply");
     const { AVEC_H, avecSheet, reserva } = await import("../../../../test/avec-fixtures");
-    const p = await cliente("Renata Xavier", { stage: "agendado" });
+    const p = await cliente("Gisele Rezende", { stage: "agendado" });
     const crm = await atendimento(p.contactId, p.dealId);
-    await applyAvecFiles([await avecSheet("r.xlsx", [AVEC_H.reservas, reserva({ dia: "20/10/2026", hora: "09:00", cliente: "Renata Xavier", celular: Number(p.digits), pro: "Ana" })])], { now: NOW });
+    await applyAvecFiles([await avecSheet("r.xlsx", [AVEC_H.reservas, reserva({ dia: "20/10/2026", hora: "09:00", cliente: "Gisele Rezende", celular: Number(p.digits), pro: "Ana" })])], { now: NOW });
     expect((await get(crm.id)).status).toBe("cancelado");
   });
 });

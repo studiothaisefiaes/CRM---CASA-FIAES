@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { agendaBlocks, appointments, clientPackages, contacts, lists, professionals, professionalServices, settings } from "../db/schema";
 import { resetDb } from "../../../test/db";
-import { asksForSlots, pediuHorario, pediuHorarioNovo, durationText, formatFreeHours, hourMentions, isAgreement, MAX_LINE_CHARS, MAX_OPTIONS, mentionsTime, metodoTopic, offeredSlot, openDays, parseWindow, serviceFromText, type DayFree } from "./horarios";
+import { asksForSlots, pediuHorario, pediuHorarioNovo, durationText, formatFreeHours, hourMentions, isAgreement, MAX_LINE_CHARS, MAX_OPTIONS, mentionsTime, metodoTopic, offeredSlot, openDays, parseWindow, serviceFromText, type DayFree, cancelouSemData } from "./horarios";
 import { readFileSync } from "node:fs";
 import { sql } from "drizzle-orm";
 import { freeHoursLine } from "./horarios-agenda";
@@ -139,7 +139,7 @@ describe("freeHoursLine: lista da agenda do CRM", () => {
       { kind: "service", label: "Escova", category: "Cabelo", position: 51 }, // sem duração: 1 h
     ]).returning()).map((s) => s.id);
     await db.insert(professionalServices).values([{ professionalId: thaise, serviceId: manut }, { professionalId: ana, serviceId: escova }]);
-    [{ id: maria }] = await db.insert(contacts).values({ name: "Carla Duarte", phoneE164: "+5571999990901" }).returning();
+    [{ id: maria }] = await db.insert(contacts).values({ name: "Carla Werneck", phoneE164: "+5571999990901" }).returning();
     // Almoço de todas, de terça a sábado.
     await db.insert(agendaBlocks).values({ professionalId: null, title: "Almoço", startsOn: "2026-10-20", endsOn: "2026-10-24", startTime: "12:00", endTime: "13:00", externalKey: "alm" });
   });
@@ -267,7 +267,7 @@ describe("regra do Método: avaliação do Método SÓ com a Thaise ('A IA ofere
     // Como em produção: a AVALIAÇÃO ligada a várias profissionais (a Casa vai acertar; o código garante a regra mesmo assim).
     await db.insert(professionalServices).values([thaise, jackson, maiara].map((p) => ({ professionalId: p, serviceId: aval })));
     await db.insert(professionalServices).values([{ professionalId: maiara, serviceId: manut }]);
-    [{ id: maria }] = await db.insert(contacts).values({ name: "Carla Duarte", phoneE164: "+5571999990911" }).returning();
+    [{ id: maria }] = await db.insert(contacts).values({ name: "Carla Werneck", phoneE164: "+5571999990911" }).returning();
   });
   const regra = (scope: "sempre" | "metodo") => db.update(lists).set({ aiProIds: [thaise], aiProScope: scope }).where(eq(lists.id, aval));
   const line = async (text: string) => (await freeHoursLine({ contactId: maria, dealServiceId: null, texts: [text], now: NOW }))!;
@@ -425,5 +425,21 @@ describe("coerência (20/10): pedido de horário NOVO (gatilho da garantia) e co
     expect(parseWindow(["Pode ser na segunda semana"], "2026-09-19")).toBeNull();
     expect(parseWindow(["segunda à tarde"], "2026-09-19")?.days).toEqual(["2026-09-21"]);
     expect(parseWindow(["Agenda minha manutenção para dia 21/11 então"], "2026-09-19")?.days).toEqual(["2026-11-21"]); // não o dia 21 deste mês
+  });
+});
+
+describe("cancelou sem nova data (Cati 17/10)", () => {
+  it.each([
+    ["Vou precisar desmarcar meu horário de sábado", true],
+    ["Infelizmente vou ter que cancelar, surgiu um imprevisto", true],
+    ["Não vou conseguir ir amanhã 😔", true],
+    ["Cancela pra mim, por favor. Depois eu remarco", true],
+    ["Preciso desagendar. Quando eu souber minha escala te chamo pra remarcar", true],
+    ["Preciso desmarcar, dá pra remarcar pra sexta à tarde?", false],
+    ["Vou cancelar o de sábado e queria remarcar pra semana que vem", false],
+    ["Até quando posso cancelar sem pagar?", false],
+    ["Quanto custa a escova?", false],
+  ])("%s → %s", (t, esperado) => {
+    expect(cancelouSemData([t])).toBe(esperado);
   });
 });

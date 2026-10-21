@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../db";
-import { alerts, automations, contacts, dealEvents, deals, libraryFiles, messages, outbox, settings, stages, users, automationRuns } from "../db/schema";
+import { alerts, appointments, automations, contacts, dealEvents, deals, libraryFiles, messages, outbox, settings, stages, users, automationRuns } from "../db/schema";
 import { saveAutomation } from "../domain/config";
 import { saveFuncao } from "../domain/funcoes";
 import { sendsMessages } from "./templates";
@@ -234,10 +234,28 @@ describe("motor de automações", () => {
     expect((await db.select().from(messages)).filter((m) => m.direction === "out")).toHaveLength(0);
     await drainOutbox(T0);
     const out = (await db.select().from(messages)).filter((m) => m.direction === "out");
-    expect(out[0].body).toMatch(/Mariana[\s\S]*quarta-feira[\s\S]*06:00/);
+    // 21/10: {data} e {hora} como no lembrete da Casa ("quarta-feira, 14/10", "6h"), no relógio de Salvador.
+    expect(out[0].body).toContain("Mariana! Passando para lembrar do seu horário na Casa Fiaes: quarta-feira, 14/10, às 6h. Pode confirmar");
     expect((await db.select().from(deals).where(eq(deals.id, id)))[0].awaitingReplySince).not.toBeNull();
     await runRules(new Date(T0.getTime() + 60_000));
     expect((await db.select().from(messages)).filter((m) => m.direction === "out").length).toBe(1);
+  });
+
+  it("lembrete do agendamento de outra pessoa do número (filha no celular da mãe, 21/10): sai na conversa do número com o nome DELA", async () => {
+    process.env.DEV_TOOLS = "true";
+    const id = await lead();
+    const [d] = await db.select().from(deals).where(eq(deals.id, id));
+    const [filha] = await db.insert(contacts).values({ name: "Bruna Souza", phoneE164: "pessoa:00000000-0000-4000-8000-0000000000f1", sharesPhoneWith: d.contactId, phoneRelation: "filha" }).returning();
+    const at = new Date(T0.getTime() + 20 * 3_600_000);
+    await db.insert(appointments).values({ contactId: filha.id, clientName: "Bruna Souza", serviceLabel: "Escova", startsAt: at, status: "agendado", origin: "crm", externalKey: "t-filha-1" });
+    await moveDeal(id, "agendado", null);
+    await db.update(deals).set({ scheduledAt: at }).where(eq(deals.id, id));
+    await scheduleAutomation("texto");
+    expect((await runRules(T0)).sent).toBe(1);
+    const [o] = await db.select().from(outbox);
+    expect(o.dealId).toBe(id);
+    expect(o.text).toMatch(/^Oi, Bruna Souza!/);
+    expect(o.text).not.toContain("Mariana");
   });
 
   it("automação desligada não roda e configuração inválida é reportada", async () => {

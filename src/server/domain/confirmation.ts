@@ -9,7 +9,7 @@ const CLOSES = /remarcar|confirmar/i;
 
 /**
  * A Casa mandou a confirmação padrão ("Confirmado agendamento … dia 17/10 … às 9h"): marca Agendado com o dia e a hora sozinho e fecha o
- * combinado de remarcar/confirmar (caso Wanda Rezende, 15/10). Só mensagem ENVIADA pela Casa, nunca automática; horário que já passou e
+ * combinado de remarcar/confirmar (caso Úrsula Duarte, 15/10). Só mensagem ENVIADA pela Casa, nunca automática; horário que já passou e
  * conversa fechada, perdida ou arquivada não mudam. Devolve se mexeu.
  */
 export async function applyConfirmationTx(tx: Tx, dealId: string, body: string | null | undefined, at: Date, userId: string | null): Promise<boolean> {

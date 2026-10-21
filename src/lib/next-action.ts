@@ -13,7 +13,7 @@ export function bahiaAt(ms: number, dayOffset: number, hour: number, minute = 0)
 }
 
 /** Como `bahiaAt`, mas pula para o próximo dia em que a Casa abre (sem `hours`, não pula). */
-function openDayAt(ms: number, dayOffset: number, hour: number, hours?: BusinessHours): Date {
+export function openDayAt(ms: number, dayOffset: number, hour: number, hours?: BusinessHours): Date {
   let off = dayOffset;
   for (let i = 0; hours && i < 7; i++, off++) {
     if (windowOfInstant(bahiaAt(ms, off, 12).getTime(), hours)) break;

@@ -14,6 +14,7 @@ import { updateContactProfile } from "./contact-profile";
 import { listContacts } from "../queries/contacts";
 import { searchAgendaClients } from "../queries/agenda-clients";
 import { getContact } from "../queries/contact";
+import { numberPeopleWithNext } from "../queries/number-people";
 import { loadConversation } from "../ai/suggest";
 import { buildUser } from "../ai/prompt";
 import { isHiddenNumber } from "@/lib/phone-client";
@@ -119,5 +120,26 @@ describe("marcar horário para a pessoa do número", () => {
     const outra = await cliente("Rita Lima", { stage: "atendimento" });
     await expect(createVisit({ requestKey: randomUUID(), client: { contactId: filha }, dealId: outra.dealId, startsAt: bahia(16, 10).toISOString(),
       items: [{ serviceId: s.corte.id, professionalId: s.ana.id }] }, s.recepcao, NOW)).rejects.toThrow("Conversa não encontrada");
+  });
+});
+
+describe("painel da conversa: as pessoas do número com o próximo horário de cada uma (21/10, Cati: \"só uma aparece\")", () => {
+  it("titular primeiro; cada pessoa com o próprio próximo horário (sem cancelado nem passado); só ela no número: sem consulta extra", async () => {
+    const { mae, filha } = await maeEFilha();
+    const base = { serviceLabel: "Corte", origin: "crm", professionalId: s.ana.id };
+    await db.insert(appointments).values([
+      { ...base, contactId: filha, startsAt: bahia(16, 14), status: "agendado", externalKey: "f1" },
+      { ...base, contactId: filha, startsAt: bahia(20, 10), status: "confirmado", externalKey: "f2" },
+      { ...base, contactId: filha, startsAt: bahia(15, 10), status: "cancelado", externalKey: "f3" },
+      { ...base, contactId: mae.contactId, startsAt: bahia(14, 10), status: "compareceu", externalKey: "m1" },
+    ]);
+    const p = await numberPeopleWithNext(mae.contactId, NOW);
+    expect(p?.people.map((x) => [x.name, x.isHolder, x.next?.startsAt ?? null])).toEqual([
+      ["Marta Souza", true, null], ["Bruna Souza", false, bahia(16, 14).toISOString()],
+    ]);
+    expect(p?.people[1].next).toMatchObject({ serviceLabel: "Corte", professionalName: "Ana" });
+    expect((await numberPeopleWithNext(filha, NOW))?.holderId).toBe(mae.contactId);
+    const so = await cliente("Rita Lima");
+    expect((await numberPeopleWithNext(so.contactId, NOW))?.people).toEqual([{ id: so.contactId, name: "Rita Lima", relation: null, isHolder: true, next: null }]);
   });
 });

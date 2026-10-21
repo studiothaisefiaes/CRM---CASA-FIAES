@@ -4,8 +4,9 @@
  */
 const OFFSET_MS = 3 * 3_600_000;
 const TRIGGER = /confirmad[oa]\s+(?:o\s+)?agendamento/i;
-const DAY = /\bdia\s+(\d{1,2})\/(\d{1,2})(?:\/(\d{2}|\d{4}))?/i;
-const HOUR = /(?:^|\s)[àa]s\s+(\d{1,2})(?:\s*[:h]\s*(\d{2}))?\s*h?(?![\d])/i;
+// "dia 17/10" ou, no desenho de WhatsApp (21/10), "quinta-feira, 22/10" / "*sábado, 24/10*"; "às 9h", "às *14h*", "*às 14h*".
+const DAY = /(?:\bdia\s+|(?:feira|s[áa]bado|domingo)\*?,?\s+)(\d{1,2})\/(\d{1,2})(?:\/(\d{2}|\d{4}))?/i;
+const HOUR = /(?:^|[\s*_])[àa]s\s+\*?(\d{1,2})(?:\s*[:h]\s*(\d{2}))?\s*h?(?![\d])/i;
 
 export function parseConfirmation(body: string | null | undefined, sentAtMs: number): Date | null {
   if (!body) return null;

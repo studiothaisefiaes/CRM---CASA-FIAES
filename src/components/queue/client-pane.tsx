@@ -93,12 +93,54 @@ function Situacao({ d, actions }: { d: DealDetail; actions: LeadActions }) {
   );
 }
 
+type NumberPerson = NonNullable<DealDetail["phonePeople"]>["people"][number];
+const personName = (p: NumberPerson) => displayName(p.name) || "Sem nome";
+
+/** O horário mais próximo de outra pessoa do número (a filha no celular da mãe, 0051); null sem nenhum. */
+function otherPersonNext(d: DealDetail): NumberPerson | null {
+  const others = (d.phonePeople?.people ?? []).filter((p) => p.id !== d.contact.id && p.next);
+  return others.sort((x, y) => Date.parse(x.next!.startsAt) - Date.parse(y.next!.startsAt))[0] ?? null;
+}
+
+function PersonNextLine({ next }: { next: NonNullable<NumberPerson["next"]> }) {
+  const when = useClock((now) => dueLabel(Date.parse(next.startsAt), now));
+  const pro = next.professionalName ? displayName(next.professionalName) : null;
+  return <span className="block truncate text-sm text-graphite" suppressHydrationWarning>{when} · {next.serviceLabel}{pro ? ` com ${pro}` : ""}</span>;
+}
+
+/**
+ * Mãe e filha no mesmo número (21/10, Cati: "só uma aparece; as duas têm horário"): quem usa este WhatsApp e o próximo horário de cada uma.
+ * A conversa é uma só (a do número); cada pessoa tem ficha e horários próprios. "Agendar horário" pergunta para quem é.
+ */
+function NesteNumero({ d }: { d: DealDetail }) {
+  const people = d.phonePeople?.people ?? [];
+  if (people.length < 2) return null;
+  return (
+    <section aria-label="Neste número" className="flex flex-col gap-1">
+      <h4 className={LABEL}>Neste número</h4>
+      <ul className="flex flex-col divide-y divide-line/70 rounded-[14px] bg-paper-2 px-3">
+        {people.map((p) => (
+          <li key={p.id} className="flex flex-col py-1.5">
+            <span className="flex min-w-0 items-baseline justify-between gap-2 text-sm">
+              <Link href={contactHref(p.id)} className="min-w-0 truncate font-medium text-ink underline-offset-4 hover:underline">{personName(p)}</Link>
+              <span className="shrink-0 text-xs text-muted">{p.isHolder ? "a conversa é dela" : p.relation ?? ""}</span>
+            </span>
+            {p.next ? <PersonNextLine next={p.next} /> : <span className="text-sm text-muted">Sem horário marcado</span>}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 /** O cartão único do próximo passo: a retomada ativa; senão o próximo horário; senão nada marcado. */
 function ProximoPasso({ d, actions }: { d: DealDetail; actions: LeadActions }) {
   const r = d.nextAction;
   const msg = r ? d.scheduled.find((s) => s.taskId === r.id) ?? null : null;
-  const a = d.context.nextAppointment;
-  const visit = d.context.nextVisit ?? [];
+  // Mãe e filha no mesmo número (21/10): sem horário da titular, o próximo horário de outra pessoa do número, dizendo de quem é.
+  const other = d.context.nextAppointment ? null : otherPersonNext(d);
+  const a: (typeof d.context.nextAppointment) = d.context.nextAppointment ?? other?.next ?? null;
+  const visit = other ? [] : d.context.nextVisit ?? [];
   const fallback = !a && (d.stage.kind === "agendado" || d.stage.kind === "na_casa") && d.deal.scheduledAt ? new Date(d.deal.scheduledAt).toISOString() : null;
   const label = useClock((now) => (r ? dueLabel(new Date(r.dueAt).getTime(), now) : a ? dueLabel(Date.parse(a.startsAt), now) : fallback ? dueLabel(Date.parse(fallback), now) : null));
   const showAttendance = useClock((now) => askAttendance({ stageKind: d.stage.kind, scheduledAt: d.deal.scheduledAt, attendance: d.deal.attendance }, now));
@@ -122,6 +164,7 @@ function ProximoPasso({ d, actions }: { d: DealDetail; actions: LeadActions }) {
     body = (
       <div className={card} data-testid="cartao-horario">
         <p className="inline-flex items-center gap-1.5 text-sm font-semibold text-ink" suppressHydrationWarning><IconCalendar size={14} aria-hidden />{label}</p>
+        {other && <p className="text-sm font-medium text-ink">Horário de {personName(other)}{other.relation ? ` (${other.relation})` : ""}</p>}
         {visit.length > 1 ? (
           <ul aria-label="Serviços da visita" className="flex flex-col gap-0.5 text-sm text-graphite">
             {visit.map((v, i) => (
@@ -146,7 +189,7 @@ function ProximoPasso({ d, actions }: { d: DealDetail; actions: LeadActions }) {
     <section aria-label="Próximo passo" className="flex flex-col gap-1.5">
       <h4 className={LABEL}>Próximo passo</h4>
       {body}
-      {showAttendance && <AttendanceBar attendance={d.deal.attendance} busy={actions.busy} onPick={actions.attendance} name={d.contact.name?.trim() || undefined} />}
+      {showAttendance && <AttendanceBar attendance={d.deal.attendance} busy={actions.busy} onPick={actions.attendance} name={(other ? other.name : d.contact.name)?.trim() || undefined} />}
     </section>
   );
 }
@@ -170,6 +213,7 @@ function Agora({ d, viewer, actions }: { d: DealDetail; viewer: Viewer | null; a
         </p>
       )}
       {open && d.contact.kind === "cliente" && <ProximoPasso d={d} actions={actions} />}
+      <NesteNumero d={d} />
       {open && (
         <section aria-label="O que fazer" className="flex flex-col gap-1.5">
           <h4 className={LABEL}>O que fazer</h4>

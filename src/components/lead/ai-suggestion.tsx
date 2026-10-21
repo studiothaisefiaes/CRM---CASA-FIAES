@@ -9,7 +9,8 @@ import { useToast } from "@/components/ui/toast";
 import { useLive } from "@/components/shell/live";
 import { composerHasText, offerDraft } from "./composer-draft";
 import type { QuoteTarget } from "./composer";
-import { getAiSuggestionAction, markAiSuggestionAction, prepareAiBookingAction, requestAiSuggestionAction, type AiBooking, type AiView } from "@/app/(app)/conversa/ai-actions";
+import { getAiSuggestionAction, markAiSuggestionAction, prepareAiBookingAction, programarRetomadaAction, requestAiSuggestionAction, type AiBooking, type AiView } from "@/app/(app)/conversa/ai-actions";
+import { dueLabel } from "@/lib/next-action";
 import { slotLabel, type ProposedSlot } from "@/lib/proposed-slot";
 import { EASE, T } from "@/lib/motion";
 
@@ -49,6 +50,20 @@ export function AiSuggestion({ dealId, replyTo = null, onBook }: { dealId: strin
   const [kept, setKept] = useState<{ dealId: string; id: string; horario: ProposedSlot } | null>(null);
   const keptHere = kept?.dealId === dealId ? kept : null;
   const [booking, setBooking] = useState(false);
+  // Cancelou sem nova data (Cati 17/10): a retomada proposta. Fica numa faixa depois do "Usar e editar"; `feitas`: já programadas aqui.
+  const [keptRet, setKeptRet] = useState<{ dealId: string; id: string; at: string } | null>(null);
+  const keptRetHere = keptRet?.dealId === dealId ? keptRet : null;
+  const [feitas, setFeitas] = useState<Record<string, string>>({});
+  const [programando, setProgramando] = useState(false);
+  const programar = async (id: string) => {
+    if (programando) return;
+    setProgramando(true);
+    const r = await programarRetomadaAction({ id, dealId }).catch(() => null).finally(() => setProgramando(false));
+    if (!r) { toast("Não deu para programar agora. Tente de novo.", "error"); return; }
+    if (!r.ok) { toast(r.error, "error"); return; }
+    setFeitas((f) => ({ ...f, [id]: r.data.dueAt }));
+    toast(`Retomada marcada para ${dueLabel(new Date(r.data.dueAt).getTime(), Date.now())}. É um lembrete: nada é enviado.`);
+  };
   const book = async (id: string, keep: boolean) => {
     if (!onBook) return;
     setBooking(true);
@@ -83,14 +98,16 @@ export function AiSuggestion({ dealId, replyTo = null, onBook }: { dealId: strin
     if (!s) return;
     offerDraft(dealId, shown.trim() || s.sugestao);
     if (s.horario && onBook) setKept({ dealId, id: s.id, horario: s.horario });
+    if (s.retomarEm && !feitas[s.id]) setKeptRet({ dealId, id: s.id, at: s.retomarEm });
     // O botão volta na hora (17/10): "Sugerir resposta" vale a qualquer momento, inclusive logo depois de usar ou fechar.
     mark("usada"); setV({ state: "pode_pedir", again: true }); setReplace(false);
     toast("Sugestão na caixa de mensagem. Confira e aperte Enviar.");
   };
   const use = () => { if (composerHasText(dealId)) setReplace(true); else fill(); };
   const close = () => { mark("fechada"); setV({ state: "pode_pedir", again: true }); setReplace(false); };
-  const ask = (kind: "primeira" | "outra") => start(async () => {
-    const r = await requestAiSuggestionAction(dealId, kind, { tema: tema.trim() || null, quotedId: replyTo?.id ?? null });
+  // `falado`: o texto que acabou de vir do "Falar" (o estado do campo ainda não mudou nesta volta).
+  const ask = (kind: "primeira" | "outra", falado?: string) => start(async () => {
+    const r = await requestAiSuggestionAction(dealId, kind, { tema: (falado ?? tema).trim() || null, quotedId: replyTo?.id ?? null });
     if (!r.ok) { toast(r.error, "error"); return; }
     seq.current++; setV(r.data); setReplace(false);
   });
@@ -107,7 +124,8 @@ export function AiSuggestion({ dealId, replyTo = null, onBook }: { dealId: strin
                 <Button type="submit" size="sm" variant="ghost" className="shrink-0">Sugerir resposta</Button>
                 <input aria-label="Sobre o quê? (opcional)" placeholder="Sobre o quê? (opcional — escreva ou toque em Falar)" value={tema} maxLength={1000} onChange={(e) => setTema(e.target.value)}
                   className="h-8 min-w-0 flex-1 rounded-[var(--radius-control)] border border-line bg-paper px-2.5 text-sm text-ink placeholder:text-muted focus:border-ink focus:outline-none" />
-                <DictateButton value={tema} onChange={setTema} className="h-8" />
+                {/* Falou: o texto entra no campo e a IA já monta a mensagem a partir dele (a sugestão aparece para conferir; nada é enviado). */}
+                <DictateButton value={tema} onChange={setTema} onTranscribed={(t) => ask("primeira", t)} className="h-8" />
                 {replyTo && <span className="hidden shrink-0 text-xs text-muted sm:inline">à mensagem marcada</span>}
               </form>
             )}
@@ -119,6 +137,15 @@ export function AiSuggestion({ dealId, replyTo = null, onBook }: { dealId: strin
           <div className="flex items-start gap-1 rounded-[var(--radius-control)] border border-line bg-paper-2/70 px-3 py-1.5">
             <ProposedRow horario={keptHere.horario} busy={booking} onBook={() => void book(keptHere.id, true)} bare />
             <IconButton label="Fechar o horário proposto" onClick={() => setKept(null)} className="-mr-1"><IconClose size={15} /></IconButton>
+          </div>
+        </motion.section>
+      )}
+      {!s && keptRetHere && (
+        <motion.section key={`r${keptRetHere.id}`} aria-label="Retomada proposta pela IA" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: T.base, ease: EASE }}
+          className="shrink-0 px-3 pt-2">
+          <div className="flex items-start gap-1 rounded-[var(--radius-control)] border border-line bg-paper-2/70 px-3 py-1.5">
+            <RetomadaRow at={keptRetHere.at} feita={feitas[keptRetHere.id] ?? null} busy={programando} onProgramar={() => void programar(keptRetHere.id)} bare />
+            <IconButton label="Fechar a retomada proposta" onClick={() => setKeptRet(null)} className="-mr-1"><IconClose size={15} /></IconButton>
           </div>
         </motion.section>
       )}
@@ -143,6 +170,7 @@ export function AiSuggestion({ dealId, replyTo = null, onBook }: { dealId: strin
               className={`mt-1.5 max-h-40 w-full resize-y rounded-[var(--radius-control)] border border-transparent bg-transparent px-1 py-0.5 text-sm hover:border-line focus:border-ink focus:bg-paper focus:outline-none ${s.precisaHumano ? "text-graphite" : "text-ink"}`} />
             {s.agendaAt && <p className="mt-1 text-xs text-muted">{agendaNote(s.agendaAt)}</p>}
             {s.horario && <ProposedRow horario={s.horario} busy={booking} onBook={onBook ? () => void book(s.id, false) : undefined} />}
+            {(s.retomarEm || feitas[s.id]) && <RetomadaRow at={s.retomarEm ?? feitas[s.id]} feita={feitas[s.id] ?? null} busy={programando} onProgramar={() => void programar(s.id)} />}
             {replace ? (
               <div role="group" aria-label="Trocar o texto da mensagem" className="mt-2 flex flex-wrap items-center gap-2">
                 <p className="text-sm text-ink">Trocar o que você estava escrevendo?</p>
@@ -169,6 +197,26 @@ function ProposedRow({ horario, busy, onBook, bare = false }: { horario: Propose
     <div data-testid="horario-proposto" className={`flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5 ${bare ? "" : "mt-2 rounded-[var(--radius-control)] border border-line bg-paper px-2.5 py-1.5"}`}>
       <p className="min-w-0 text-sm text-ink"><span className="font-medium">Horário proposto:</span> <span className="tabular-nums">{slotLabel(horario)}</span></p>
       {onBook && <Button size="sm" variant="secondary" onClick={onBook} loading={busy}>Marcar este horário</Button>}
+    </div>
+  );
+}
+
+/**
+ * "Ela cancelou sem nova data. Retomar em qua 04/11 10:00" e o botão que cria o lembrete pelo mesmo caminho do "Retomar…" (Cati 17/10).
+ * Nada é criado sem o toque; depois do toque, a linha só confirma.
+ */
+function RetomadaRow({ at, feita, busy, onProgramar, bare = false }: { at: string; feita: string | null; busy: boolean; onProgramar: () => void; bare?: boolean }) {
+  // "agora" de quando a linha apareceu (render puro); a data é dias à frente, o rótulo não muda no meio do uso.
+  const [agora] = useState(() => Date.now());
+  const quando = dueLabel(new Date(feita ?? at).getTime(), agora);
+  return (
+    <div data-testid="retomada-proposta" className={`flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5 ${bare ? "" : "mt-2 rounded-[var(--radius-control)] border border-line bg-paper px-2.5 py-1.5"}`}>
+      {feita
+        ? <p role="status" className="min-w-0 text-sm text-ink"><span className="font-medium">Retomada marcada:</span> <span className="tabular-nums">{quando}</span>. Nada é enviado.</p>
+        : <>
+          <p className="min-w-0 text-sm text-ink"><span className="font-medium">Cancelou sem nova data.</span> Retomar <span className="tabular-nums">{quando}</span>?</p>
+          <Button size="sm" variant="secondary" onClick={onProgramar} loading={busy}>Programar retomada</Button>
+        </>}
     </div>
   );
 }

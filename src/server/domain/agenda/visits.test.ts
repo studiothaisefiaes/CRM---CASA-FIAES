@@ -160,7 +160,7 @@ describe("marcar", () => {
 
 describe("Review Focus 4: dois cliques ao mesmo tempo", () => {
   it("duas transações para a Ana às 10:00: uma passa, a outra recebe 'acabou de ser ocupado'", async () => {
-    const p = await cliente("Paula Souza"), q = await cliente("Alice Duarte");
+    const p = await cliente("Paula Souza"), q = await cliente("Vera Henriques");
     const rs = await Promise.allSettled([createVisit(book(p.contactId), s.recepcao, NOW), createVisit(book(q.contactId), s.recepcao, NOW)]);
     expect(rs.filter((r) => r.status === "fulfilled")).toHaveLength(1);
     const fail = rs.find((r) => r.status === "rejected") as PromiseRejectedResult;

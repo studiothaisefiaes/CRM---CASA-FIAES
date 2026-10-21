@@ -3,8 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 const base = { id: "s1", resumo: "Quer horário.", sugestao: "Tenho terça às 9h ou 13h, qual prefere?", precisaHumano: false, motivo: null };
-const { getAiSuggestionAction, requestAiSuggestionAction, prepareAiBookingAction, markAiSuggestionAction } = vi.hoisted(() => ({ getAiSuggestionAction: vi.fn(), requestAiSuggestionAction: vi.fn(), prepareAiBookingAction: vi.fn(), markAiSuggestionAction: vi.fn() }));
-vi.mock("@/app/(app)/conversa/ai-actions", () => ({ getAiSuggestionAction, markAiSuggestionAction, requestAiSuggestionAction, prepareAiBookingAction }));
+const { getAiSuggestionAction, requestAiSuggestionAction, prepareAiBookingAction, markAiSuggestionAction, programarRetomadaAction } = vi.hoisted(() => ({ getAiSuggestionAction: vi.fn(), requestAiSuggestionAction: vi.fn(), prepareAiBookingAction: vi.fn(), markAiSuggestionAction: vi.fn(), programarRetomadaAction: vi.fn() }));
+vi.mock("@/app/(app)/conversa/ai-actions", () => ({ getAiSuggestionAction, markAiSuggestionAction, requestAiSuggestionAction, prepareAiBookingAction, programarRetomadaAction }));
 vi.mock("@/components/shell/live", () => ({ useLive: () => {} }));
 vi.mock("@/components/ui/toast", () => ({ useToast: () => () => {} }));
 import { agendaNote, AiSuggestion } from "./ai-suggestion";
@@ -124,5 +124,34 @@ describe("20/10: o texto da sugestão se edita no próprio cartão", () => {
     fireEvent.click(screen.getByRole("button", { name: "Usar e editar" }));
     expect(offer).toHaveBeenCalledWith("d1", "Tenho terça às 9h. Posso reservar?");
     offer.mockRestore();
+  });
+});
+
+describe("cancelou sem nova data (Cati 17/10): retomada proposta, criada só no toque", () => {
+  const em = new Date(Date.now() + 15 * 86_400_000).toISOString();
+  it("mostra quando retomar; 'Programar retomada' chama a ação uma vez e a linha passa a confirmar", async () => {
+    getAiSuggestionAction.mockResolvedValue({ ok: true, data: { state: "pronta", suggestion: { ...base, agendaAt: null, retomarEm: em } } });
+    programarRetomadaAction.mockResolvedValue({ ok: true, data: { dueAt: em } });
+    render(<AiSuggestion dealId="d1" />);
+    const row = await screen.findByTestId("retomada-proposta");
+    expect(row.textContent).toMatch(/^Cancelou sem nova data\. Retomar .+\?/);
+    expect(programarRetomadaAction).not.toHaveBeenCalled();
+    fireEvent.click(within(row).getByRole("button", { name: "Programar retomada" }));
+    await waitFor(() => expect(programarRetomadaAction).toHaveBeenCalledWith({ id: "s1", dealId: "d1" }));
+    expect((await screen.findByRole("status")).textContent).toMatch(/^Retomada marcada: .+\. Nada é enviado\.$/);
+    expect(screen.queryByRole("button", { name: "Programar retomada" })).toBeNull();
+  });
+  it("sem retomada proposta: sem a linha", async () => {
+    getAiSuggestionAction.mockResolvedValue({ ok: true, data: { state: "pronta", suggestion: { ...base, agendaAt: null, retomarEm: null } } });
+    render(<AiSuggestion dealId="d1" />);
+    await screen.findByTestId("sugestao-ia");
+    expect(screen.queryByTestId("retomada-proposta")).toBeNull();
+  });
+  it("'Usar e editar': a retomada fica numa faixa para programar depois", async () => {
+    getAiSuggestionAction.mockResolvedValue({ ok: true, data: { state: "pronta", suggestion: { ...base, agendaAt: null, retomarEm: em } } });
+    render(<AiSuggestion dealId="d1" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Usar e editar" }));
+    const faixa = await screen.findByRole("region", { name: "Retomada proposta pela IA" });
+    expect(within(faixa).getByRole("button", { name: "Programar retomada" })).toBeTruthy();
   });
 });

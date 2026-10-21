@@ -617,6 +617,13 @@
       "when": 1792650000000,
       "tag": "0089_auxiliares_horario",
       "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1792670000000,
+      "tag": "0091_ia_retomada",
+      "breakpoints": true
     }
   ]
 }

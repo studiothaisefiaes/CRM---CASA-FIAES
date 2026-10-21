@@ -18,15 +18,16 @@ describe("textos da Casa (estilo da Casa)", () => {
 
   it("confirmação com endereço e mapa: cada um na sua linha", () => {
     expect(renderReminder(CASA_CONFIRMACAO_D1, { ...v, endereco: "Rua das Flores, 10 - Pituba", mapa: "https://maps.app.goo.gl/casa" }, null)).toBe([
-      "Oi, Paula! 💛", "", "Podemos confirmar sua presença amanhã na Casa Fiaes?", "", "📅 *sexta, 16/10* às *10:00*", "Corte com Maiara", "Escova com Bia", "",
-      "📍 Rua das Flores, 10 - Pituba", "https://maps.app.goo.gl/casa", "", "Temos tolerância de 15 minutos. Se precisar remarcar, é só responder por aqui.",
+      "Olá, Paula! 💛", "", "Passando para lembrar do seu horário amanhã na Casa Fiaes:", "", "📅 *sexta, 16/10*", "⏰ às *10:00*", "✨ Corte com Maiara", "✨ Escova com Bia", "",
+      "📍 Rua das Flores, 10 - Pituba", "https://maps.app.goo.gl/casa", "", "Temos tolerância de 15 minutos.", "",
+      "Você confirma sua presença? Se precisar remarcar, é só responder por aqui.",
     ].join("\n"));
   });
 
   it("endereço vazio tira a linha do 📍 e a do mapa, sem linha em branco dupla", () => {
     const esperado = [
-      "Oi, Paula! 💛", "", "Podemos confirmar sua presença amanhã na Casa Fiaes?", "", "📅 *sexta, 16/10* às *10:00*", "Corte com Maiara", "Escova com Bia", "",
-      "Temos tolerância de 15 minutos. Se precisar remarcar, é só responder por aqui.",
+      "Olá, Paula! 💛", "", "Passando para lembrar do seu horário amanhã na Casa Fiaes:", "", "📅 *sexta, 16/10*", "⏰ às *10:00*", "✨ Corte com Maiara", "✨ Escova com Bia", "",
+      "Temos tolerância de 15 minutos.", "", "Você confirma sua presença? Se precisar remarcar, é só responder por aqui.",
     ].join("\n");
     expect(renderReminder(CASA_CONFIRMACAO_D1, { ...v, endereco: "", mapa: "https://maps.app.goo.gl/casa" }, null)).toBe(esperado);
     expect(renderReminder(CASA_CONFIRMACAO_D1, v, null)).toBe(esperado); // sem as variáveis novas (quem chama ainda não as passa)
@@ -34,6 +35,6 @@ describe("textos da Casa (estilo da Casa)", () => {
   });
 
   it("endereço sem mapa: fica o 📍 e some só a linha do mapa", () => {
-    expect(renderReminder(CASA_CONFIRMACAO_D1, { ...v, endereco: "Rua das Flores, 10", mapa: "" }, null)).toContain("Escova com Bia\n\n📍 Rua das Flores, 10\n\nTemos tolerância");
+    expect(renderReminder(CASA_CONFIRMACAO_D1, { ...v, endereco: "Rua das Flores, 10", mapa: "" }, null)).toContain("✨ Escova com Bia\n\n📍 Rua das Flores, 10\n\nTemos tolerância");
   });
 });

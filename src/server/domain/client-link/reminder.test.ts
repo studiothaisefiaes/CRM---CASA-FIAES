@@ -26,8 +26,8 @@ const fake = {
   sendText: async (_i: string, _to: string, text: string) => { sent.push(text); return { externalId: `OUT${sent.length}` }; },
   sendPoll: async () => ({ externalId: "POLL" }),
 };
-const REMARCADO_17_15 = ["Oi, Paula! 💛", "", "Seu horário na Casa Fiaes foi remarcado para:", "", "📅 *sábado, 17/10* às *15:00*", "Corte com Maiara", "",
-  "Se o novo horário não ficar bom para você, é só me avisar por aqui."].join("\n");
+const REMARCADO_17_15 = ["Olá, Paula! 💛", "", "Seu horário na Casa Fiaes foi remarcado para:", "", "📅 *sábado, 17/10*", "⏰ às *15h*", "✨ Corte com Maiara", "",
+  "Se o novo horário não ficar bom para você, é só responder por aqui."].join("\n");
 let g = "", maiara = "", bia = "", corte = "", escova = "", channelId = "";
 let k = 0;
 
@@ -80,7 +80,7 @@ describe("lembrete 24 h antes (pedido do dono, 15/10; DESLIGADO)", () => {
     const [o] = await queue();
     const [dealMae] = await db.select().from(deals).where(eq(deals.contactId, mae));
     expect(o.dealId).toBe(dealMae.id);
-    expect(o.text.startsWith("Oi, Bruna!")).toBe(true);
+    expect(o.text.startsWith("Olá, Bruna!")).toBe(true);
     expect(await db.select().from(deals).where(eq(deals.contactId, filha))).toHaveLength(0);
   });
 
@@ -94,12 +94,12 @@ describe("lembrete 24 h antes (pedido do dono, 15/10; DESLIGADO)", () => {
     await ap(await cliente("Sem Conversa", "+5571999990005", { deal: "nenhuma" }), bahia("2026-10-16", "16:00"));
     await ap(await cliente("Cancelada", "+5571999990006"), bahia("2026-10-16", "17:00"), { status: "cancelado" });
     expect(await runLembreteD1(NOW)).toEqual({ enqueued: 2, skipped: 1 });
-    const [p] = await ofText("Oi, Paula!");
-    expect(p.text).toBe(["Oi, Paula! 💛", "", "Podemos confirmar sua presença amanhã na Casa Fiaes?", "", "📅 *sexta, 16/10* às *10:00*", "Corte com Maiara", "Escova com Bia", "",
-      "Temos tolerância de 15 minutos. Se precisar remarcar, é só responder por aqui."].join("\n"));
+    const [p] = await ofText("Olá, Paula!");
+    expect(p.text).toBe(["Olá, Paula! 💛", "", "Passando para lembrar do seu horário amanhã na Casa Fiaes:", "", "📅 *sexta-feira, 16/10*", "⏰ às *10h*",
+      "✨ Corte com Maiara", "✨ Escova com Bia", "", "Temos tolerância de 15 minutos.", "", "Você confirma sua presença? Se precisar remarcar, é só responder por aqui."].join("\n"));
     expect(p.notBefore.toISOString()).toBe(bahia("2026-10-15", "10:00").toISOString());
     expect(p.options).toMatchObject({ source: expect.stringMatching(/^lembrete_d1:/), visitStart: bahia("2026-10-16", "10:00").toISOString() });
-    expect((await ofText("Oi, Rita!"))[0].notBefore.toISOString()).toBe(bahia("2026-10-16", "14:00").toISOString());
+    expect((await ofText("Olá, Rita!"))[0].notBefore.toISOString()).toBe(bahia("2026-10-16", "14:00").toISOString());
     expect(await runLembreteD1(NOW)).toEqual({ enqueued: 0, skipped: 3 });
     expect(await queue()).toHaveLength(2);
   });
@@ -142,7 +142,7 @@ describe("lembrete 24 h antes (pedido do dono, 15/10; DESLIGADO)", () => {
     await cancelMany({ appointmentIds: [bea.id], reason: "cliente_desmarcou", note: null, actorId: g, via: "recepcao" });
     vi.setSystemTime(bahia("2026-10-19", "14:00"));
     await drainOutbox(bahia("2026-10-19", "14:00"));
-    const of = async (n: string) => (await ofText(`Oi, ${n}!`))[0];
+    const of = async (n: string) => (await ofText(`Olá, ${n}!`))[0];
     expect(await of("Paula")).toMatchObject({ status: "sent" });
     expect(await of("Rita")).toMatchObject({ status: "cancelled", error: "A cliente confirmou há pouco." });
     expect(await of("Bea")).toMatchObject({ status: "cancelled", error: "O horário foi cancelado." });
@@ -291,7 +291,7 @@ describe("lembrete 24 h antes (pedido do dono, 15/10; DESLIGADO)", () => {
     await ap(cris, bahia("2026-10-16", "09:00"), { serviceLabel: "Coloração ou Tonalização", professionalId: bia, serviceId: escova });
     await runLembreteD1(NOW);
     const [o] = await queue();
-    expect(o.text).toContain("\nLuzes e Mechas e Coloração ou Tonalização com Thaise\n");
+    expect(o.text).toContain("\n✨ Luzes e Mechas e Coloração ou Tonalização com Thaise\n");
     expect(o.text).not.toContain("Sidney");
   });
 
@@ -334,7 +334,7 @@ describe("lembrete 24 h antes (pedido do dono, 15/10; DESLIGADO)", () => {
       await runLembreteD1(NOW);
       const [o] = await queue();
       expect(o.text).not.toContain("Não informado");
-      expect(o.text).toContain("\nAtendimento com Maiara\nEscova com Bia\n");
+      expect(o.text).toContain("\n✨ Atendimento com Maiara\n✨ Escova com Bia\n");
     });
   });
 });

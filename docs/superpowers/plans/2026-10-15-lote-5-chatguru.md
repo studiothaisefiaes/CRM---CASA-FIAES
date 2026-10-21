@@ -1843,7 +1843,7 @@ const NOW = new Date("2026-10-20T13:00:00Z"); // terça 10:00
 let dealId = "", contactId = "", pro = "";
 beforeEach(async () => {
   await resetDb();
-  const r = await recordInbound({ channelId: null, externalId: "V1", phoneRaw: "71999990031", pushName: "Quênia Rezende Teste", body: "oi" });
+  const r = await recordInbound({ channelId: null, externalId: "V1", phoneRaw: "71999990031", pushName: "Carla Salgado Teste", body: "oi" });
   if (!("dealId" in r)) throw new Error("sem lead");
   dealId = r.dealId;
   contactId = (await db.select().from(deals).where(eq(deals.id, dealId)))[0].contactId;

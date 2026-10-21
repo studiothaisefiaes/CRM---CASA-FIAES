@@ -4996,7 +4996,7 @@ beforeEach(async () => {
 });
 afterEach(() => setWhatsappProvider(null));
 
-const escreve = (phone: string, at: Date, name = "Quênia Uchoa") =>
+const escreve = (phone: string, at: Date, name = "Carla Werneck") =>
   recordInbound({ channelId: chId, externalId: `${phone}-${at.getTime()}`, phoneRaw: phone, pushName: name, body: "oi", at, now: at });
 const fila = () => db.select().from(outbox);
 
@@ -5047,7 +5047,7 @@ describe("mensagens automáticas novas (Lote 4)", () => {
   });
 
   it("{nome}: o primeiro nome; sem nome some com a vírgula (nunca o telefone)", () => {
-    expect(fillName("Oi, {nome}! Tudo bem?", "Quênia Uchoa")).toBe("Oi, Maria! Tudo bem?");
+    expect(fillName("Oi, {nome}! Tudo bem?", "Carla Werneck")).toBe("Oi, Maria! Tudo bem?");
     expect(fillName("Oi, {nome}! Tudo bem?", null)).toBe("Oi! Tudo bem?");
   });
 

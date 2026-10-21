@@ -108,7 +108,7 @@ test("o botão Exportar baixa o CSV do bloco", async ({ page }) => {
 
 test("atendente no filtro de atrasados só vê os leads dela (mesmo com a URL mexida na mão)", async ({ page }) => {
   await login(page);
-  await simulate(page, { phone: "71 99700-7011", name: "Giselea Klein", text: "Oi, tem horário amanhã?" });
+  await simulate(page, { phone: "71 99700-7011", name: "Vera Igarashi", text: "Oi, tem horário amanhã?" });
   await simulate(page, { phone: "71 99700-7012", name: "Nilza Rocha", text: "Oi, quero agendar." });
   const owner = (email: string, phone: string) => e2eSql(`update deals set owner_id = (select id from users where email = '${email}') where contact_id = (select id from contacts where phone_e164 = '${phone}')`);
   await owner("ana@e2e.local", "+5571997007011");
@@ -118,6 +118,6 @@ test("atendente no filtro de atrasados só vê os leads dela (mesmo com a URL me
   await page.context().clearCookies();
   await login(page, "ana@e2e.local");
   await page.goto("/atendimento?filtro=atrasados");
-  await expect(page.getByText("Giselea Klein").first()).toBeVisible();
+  await expect(page.getByText("Vera Igarashi").first()).toBeVisible();
   await expect(page.getByText("Nilza Rocha")).toHaveCount(0);
 });

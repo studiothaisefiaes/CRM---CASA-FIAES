@@ -47,14 +47,15 @@ describe("gerar o link (seção 9.4.1)", () => {
     expect(l.expiresAt.toISOString()).toBe(bahia("2026-10-17", "11:00").toISOString());
     const dump = JSON.stringify((await db.execute(sql`select * from client_links`)).rows) + JSON.stringify(await db.select().from(auditLog));
     expect(dump).not.toContain(token);
-    expect(r.text).toBe(`Oi, Paula! Seu horário na Casa Fiaes: sexta, 16/10 às 10:00 (Corte feminino com Maiara). Para confirmar ou remarcar, é só tocar aqui: ${r.url}`);
+    expect(r.text).toBe(["Olá, Paula! 💛", "", "Seu horário na Casa Fiaes:", "", "📅 *sexta-feira, 16/10*", "⏰ às *10h*", "✨ Corte feminino com Maiara", "",
+      `Para confirmar ou remarcar, é só tocar aqui: ${r.url}`].join("\n"));
   });
 
   it("visita com dois serviços: um link só, com os dois no texto", async () => {
     const a = await ap();
     await ap({ serviceId: escova, serviceLabel: "Escova", professionalId: bia, startsAt: bahia("2026-10-16", "11:00"), durationMin: 40 });
     const r = await createClientLink({ appointmentId: a.id, via: "agenda", actorId: recepcao, now: NOW });
-    expect(r.text).toContain("(Corte feminino com Maiara e Escova com Bia)");
+    expect(r.text).toContain("\n✨ Corte feminino com Maiara e Escova com Bia\n");
     expect((await db.select().from(clientLinks))[0].expiresAt.toISOString()).toBe(bahia("2026-10-17", "11:40").toISOString());
   });
 

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "../../db";
-import { auditLog, lists, users } from "../../db/schema";
+import { auditLog, lists, settings, users } from "../../db/schema";
 import { resetDb } from "../../../../test/db";
 import {
   DEFAULT_LINK_TEXT, DEFAULT_REMINDER_TEXT, DEFAULT_RESCHEDULED_TEXT, getCasaInfo, getClientLinkSettings, getLembreteD1, getOnlineBooking, saveCasaInfo, saveClientLinkSettings, saveOnlineBooking,
@@ -59,5 +59,33 @@ describe("configurações da área da cliente (seção 3.1)", () => {
     await saveOnlineBooking({ enabled: false, antecedenciaMin: 120, diasAFrente: 30, servicos: [], profissionais: [] }, g);
     expect((await getOnlineBooking()).antecedenciaMin).toBe(120);
     expect((await db.select().from(auditLog).where(eq(auditLog.entity, "settings"))).map((a) => a.entityId)).toEqual(["casa_info", "casa_info", "cliente_link", "agendamento_online"]);
+  });
+});
+
+describe("textos do lembrete salvos antes de 21/10 (padrão antigo vira o novo; o personalizado fica)", () => {
+  // O que produção tinha salvo em 21/10: o padrão "arejado" de 17/10, salvo sem mudança pela tela.
+  const PROD_17_10 = {
+    texto: "Oi, {primeiro_nome}! 💛\n\nPassando para lembrar do seu horário amanhã na Casa Fiaes:\n\n📅 *{data}* às *{hora}*\n{servicos}\n\nPode confirmar sua presença? É só responder SIM por aqui. Se precisar remarcar, é só me avisar.",
+    comLink: false, enabled: false,
+    textoRemarcado: "Oi, {primeiro_nome}! 💛\n\nSeu horário na Casa Fiaes foi remarcado para:\n\n📅 *{data}* às *{hora}*\n{servicos}\n\nSe o novo horário não ficar bom para você, é só me avisar por aqui.",
+  };
+  it("salvo igual ao padrão antigo: vale o padrão novo (e continua desligado)", async () => {
+    await db.insert(settings).values({ key: "lembrete_d1", value: PROD_17_10 });
+    expect(await getLembreteD1()).toEqual({ enabled: false, comLink: false, texto: DEFAULT_REMINDER_TEXT, textoRemarcado: DEFAULT_RESCHEDULED_TEXT });
+  });
+
+  it("texto que a gestão mudou fica como está", async () => {
+    const meu = "Oi, {primeiro_nome}! Amanhã, {data} às {hora}. Te esperamos!";
+    await db.insert(settings).values({ key: "lembrete_d1", value: { ...PROD_17_10, texto: meu } });
+    const v = await getLembreteD1();
+    expect(v.texto).toBe(meu);
+    expect(v.textoRemarcado).toBe(DEFAULT_RESCHEDULED_TEXT);
+  });
+
+  it("modelo do link salvo igual ao antigo vale o novo; o personalizado fica", async () => {
+    await db.insert(settings).values({ key: "cliente_link", value: { cancelarAteHoras: 12, texto: "Oi, {primeiro_nome}! Seu horário na Casa Fiaes: {data} às {hora} ({servicos}). Para confirmar ou remarcar, é só tocar aqui: {link}" } });
+    expect(await getClientLinkSettings()).toEqual({ cancelarAteHoras: 12, texto: DEFAULT_LINK_TEXT });
+    await saveClientLinkSettings({ cancelarAteHoras: 12, texto: "Seu horário: {data}, {hora}. {link}" }, g);
+    expect((await getClientLinkSettings()).texto).toBe("Seu horário: {data}, {hora}. {link}");
   });
 });

@@ -183,7 +183,7 @@ test("lembrete do horário: texto sugerido arejado e as quebras de linha ficam d
     await expect(texto).toHaveValue(/Passando para lembrar do seu horário amanhã: \{data\}/);
     await expect(async () => {
       await page.getByRole("button", { name: "Usar o texto da Casa no lembrete" }).click();
-      await expect(texto).toHaveValue(/💛\n\nPodemos confirmar sua presença/, { timeout: 2_000 });
+      await expect(texto).toHaveValue(/💛\n\nPassando para lembrar do seu horário amanhã na Casa Fiaes:/, { timeout: 2_000 });
     }).toPass();
     await page.getByRole("button", { name: "Usar o texto sugerido da remarcação" }).click();
     await texto.press("End");
@@ -192,7 +192,7 @@ test("lembrete do horário: texto sugerido arejado e as quebras de linha ficam d
     await page.getByRole("button", { name: "Salvar textos" }).click();
     await expect(page.getByRole("status").filter({ hasText: "Salvo" })).toBeVisible();
     const [{ value }] = await e2eSql("select value from settings where key = 'lembrete_d1'") as { value: { texto: string; textoRemarcado: string } }[];
-    expect(value.texto).toContain("📅 *{data}* às *{hora}*\n{servicos}\n");
+    expect(value.texto).toContain("📅 *{data}*\n⏰ às *{hora}*\n✨ {servicos}\n");
     expect(value.texto.endsWith("responder por aqui.\nBeijos!")).toBe(true);
     expect(value.textoRemarcado).toContain("remarcado para:\n\n📅");
     await page.reload();

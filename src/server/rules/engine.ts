@@ -18,6 +18,7 @@ import { assertTransferTarget, transferDealTx } from "../domain/assign";
 import { assertFuncaoLigada } from "../domain/funcoes";
 import { afterConversationStatus, setConversationStatusTx } from "../domain/conversation-status";
 import { alertText, clientLabel } from "../../lib/alert-copy";
+import { messageDay, messageHour } from "../../lib/client-link";
 import { SATISFACTION_OPTIONS, SURVEY_ALREADY } from "../../lib/after-visit";
 import { VIRADA_FALTA, viradaPronta } from "../../lib/virada";
 import { actionSchema, conditionSchema, isEventTrigger, triggerSchema, CONFIRMACAO_OPCOES, type Action, type Condition, type Trigger } from "./types";
@@ -101,7 +102,12 @@ export async function candidatesFor(trigger: Trigger, now: Date, hours?: Busines
           and d.charge_at > ${new Date(now.getTime() - 7 * 86_400_000).toISOString()}::timestamptz`;
       break;
     case "agendamento_em_horas":
-      q = sql`${base}, d.scheduled_at as since ${from}
+      // Mãe e filha no mesmo número (0051, 21/10): o horário pode ser de outra pessoa do número; o {nome} é o DELA (a conversa é a do titular).
+      // Titular com horário no mesmo instante: vale o dele.
+      q = sql`${base}, d.scheduled_at as since,
+          (select p.name from appointments a join contacts p on p.id = a.contact_id
+            where a.starts_at = d.scheduled_at and a.avec_twin_of is null and a.status in ('agendado', 'confirmado') and (p.id = c.id or p.shares_phone_with = c.id)
+            order by (p.id = c.id) desc, a.created_at limit 1) as "personName" ${from}
         where ${live} and d.closed_at is null and d.scheduled_at is not null and d.scheduled_at > ${now.toISOString()}::timestamptz
           and d.scheduled_at <= ${new Date(now.getTime() + trigger.hours * 3_600_000).toISOString()}::timestamptz`;
       break;
@@ -137,7 +143,8 @@ export async function candidatesFor(trigger: Trigger, now: Date, hours?: Busines
     // Horas de EXPEDIENTE: noite e dias com a Casa fechada não contam.
     rows = rows.filter((r) => businessMinutesBetween(new Date(r.since!).getTime(), now.getTime(), bh) >= trigger.hours * 60);
   }
-  return rows.map((r) => {
+  return rows.map(({ personName, ...r }: typeof rows[number] & { personName?: string | null }) => {
+    if (personName?.trim()) r.contactName = personName;
     const since = r.since ? new Date(r.since) : null;
     const elapsedMin = since ? Math.floor((now.getTime() - since.getTime()) / 60_000) : 0;
     let windowKey = "";
@@ -201,12 +208,12 @@ function renderForClient(tpl: string, c: Candidate, stageName: string) {
   return render(t, c, stageName);
 }
 
+/** {data} e {hora} como no lembrete da Casa (21/10): "quinta-feira, 22/10" e "14h", no relógio de Salvador. */
 function render(tpl: string, c: Candidate, stageName: string) {
   const when = c.since ? new Date(c.since) : null;
-  const tz = { timeZone: "America/Bahia" } as const;
   return tpl
-    .replaceAll("{data}", when ? when.toLocaleDateString("pt-BR", { ...tz, weekday: "long", day: "2-digit", month: "long" }) : "")
-    .replaceAll("{hora}", when ? when.toLocaleTimeString("pt-BR", { ...tz, hour: "2-digit", minute: "2-digit" }) : "")
+    .replaceAll("{data}", when ? messageDay(when) : "")
+    .replaceAll("{hora}", when ? messageHour(when) : "")
     .replaceAll("{nome}", c.contactName?.trim() || formatPhone(c.phone))
     .replaceAll("{etapa}", stageName)
     .replaceAll("{minutos}", String(c.minutes ?? 0))

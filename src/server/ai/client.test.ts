@@ -35,8 +35,9 @@ describe("cliente da IA (fetch na Messages API, sem SDK)", () => {
     expect(r.model).toBe("claude-haiku-5-5");
   });
 
-  it("o esquema pede os 4 campos, sem campo extra", () => {
-    expect(SUGGESTION_JSON_SCHEMA.required).toEqual(["resumo", "sugestao", "precisa_humano", "motivo", "horario"]);
+  it("o esquema pede os 6 campos (retomar_dias: cancelou sem nova data, Cati 17/10), sem campo extra", () => {
+    expect(SUGGESTION_JSON_SCHEMA.required).toEqual(["resumo", "sugestao", "precisa_humano", "motivo", "horario", "retomar_dias"]);
+    expect(SUGGESTION_JSON_SCHEMA.properties.retomar_dias.type).toBe("integer");
     expect(SUGGESTION_JSON_SCHEMA.additionalProperties).toBe(false);
   });
 

@@ -240,7 +240,9 @@ export function BookingSheet({ open, onClose, services, professionals, initial, 
         const pro = active.find((p) => p.id === it.professionalId)?.name;
         return `${svcOf(it.serviceId)?.label ?? "Horário"}${pro ? ` com ${firstName(pro) ?? pro}` : ""}`;
       }).join(" e ");
-      onDone({ day, message: `Horário marcado: ${who}, ${when}`, confirm: `Marcado: ${when}, ${what}.` });
+      // Mãe e filha no mesmo número (21/10): marcado da conversa da mãe para a filha, a confirmação diz para quem é (a mensagem vai para o número das duas).
+      const forOther = client.kind === "contato" && !!initial.client && client.contactId !== initial.client.contactId;
+      onDone({ day, message: `Horário marcado: ${who}, ${when}`, confirm: `Marcado${forOther ? ` para ${who}` : ""}: ${when}, ${what}.` });
     });
   };
 

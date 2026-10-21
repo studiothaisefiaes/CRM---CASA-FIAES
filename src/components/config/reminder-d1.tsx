@@ -35,7 +35,7 @@ export function ReminderD1Card({ value }: { value: LembreteD1 }) {
           : <Link href="/config/virada?alvo=lembrete" className="inline-flex min-h-11 shrink-0 items-center text-sm font-medium text-ink underline underline-offset-2 lg:min-h-9">Ligar pela troca do ChatGuru para o CRM</Link>}
       </div>
       <form className="mt-4 flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); save(v); }}>
-        <Field label="Texto do lembrete" htmlFor="ld1-texto" hint="Use {primeiro_nome}, {data}, {hora}, {servicos}, {endereco} e {mapa} (da Página da cliente). {servicos} sozinho numa linha põe um serviço por linha; sem endereço, a linha do endereço e a do mapa somem. *texto* sai em negrito no WhatsApp.">
+        <Field label="Texto do lembrete" htmlFor="ld1-texto" hint="Use {primeiro_nome}, {data} (quinta-feira, 22/10), {hora} (14h), {servicos}, {endereco} e {mapa} (da Página da cliente). {servicos} numa linha só dele (pode ter um ✨ antes) põe um serviço por linha; sem endereço, a linha do endereço e a do mapa somem. *texto* sai em negrito no WhatsApp.">
           <Textarea id="ld1-texto" rows={9} value={v.texto} maxLength={600} onChange={(e) => setV({ ...v, texto: e.target.value })} />
         </Field>
         <Button type="button" variant="ghost" size="sm" className="-mt-1 self-start" aria-label="Usar o texto da Casa no lembrete" onClick={() => setV({ ...v, texto: DEFAULT_REMINDER_TEXT })}>Usar o texto da Casa</Button>

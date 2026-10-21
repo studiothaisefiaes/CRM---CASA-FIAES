@@ -94,7 +94,8 @@ test("ia marca: avaliação do Método só com a Thaise; 'Marcar este horário' 
   await expect.poll(async () => (await one("select s.kind from deals d join stages s on s.id = d.stage_id where d.id = $1", [dealId])).kind).toBe("agendado");
   // A confirmação no padrão da Casa vai para a caixa; nada é enviado sozinho.
   const campo = lead.getByRole("textbox", { name: "Mensagem", exact: true });
-  await expect(campo).toHaveValue(`Confirmado agendamento de Avaliação dia ${ddmm} às 12:00h com Thaise.`);
+  // 21/10: no desenho de WhatsApp (data por extenso e hora em negrito, cada uma na sua linha).
+  await expect(campo).toHaveValue(new RegExp(`^Confirmado agendamento de Avaliação com Thaise 💛\\n\\n📅 \\*\\S+, ${ddmm}\\*\\n⏰ às \\*12h\\*\\n\\nTemos tolerância de 15 minutos\\.`));
   await expect.poll(async () => (await one("select used_at from ai_suggestions where deal_id = $1 order by created_at desc limit 1", [dealId])).used_at).not.toBeNull();
   await page.waitForTimeout(1200);
   expect(Number((await one("select count(*)::int as n from messages where deal_id = $1 and direction = 'out'", [dealId])).n)).toBe(outAntes);

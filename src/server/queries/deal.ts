@@ -21,7 +21,7 @@ import { NOT_IDENTIFIED } from "../../lib/source-kinds";
 import { HISTORY_EVENT_LIMIT } from "../../lib/history";
 import { attemptDaysOf, isAttemptKind, projectedLostAt } from "../../lib/attempts";
 import { getBusinessHours } from "../domain/hours";
-import { peopleOnNumber } from "../domain/people-on-number";
+import { numberPeopleWithNext } from "./number-people";
 import { canReceiveConversation } from "../domain/team-scope";
 import { listTeams } from "../domain/teams";
 import { funcaoLigada } from "../domain/funcoes";
@@ -108,7 +108,7 @@ export async function getDealDetail(id: string, opts: { money?: boolean; viewer?
     // Resumo da IA guardado (só lê; gerar é no botão "Sugerir resposta").
     db.select({ resumo: aiSuggestions.resumo, at: aiSuggestions.createdAt }).from(aiSuggestions).where(eq(aiSuggestions.dealId, id)).orderBy(desc(aiSuggestions.createdAt)).limit(1),
   ]);
-  const [hours, phonePeople, passTeams, pauseSwitch] = await Promise.all([getBusinessHours(), peopleOnNumber(row.contact.id), teamsForPass(), funcaoLigada("pausa_automaticas")]);
+  const [hours, phonePeople, passTeams, pauseSwitch] = await Promise.all([getBusinessHours(), numberPeopleWithNext(row.contact.id), teamsForPass(), funcaoLigada("pausa_automaticas")]);
   const paused = pauseOf(row.contact.automationsPausedUntil, new Date());
   return {
     ...row,
@@ -117,7 +117,7 @@ export async function getDealDetail(id: string, opts: { money?: boolean; viewer?
     pauseSwitch,
     /** Setores para o "Passar para…" (vazio com a função Setores desligada). */
     teams: passTeams,
-    /** Pessoas neste número (0051): o titular (a conversa) e quem mais usa o número (filha, mãe…). */
+    /** Pessoas neste número (0051): o titular (a conversa) e quem mais usa o número (filha, mãe…), cada uma com o próximo horário dela (21/10). */
     phonePeople,
     /** Conversas de número oculto que a Casa começou há pouco por outro aparelho e podem ser desta cliente ("É dela", 17/10). */
     // CPF visível para a equipe (pedido do dono, 16/10: "só a gente tem acesso").

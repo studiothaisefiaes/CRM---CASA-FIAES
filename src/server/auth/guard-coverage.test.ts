@@ -29,6 +29,7 @@ const PUBLIC_PAGES = new Set(["layout.tsx", "login/page.tsx", "convite/[token]/p
 /** Rotas que conferem a sessão mas não precisam de permissão (dados da própria pessoa) ou têm outra trava. */
 const ROUTE_EXCEPTIONS: Record<string, string> = {
   "api/health/route.ts": "monitor externo: sem dado de cliente",
+  "api/versao/route.ts": "só o id do build (aviso de versão nova); passa pelo proxy (exige o cookie de sessão), sem dado de cliente",
   "api/webhooks/evolution/route.ts": "Evolution: segredo do webhook",
   "api/importar/chatguru/route.ts": "ChatGuru (Post para URL): segredo no link; desligada sem CHATGURU_IMPORT_SECRET",
   "api/alertas/route.ts": "alertas da própria pessoa (getMyAlerts já filtra pela permissão de escalada)",

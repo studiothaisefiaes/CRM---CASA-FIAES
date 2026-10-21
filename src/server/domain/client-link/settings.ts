@@ -4,10 +4,18 @@ import { db, type Tx } from "../../db";
 import { auditLog, lists, settings } from "../../db/schema";
 import { UserFacingError } from "../errors";
 import { normalizePhone } from "../phone";
-import { DEFAULT_REMINDER_TEXT, DEFAULT_RESCHEDULED_TEXT } from "@/lib/reminder-d1";
+import { DEFAULT_REMINDER_TEXT, DEFAULT_RESCHEDULED_TEXT, effectiveText, LEGACY_REMINDER_TEXTS, LEGACY_RESCHEDULED_TEXTS } from "@/lib/reminder-d1";
 
-/** Texto modelo do link (seção 9.4.10), editável em Configurações › Página da cliente. */
-export const DEFAULT_LINK_TEXT = "Oi, {primeiro_nome}! Seu horário na Casa Fiaes: {data} às {hora} ({servicos}). Para confirmar ou remarcar, é só tocar aqui: {link}";
+/**
+ * Texto modelo do link (seção 9.4.10), editável em Configurações › Página da cliente. 21/10: no mesmo desenho do lembrete (data e hora
+ * cada uma na sua linha, só elas em negrito).
+ */
+export const DEFAULT_LINK_TEXT = [
+  "Olá, {primeiro_nome}! 💛", "", "Seu horário na Casa Fiaes:", "", "📅 *{data}*", "⏰ às *{hora}*", "✨ {servicos}", "",
+  "Para confirmar ou remarcar, é só tocar aqui: {link}",
+].join("\n");
+/** O modelo de antes: salvo sem mudança, vale o de hoje. */
+const LEGACY_LINK_TEXTS = ["Oi, {primeiro_nome}! Seu horário na Casa Fiaes: {data} às {hora} ({servicos}). Para confirmar ou remarcar, é só tocar aqui: {link}"];
 export { DEFAULT_REMINDER_TEXT, DEFAULT_RESCHEDULED_TEXT, LINK_SUFFIX } from "@/lib/reminder-d1";
 
 /** `mapa` (Fase B): o link do mapa que vai na confirmação da véspera; vazio = a busca do endereço no Maps. */
@@ -57,12 +65,13 @@ export async function getCasaInfo(q: Q = db): Promise<CasaInfo> {
 export async function getClientLinkSettings(q: Q = db): Promise<ClientLinkSettings> {
   const v = await read(q, "cliente_link");
   const h = Number(v?.cancelarAteHoras);
-  return { cancelarAteHoras: v?.cancelarAteHoras != null && Number.isInteger(h) && h >= 0 && h <= 168 ? h : 24, texto: typeof v?.texto === "string" && v.texto.trim() ? v.texto : DEFAULT_LINK_TEXT };
+  return { cancelarAteHoras: v?.cancelarAteHoras != null && Number.isInteger(h) && h >= 0 && h <= 168 ? h : 24, texto: effectiveText(v?.texto, DEFAULT_LINK_TEXT, LEGACY_LINK_TEXTS) };
 }
 export async function getLembreteD1(q: Q = db): Promise<LembreteD1> {
   const v = await read(q, "lembrete_d1");
-  const text = (x: unknown, d: string) => (typeof x === "string" && x.trim() ? x : d);
-  return { enabled: v?.enabled === true, comLink: v?.comLink === true, texto: text(v?.texto, DEFAULT_REMINDER_TEXT), textoRemarcado: text(v?.textoRemarcado, DEFAULT_RESCHEDULED_TEXT) };
+  // Texto salvo igual a um padrão antigo (a tela salva o texto inteiro, mesmo sem mudança) vale o padrão de hoje; o personalizado fica.
+  return { enabled: v?.enabled === true, comLink: v?.comLink === true, texto: effectiveText(v?.texto, DEFAULT_REMINDER_TEXT, LEGACY_REMINDER_TEXTS),
+    textoRemarcado: effectiveText(v?.textoRemarcado, DEFAULT_RESCHEDULED_TEXT, LEGACY_RESCHEDULED_TEXTS) };
 }
 export async function getOnlineBooking(q: Q = db): Promise<OnlineBooking> {
   const p = onlineSchema.safeParse(await read(q, "agendamento_online"));

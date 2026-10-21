@@ -11,6 +11,7 @@ import { AiError } from "./client";
 import { vaiVerificar } from "./pos";
 import { saveAiManual } from "./manual";
 import { emptyManual } from "@/lib/ai-manual";
+import { resumeFromSuggestion, RETOMADA_IA_MOTIVO } from "../domain/retomada";
 
 const T0 = new Date("2026-10-20T13:00:00Z"); // terça 10:00 em Salvador
 const plus = (s: number) => new Date(T0.getTime() + s * 1000);
@@ -484,7 +485,7 @@ describe("IA marca (17/10): horário concreto com id, concordância da cliente e
     await recordInbound({ channelId: null, externalId: "A4", phoneRaw: "71999990071", body: "Pode ser!", at: plus(300), now: plus(300) });
     // Mesmo que a IA devolva horario vazio, o combinado vem.
     await generateForDeal(dealId, { now: plus(320), caller: responde("Confirmado agendamento de Corte dia 21/10 às 09:00h com Thaise. Te esperamos! 💛") });
-    expect(user()).toContain("Horário combinado (hc): qua 21/10 às 9h com Thaise (Corte). A cliente aceitou: confirme assim: \"Confirmado agendamento de Corte dia 21/10 às 09:00h com Thaise.\"");
+    expect(user()).toContain(`Horário combinado (hc): qua 21/10 às 9h com Thaise (Corte). A cliente aceitou: confirme com o texto entre <confirmacao> e </confirmacao>, do jeito que está (com as quebras de linha e o negrito de data e hora); pode pôr 1 frase curta e calorosa antes.\n<confirmacao>\n${["Confirmado agendamento de Corte com Thaise 💛", "", "📅 *quarta-feira, 21/10*", "⏰ às *9h*", "", "Temos tolerância de 15 minutos. Será uma alegria te receber na Casa Fiaes!"].join("\n")}\n</confirmacao>`);
     expect((await pronta(plus(330)))?.horario).toEqual({ ...s.horario!, id: "hc", origem: "combinado" });
     const b = await bookingFromSuggestion((await pronta(plus(330)))!.id, dealId, plus(330));
     // A própria sugestão já é a confirmação: é ela que vai para a caixa depois de marcar.
@@ -571,7 +572,7 @@ describe("IA marca (17/10): horário concreto com id, concordância da cliente e
   it("Marcar este horário: confere de novo; ocupado depois de sugerir → livre=false; sugestão de outra conversa → nada", async () => {
     await generateForDeal(dealId, { now: plus(200), caller: propoe("h2") });
     const s = (await pronta(plus(210)))!;
-    expect(await bookingFromSuggestion(s.id, dealId, plus(220))).toEqual({ slot: s.horario, livre: true, confirm: "Confirmado agendamento de Corte dia 21/10 às 09:00h com Thaise." });
+    expect(await bookingFromSuggestion(s.id, dealId, plus(220))).toEqual({ slot: s.horario, livre: true, confirm: ["Confirmado agendamento de Corte com Thaise 💛", "", "📅 *quarta-feira, 21/10*", "⏰ às *9h*", "", "Temos tolerância de 15 minutos. Será uma alegria te receber na Casa Fiaes!"].join("\n") });
     await db.insert(appointments).values({ professionalId: thaise, clientName: "Outra", serviceLabel: "Corte", startsAt: new Date("2026-10-21T09:00:00-03:00"), durationMin: 60, status: "agendado", origin: "crm", externalKey: "ocupa2" });
     expect((await bookingFromSuggestion(s.id, dealId, plus(230)))?.livre).toBe(false);
     const r = await recordInbound({ channelId: null, externalId: "B1", phoneRaw: "71999990099", body: "Oi", at: plus(240), now: plus(240) });
@@ -719,5 +720,63 @@ describe("garantia do servidor (ia-horarios2, 17/10): pediu horário e há horá
     const p = "Tenho quarta, 21/10, às 9h com Thaise Fiaes. Posso reservar pra você?";
     await generateForDeal(dealId, { now: plus(230), caller: responde(p, { horario: "h2" }) });
     expect(await pronta(plus(240))).toMatchObject({ sugestao: p, horario: { id: "h2", time: "09:00" } });
+  });
+});
+
+describe("cancelou sem nova data (Cati 17/10): a sugestão propõe quando retomar; só o toque da atendente cria o lembrete", () => {
+  const responde = (sugestao: string, retomar_dias = 0): Caller => async (input) => {
+    calls.push(input); return { data: { ...good, sugestao, horario: "", retomar_dias, precisa_humano: true, motivo: "cancelamento" }, usage, costMicros: 180, model: "claude-haiku-5-5" };
+  };
+  const pede = (body: string, ext = "C1", at = plus(180)) => recordInbound({ channelId: null, externalId: ext, phoneRaw: "71999990071", body, at, now: at });
+  const lembretes = () => db.select().from(tasks).where(eq(tasks.kind, "proxima_acao"));
+  const texto = "Que pena, Paula! Imprevistos acontecem. Quando quiser remarcar, é só me chamar. 💛";
+  beforeEach(async () => { await ligar(); });
+
+  it("a IA diz 15 dias: a sugestão traz a data (10h, dia aberto); nada é criado até o toque; o toque cria o lembrete pelo caminho do Retomar…", async () => {
+    await pede("Oi, vou precisar desmarcar meu horário de sábado, surgiu um imprevisto");
+    await generateForDeal(dealId, { now: plus(200), caller: responde(texto, 15) });
+    expect(calls.at(-1)!.system).toContain("retomar_dias");
+    const s = (await pronta(plus(210)))!;
+    expect(s.sugestao).toBe(texto);
+    expect(s.retomarEm).toEqual(new Date("2026-11-04T13:00:00Z")); // qua 04/11 10:00 em Salvador
+    expect(await lembretes()).toHaveLength(0);
+    expect(await db.select().from(outbox)).toHaveLength(0);
+    const r = await resumeFromSuggestion(s.id, dealId, sara, plus(220));
+    expect(r.dueAt).toEqual(new Date("2026-11-04T13:00:00Z"));
+    expect(r.outboxId).toBeNull();
+    const [t] = await lembretes();
+    expect(t).toMatchObject({ title: RETOMADA_IA_MOTIVO, dealId });
+    expect(await db.select().from(outbox)).toHaveLength(0); // só lembrete: nada é enviado
+    // Programada: a proposta some da sugestão e tocar de novo não cria outra.
+    expect((await pronta(plus(230)))!.retomarEm).toBeNull();
+    await expect(resumeFromSuggestion(s.id, dealId, sara, plus(240))).rejects.toThrow(/já tem retomada/);
+    expect(await lembretes()).toHaveLength(1);
+  });
+
+  it("a IA esqueceu (0) mas ela cancelou sem pedir outra data: 3 semanas; 'depois eu remarco' também é sem data", async () => {
+    await pede("Vou ter que cancelar, depois eu remarco");
+    await generateForDeal(dealId, { now: plus(200), caller: responde(texto, 0) });
+    expect((await pronta(plus(210)))!.retomarEm).toEqual(new Date("2026-11-10T13:00:00Z")); // 21 dias, ter 10/11 10:00
+  });
+
+  it("a Casa já respondeu ao cancelamento (a Sara mandou por último) e a Cati pede: a proposta vem igual", async () => {
+    await pede("Preciso desmarcar o de sábado, não vou conseguir ir");
+    await recordOutbound({ dealId, channelId: null, body: "*SARA - CASA FIAES:*\nTudo bem, Paula, desmarquei aqui.", userId: sara, at: plus(190) });
+    await generateForDeal(dealId, { userId: sara, now: plus(200), caller: responde("Quando quiser remarcar, é só me chamar. 💛", 30) });
+    expect(calls.at(-1)!.user).toContain("A última mensagem é da Casa");
+    expect((await pronta(plus(210)))!.retomarEm).toEqual(new Date("2026-11-19T13:00:00Z")); // 30 dias, qui 19/11
+  });
+
+  it("sem proposta: remarcação com data, IA que inventa sem cancelamento, horário futuro marcado ou retomada já aberta", async () => {
+    await pede("Preciso desmarcar, dá pra remarcar pra sexta à tarde?");
+    await generateForDeal(dealId, { now: plus(200), caller: responde("Claro! Vou ver sexta à tarde pra você.", 20) });
+    expect((await pronta(plus(210)))!.retomarEm).toBeNull();
+    await pede("Quanto custa a hidratação?", "C2", plus(220));
+    await generateForDeal(dealId, { now: plus(230), caller: responde("A hidratação fica R$ 80.", 20) });
+    expect((await pronta(plus(240)))!.retomarEm).toBeNull();
+    await db.update(deals).set({ scheduledAt: plus(5 * 86400) }).where(eq(deals.id, dealId));
+    await pede("Vou ter que cancelar, depois vejo", "C3", plus(250));
+    await generateForDeal(dealId, { now: plus(260), caller: responde(texto, 15) });
+    expect((await pronta(plus(270)))!.retomarEm).toBeNull();
   });
 });

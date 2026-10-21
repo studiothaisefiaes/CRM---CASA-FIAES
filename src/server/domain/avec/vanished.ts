@@ -28,7 +28,7 @@ const ALIVE = ["agendado", "confirmado", "solicitado", "conferir"];
 
 export type SweepRow = { key: string; day: string; hm: string; clientKey: string; professionalId: string | null };
 
-/** "avec:res:2026-10-15T11:30|carla duarte|pedicure" → dia, hora e o pedaço da cliente. */
+/** "avec:res:2026-10-15T11:30|carla werneck|pedicure" → dia, hora e o pedaço da cliente. */
 export function parseReservationKey(key: string): { day: string; hm: string; clientKey: string } | null {
   const m = /^avec:res:(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})\|([^|]*)\|/.exec(key);
   return m ? { day: m[1], hm: m[2], clientKey: m[3] } : null;

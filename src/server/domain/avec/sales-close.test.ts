@@ -91,10 +91,10 @@ describe("comanda ou pagamento do Avec dá baixa no horário da cliente no dia",
   });
 
   it("QA r66 I-3: Corte 10:00 e Hidratação 15:00 da mesma profissional, venda só do Corte: fecha o Corte e a Hidratação vai para conferir", async () => {
-    const m = await cliente("Carla Duarte");
+    const m = await cliente("Carla Werneck");
     const corte = await ap({ startsAt: bahia(16, 10), contactId: m.contactId, professionalId: s.ana.id, serviceId: s.corte.id, serviceLabel: "Corte" });
     const hidra = await ap({ startsAt: bahia(16, 15), contactId: m.contactId, professionalId: s.ana.id, serviceId: s.hidratacao.id, serviceLabel: "Hidratação" });
-    await importa("itens.xlsx", AVEC_H.itens, [item({ dia: "16/10/2026", comanda: 51, cliente: "Carla Duarte", celular: Number(m.digits), servico: "Corte", pro: "Ana Lima" })], { now: NOW });
+    await importa("itens.xlsx", AVEC_H.itens, [item({ dia: "16/10/2026", comanda: 51, cliente: "Carla Werneck", celular: Number(m.digits), servico: "Corte", pro: "Ana Lima" })], { now: NOW });
     expect((await get(corte.id)).status).toBe("compareceu");
     expect(await get(hidra.id)).toMatchObject({ status: "agendado", avecReview: "venda_sem_par" });
   });

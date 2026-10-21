@@ -111,7 +111,7 @@ test.describe("lado da equipe (computador)", () => {
     await page.goto(`/atendimento?lead=${d.id}`);
     await page.getByRole("button", { name: "Enviar link de confirmação" }).click();
     // Link curto no domínio da cliente (CLIENT_LINK_URL = 127.0.0.1 no e2e): 8 símbolos sem 0/O/1/l/I.
-    await expect(page.getByLabel("Mensagem", { exact: true })).toHaveValue(new RegExp(`^Oi, Fabi! Seu horário na Casa Fiaes: .+ é só tocar aqui: ${CLIENT_URL.replace(/[.]/g, "\\.")}/c/[2-9A-HJ-NP-Za-km-z]{8}$`));
+    await expect(page.getByLabel("Mensagem", { exact: true })).toHaveValue(new RegExp(`^Olá, Fabi! 💛\\n\\nSeu horário na Casa Fiaes:\\n[^]+ é só tocar aqui: ${CLIENT_URL.replace(/[.]/g, "\\.")}/c/[2-9A-HJ-NP-Za-km-z]{8}$`));
     await page.waitForTimeout(1500);
     expect((await e2eSql("select count(*)::int as n from messages where deal_id = $1 and direction = 'out'", [d.id]))[0].n).toBe(0);
     expect((await e2eSql("select count(*)::int as n from outbox where deal_id = $1", [d.id]))[0].n).toBe(0);

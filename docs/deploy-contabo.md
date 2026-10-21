@@ -199,7 +199,7 @@ Nada aqui envia WhatsApp. Ordem: código → assinaturas → acerto do 1A → ta
    sudo mv /opt/crm /opt/crm-anterior-r13 && sudo mv /opt/crm-r14 /opt/crm
    cd /opt/crm && sudo -u crm pm2 start crm-web && curl -s https://crm.217-76-54-18.sslip.io/api/health   # web no ar; status "degraded" é esperado aqui (worker ainda parado)
    ```
-6. Assinaturas, pela tela (Configurações › Equipe): SARA em "Daniela Rezende" e CATI em "Natália Campos".
+6. Assinaturas, pela tela (Configurações › Equipe): SARA em "Yara Igarashi" e CATI em "Helena Henriques".
 7. Lote 1A: `cd /opt/crm && sudo -u crm npx tsx scripts/autoria-assinaturas.ts --dry-run` → mostrar as tabelas ao dono → `sudo -u crm npx tsx scripts/autoria-assinaturas.ts --aplicar` (tem de terminar em "Conferência: nada pendente.").
 8. Lote 1B: `sudo -u crm npx tsx scripts/tarefas-sem-responsavel.ts --dry-run` → ok do dono → `sudo -u crm env BACKUP_DIR=/home/crm/backups npx tsx scripts/tarefas-sem-responsavel.ts --aplicar`.
 9. Lote 1C: `sudo -u crm npx tsx scripts/migrar-funil-lote1c.ts --dry-run` (comparar com a tabela "Migração" da spec; até 3 de diferença por linha é normal) → ok do dono →

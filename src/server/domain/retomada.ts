@@ -1,6 +1,6 @@
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "../db";
-import { contacts, deals, outbox, tasks } from "../db/schema";
+import { aiSuggestions, contacts, deals, outbox, tasks } from "../db/schema";
 import { markWaitingForClient } from "./funnel";
 import { cancelScheduled, scheduleMessage, scheduledOf, sendScheduledNow, SCHEDULED_SOURCE } from "./scheduled";
 import { stopAttemptsTx } from "./attempts";
@@ -9,6 +9,7 @@ import { emit, logEvent } from "./events";
 import { UserFacingError } from "./errors";
 import { clientFirstName } from "../../lib/attempts";
 import { fillFirstName } from "../../lib/retomada";
+import { dueLabel } from "../../lib/next-action";
 
 /**
  * Retomada (nova organização, 16/10): UMA ação para "Retomar depois", "Próxima ação", "Agendar mensagem" e "Mensagem agendada".
@@ -59,6 +60,25 @@ export async function resume(dealId: string, input: ResumeInput, userId: string,
   await logEvent(db, dealId, "retomada", { para: input.dueAt.toISOString(), mensagem: !!scheduled, tarefa: task?.id ?? null }, userId);
   await emit("lead_atualizado", { dealId });
   return { dueAt: task?.dueAt ?? input.dueAt, taskId: task?.id ?? null, outboxId: scheduled?.id ?? null };
+}
+
+/** O motivo do lembrete que nasce da sugestão da IA (a cliente cancelou sem nova data). */
+export const RETOMADA_IA_MOTIVO = "Retomar: cancelou sem remarcar";
+/** Há retomada aberta nesta conversa? (a sugestão não propõe outra por cima) */
+export async function hasOpenResume(dealId: string): Promise<boolean> {
+  return !!(await openNextAction(dealId));
+}
+/**
+ * "Programar retomada" da sugestão da IA (Cati 17/10): o toque da atendente cria o lembrete pelo MESMO caminho do "Retomar…" (`resume`), no dia
+ * que a sugestão propôs. Só lembrete: nenhuma mensagem é programada nem enviada. Já tem retomada aberta → não troca (avisa).
+ */
+export async function resumeFromSuggestion(suggestionId: string, dealId: string, userId: string, now = new Date()): Promise<ResumeResult> {
+  const [s] = await db.select({ retomarEm: aiSuggestions.retomarEm }).from(aiSuggestions).where(and(eq(aiSuggestions.id, suggestionId), eq(aiSuggestions.dealId, dealId)));
+  if (!s?.retomarEm) throw new UserFacingError("Esta sugestão não tem retomada para programar.");
+  if (s.retomarEm.getTime() < now.getTime() + 5 * 60_000) throw new UserFacingError("Essa data já passou. Use Retomar… para escolher outra.");
+  const aberta = await openNextAction(dealId);
+  if (aberta) throw new UserFacingError(`Esta conversa já tem retomada marcada (${dueLabel(aberta.dueAt.getTime(), now.getTime())}).`);
+  return resume(dealId, { dueAt: s.retomarEm, motivo: RETOMADA_IA_MOTIVO }, userId, now);
 }
 
 /** "Feito": a retomada conta como feita (a varredura das tentativas segue); a mensagem programada dela não sai mais. */

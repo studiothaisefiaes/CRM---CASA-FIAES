@@ -1,5 +1,6 @@
 import { displayName } from "./display-name";
 import { prettyName } from "./services-view";
+import { messageDay } from "./client-link";
 
 /**
  * O horário que a sugestão da IA propôs (pedido do dono, 17/10: "quero ela até MARCANDO, tudo como sugestão"). Módulo puro, tela e servidor.
@@ -34,11 +35,17 @@ export function slotLabel(s: ProposedSlot): string {
     .filter(Boolean).join(" · ");
 }
 
-/** O padrão da Casa: "Confirmado agendamento de Avaliação dia 20/10 às 15:00h com Thaise." Só vai para a caixa de mensagem (nunca sai sozinho). */
+/**
+ * O padrão da Casa ("Confirmado agendamento de Avaliação com Thaise"), no desenho de WhatsApp do lembrete (21/10): data por extenso e
+ * hora cada uma na sua linha, só elas em negrito. Só vai para a caixa de mensagem (nunca sai sozinho). O CRM lê de volta
+ * (`parseConfirmation`) e marca Agendado com o dia e a hora.
+ */
 export function confirmText(s: Pick<ProposedSlot, "day" | "time" | "professionalName" | "serviceLabel">): string {
   const svc = s.serviceLabel ? ` de ${prettyName(s.serviceLabel)}` : "";
   const pro = s.professionalName ? ` com ${firstWord(s.professionalName)}` : "";
-  return `Confirmado agendamento${svc} dia ${ddmm(s.day)} às ${s.time}h${pro}.`;
+  const at = new Date(`${s.day}T${s.time}:00-03:00`); // Salvador, sem horário de verão
+  return [`Confirmado agendamento${svc}${pro} 💛`, "", `📅 *${messageDay(at)}*`, `⏰ às *${hourText(s.time)}*`, "",
+    "Temos tolerância de 15 minutos. Será uma alegria te receber na Casa Fiaes!"].join("\n");
 }
 
 /** A sugestão já é a confirmação no padrão da Casa? Então é ela que vai para a caixa depois de marcar. */

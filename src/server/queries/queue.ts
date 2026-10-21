@@ -335,9 +335,12 @@ const phoneCond = (q: string): SQL => {
   return vs.length ? sql`(${sql.join(vs.map((v) => sql`${contacts.phoneE164} like ${"%" + v + "%"}`), sql` or `)})` : sql`false`;
 };
 const cpfCond = (q: string): SQL => { const d = cpfSearchDigits(q); return d ? sql`${contacts.cpf} like ${"%" + d + "%"}` : sql`false`; };
+/** Mãe e filha no mesmo número (0051, 21/10): o nome de outra pessoa do número acha a conversa do número (a do titular). */
+const personHit = (like: string) =>
+  sql`exists (select 1 from contacts pp where pp.shares_phone_with = ${contacts.id} and lower(coalesce(pp.name, '')) like ${like})`;
 const qCond = (q: string): SQL => {
   const term = q.trim().toLowerCase(), like = `%${term}%`;
-  return sql`(lower(coalesce(${contacts.name}, '')) like ${like} or ${phoneCond(q)} or ${cpfCond(q)} or ${transcriptHit(like, term)})`;
+  return sql`(lower(coalesce(${contacts.name}, '')) like ${like} or ${personHit(like)} or ${phoneCond(q)} or ${cpfCond(q)} or ${transcriptHit(like, term)})`;
 };
 
 /**
@@ -545,13 +548,17 @@ export async function getQueue(user: Who, opts: QueueOptions = {}): Promise<Queu
   const byCpf = cpfQ && entries.length
     ? new Set((await db.select({ id: deals.id }).from(deals).innerJoin(contacts, eq(contacts.id, deals.contactId)).where(and(inArray(deals.id, entries.map((e) => e.r.id)), sql`${contacts.cpf} like ${"%" + cpfQ + "%"}`))).map((x) => x.id))
     : new Set<string>();
+  // O nome de outra pessoa do número (a filha no celular da mãe, 21/10), só dos leads em jogo, uma consulta.
+  const byPerson = term && entries.length
+    ? new Set((await db.select({ id: deals.id }).from(deals).innerJoin(contacts, eq(contacts.id, deals.contactId)).where(and(inArray(deals.id, entries.map((e) => e.r.id)), personHit(`%${term}%`)))).map((x) => x.id))
+    : new Set<string>();
   // Busca também nas transcrições dos áudios (só dos leads em jogo, uma consulta).
   const heard = term.length >= 3 && !reengage && !archivedView && entries.length
     ? new Set((await db.select({ id: deals.id }).from(deals).where(and(inArray(deals.id, entries.map((e) => e.r.id)), transcriptHit(`%${term}%`, term)))).map((x) => x.id))
     : new Set<string>();
   const wanted = reengage || archivedView || listView ? [] : entries.filter((e) =>
     viewTest[(opts.view ?? "todos") as keyof typeof viewTest](e) && (!opts.filtro || filterTest[opts.filtro](e)) && (!opts.foco || focoTest[opts.foco](e)) && (opts.aba !== "nao-lidas" || e.r.unread > 0)
-    && (!term || (e.r.name ?? "").toLowerCase().includes(term) || phoneMatches(e.r.phone, phoneVariants) || heard.has(e.r.id) || byCpf.has(e.r.id)));
+    && (!term || (e.r.name ?? "").toLowerCase().includes(term) || phoneMatches(e.r.phone, phoneVariants) || heard.has(e.r.id) || byCpf.has(e.r.id) || byPerson.has(e.r.id)));
 
   // Dentro da seção: quem espera há mais tempo primeiro; ações pelo vencimento; parados pelo mais antigo; o resto pela conversa mais recente.
   const order: Record<QueueSectionKey, (a: Entry, b: Entry) => number> = {

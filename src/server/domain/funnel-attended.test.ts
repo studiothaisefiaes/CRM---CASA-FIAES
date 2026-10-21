@@ -28,11 +28,11 @@ const toStage = (id: string, key: string, at = T0) => db.transaction((tx) => mov
 
 describe("títulos dos combinados", () => {
   it("nome em Título e, sem nome, o telefone formatado (Remarcar e Conferir se compareceu)", async () => {
-    const r = await recordInbound({ channelId: null, externalId: "L-caps", phoneRaw: "71977776666", pushName: "WANDA REZENDE", body: "oi", at: T0 });
+    const r = await recordInbound({ channelId: null, externalId: "L-caps", phoneRaw: "71977776666", pushName: "ÚRSULA DUARTE", body: "oi", at: T0 });
     if (!("dealId" in r)) throw new Error("sem lead");
     await toStage(r.dealId, "agendado");
     await markAttendance(r.dealId, "faltou", ana);
-    expect(await openTitles(r.dealId)).toEqual(["Remarcar com Wanda Rezende"]);
+    expect(await openTitles(r.dealId)).toEqual(["Remarcar com Úrsula Duarte"]);
     const { scheduleDeal } = await import("./updates");
     const sem = await recordInbound({ channelId: null, externalId: "L-sem", phoneRaw: "71990000002", pushName: null, body: "oi", at: T0 });
     if (!("dealId" in sem)) throw new Error("sem lead");

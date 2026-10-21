@@ -25,7 +25,7 @@ const v = (name: string, services: DayVisitService[], o: Partial<DayVisit> = {})
   key: name, visitId: name, contactId: name, dealId: null, name, day: "2026-10-17", entry: services[0].start, services, cancelled: [], comanda: null, values: true, ...o,
 });
 const VISITS = [
-  v("Helena Esteves", [s("confirmado", { service: "Avaliação", pro: "Gilvan" })]),
+  v("Fabiana Otero", [s("confirmado", { service: "Avaliação", pro: "Gilvan" })]),
   v("Thamires Domingues", [s("em_atendimento", { arrivedAt: at("08:40"), service: "Manutenção Método Fiaes®", pro: "Rose" }), s("chegou"), s("compareceu", { service: "Manicure" })]),
   v("Helaine Neves", [s("agendado", { start: at("13:00"), service: "Luzes e Mechas", pro: "Thaise" })]),
   v("Suzana Melo", [s("compareceu", { service: "Escova", pro: "Jamille" })], { comanda: { id: "cm1", number: 4, status: "aberta" } }),
@@ -79,7 +79,7 @@ it("sem caixa no CRM: nada de 'falta pagar' nem Receber; com caixa: 'falta pagar
 
 it("Chegou na linha marca a visita toda (o primeiro serviço planejado) e não abre a visita", async () => {
   render(<DayTable visits={VISITS} nowMs={NOW} caixaOn={false} canMark agendaMode="dupla" />);
-  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Chegou: Helena Esteves" })); });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Chegou: Fabiana Otero" })); });
   expect(setAppointmentStatusAction).toHaveBeenCalledWith(VISITS[0].services[0].appointmentId, "chegou");
   expect(screen.queryByRole("dialog")).toBeNull();
 });

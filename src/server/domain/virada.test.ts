@@ -83,7 +83,7 @@ describe("sendViradaTest: o texto de verdade no WhatsApp digitado (provider fals
     const preview = await viradaPreview("lembrete", { nome: "Thaise Fiaes", now: NOW });
     expect(preview.kind).toBe("text");
     expect(preview.text).toContain("Thaise");
-    expect(preview.text).toContain("terça, 20/10"); // amanhã
+    expect(preview.text).toContain("📅 *terça-feira, 20/10*\n⏰ às *10h*"); // amanhã
     const r = await sendViradaTest("lembrete", "(71) 98888-7777", g, { now: NOW });
     expect(sentTexts).toEqual([{ to: PHONE, text: preview.text }]);
     const [c] = await db.select().from(contacts).where(eq(contacts.phoneE164, PHONE));

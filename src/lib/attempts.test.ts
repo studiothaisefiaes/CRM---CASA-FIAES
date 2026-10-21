@@ -36,7 +36,7 @@ it("nome no título do combinado: em Título, e telefone formatado (nunca o núm
   expect(clientFirstName("+557190000002")).toBe("(71) 9000-0002");
   expect(clientFirstName("5571990000002")).toBe("(71) 99000-0002");
   expect(clientFirstName(null)).toBe("a cliente");
-  expect(clientFullName("WANDA REZENDE DOS SANTOS")).toBe("Wanda Rezende dos Santos");
+  expect(clientFullName("ÚRSULA DUARTE DOS SANTOS")).toBe("Úrsula Duarte dos Santos");
   expect(clientFullName("+5571990000002")).toBe("(71) 99000-0002");
   expect(clientFullName("  ")).toBe("a cliente");
 });

@@ -9,7 +9,7 @@ export type ReplyVars = {
 export const REPLY_VAR_HELP: { token: string; label: string; button: string }[] = [
   { token: "{primeiro_nome}", button: "Primeiro nome", label: "primeiro nome da cliente" },
   { token: "{saudacao}", button: "Saudação", label: "Bom dia, Boa tarde ou Boa noite (hora de Salvador)" },
-  { token: "{data_horario}", button: "Data e horário", label: "dia e hora do próximo horário (ex.: qui 22/10 às 15:00)" },
+  { token: "{data_horario}", button: "Data e horário", label: "dia e hora do próximo horário (ex.: quinta-feira, 22/10 às 15h)" },
   { token: "{profissional}", button: "Profissional", label: "quem faz o serviço no próximo horário" },
   { token: "{servico}", button: "Serviço", label: "o serviço do próximo horário" },
   { token: "{meu_nome}", button: "Meu nome", label: "o seu primeiro nome (de quem envia)" },

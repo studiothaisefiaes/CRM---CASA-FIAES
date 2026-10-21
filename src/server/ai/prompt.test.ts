@@ -130,6 +130,23 @@ describe("parte da conversa", () => {
     const casa = buildUser({ ...base, messages: [{ direction: "out", kind: "text", body: "Oi!", transcript: null, at: now }] });
     expect(casa).not.toContain("<tarefa>");
   });
+  it("Casa por último (Cati 16/10): o que a Casa já mandou vai explícito; há pouco → complemento; horas sem resposta → retomada delicada", () => {
+    const valor = { direction: "out" as const, kind: "text", body: "*SARA - CASA FIAES:*\nA escova fica R$ 80.", transcript: null, at: new Date("2026-10-16T16:58:00Z") };
+    const agora = buildUser({ ...base, messages: [...base.messages, valor] });
+    expect(agora).toContain("A última mensagem é da Casa: escreva a PRÓXIMA mensagem natural da Casa");
+    expect(agora).toContain('O que a Casa já mandou depois da última fala da cliente (NÃO repita nem reformule): "A escova fica R$ 80."');
+    expect(agora).toContain("COMPLEMENTE");
+    expect(agora).not.toContain("RETOME");
+    expect(agora).not.toContain("SARA");
+    // Dois dias depois, sem resposta dela: retomar com delicadeza, com pergunta fácil, sem copiar.
+    const depois = buildUser({ ...base, now: new Date("2026-10-18T13:00:00Z"), messages: [...base.messages, valor] });
+    expect(depois).toMatch(/A cliente não respondeu desde .*16\/10.*: RETOME com delicadeza/);
+    expect(depois).toContain("UMA pergunta fácil de responder");
+    expect(depois).not.toContain("COMPLEMENTE");
+    // Duas mensagens seguidas da Casa: as duas entram (a ligação não).
+    const duas = buildUser({ ...base, messages: [...base.messages, valor, { ...valor, kind: "call", body: null }, { ...valor, body: "Fica na Alameda das Espatódeas, 10." }] });
+    expect(duas).toContain('"A escova fica R$ 80." "Fica na Alameda das Espatódeas, 10."');
+  });
   it("citação e mensagem automática aparecem na conversa (a IA sabe a que ela respondeu e o que não foi alguém da equipe)", () => {
     const u = buildUser({ ...base, messages: [
       { direction: "out", kind: "text", body: "Estamos fora do horário de atendimento.", transcript: null, at: now, auto: true },

@@ -5,6 +5,7 @@ import { coalesce, shouldRefresh } from "@/lib/live-scope";
 import { startLongPoll } from "@/lib/live-poll";
 import { playAlert } from "./sound";
 import { setRefreshing, takeUrlAhead } from "./refresh-gate";
+import { checkVersion } from "./version-state";
 
 export { shouldRefresh };
 
@@ -17,6 +18,9 @@ const REFRESH_MAX_WAIT_MS = 2000; // fluxo contínuo de avisos não adia o refre
 const FOCUS_MIN_GAP_MS = 5000; // voltar para a aba/janela não recarrega se acabou de recarregar
 const SSE_WAIT_MS = 3000; // sem o primeiro aviso nesse prazo, o stream está preso no caminho (proxy/túnel): vai de long-polling
 const POLL_MODE_KEY = "crm-live-mode"; // a aba lembra: depois da primeira vez já começa no long-polling
+const VERSION_FRESH_MS = 5000; // a versão conferida há menos disso vale para o próximo refresh
+const VERSION_RETRY_MS = 5000; // servidor fora do ar (troca de versão): espera e confere de novo
+const VERSION_RETRIES = 6;
 const Ctx = createContext<Api>({ subscribe: () => () => {}, requestRefresh: () => {} });
 
 /**
@@ -75,8 +79,19 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   useEffect(() => { if (!refreshing) setRefreshing(false); }, [refreshing]);
 
   useEffect(() => {
-    const run = () => {
+    let stopped = false;
+    let failures = 0;
+    let recheck: ReturnType<typeof setTimeout> | undefined;
+    const run = async () => {
       if (document.visibilityState !== "visible") { stale.current = true; return; }
+      // Versão nova do CRM (20/10): o refresh respondido pelo servidor novo recarrega a página inteira na mão da pessoa (o Next faz isso
+      // quando o build muda), e com o servidor reiniciando ele cai na página de erro do navegador. Antes, confere a versão: nova, não
+      // recarrega (o aviso "Versão nova do CRM. Atualizar" aparece); servidor fora do ar, tenta de novo em 5 s (até 30 s, depois segue).
+      const v = await checkVersion({ maxAgeMs: VERSION_FRESH_MS });
+      if (stopped) return;
+      if (v === "nova") return;
+      if (v === "falhou" && failures < VERSION_RETRIES) { failures++; clearTimeout(recheck); recheck = setTimeout(() => refresh.current?.(), VERSION_RETRY_MS); return; }
+      failures = 0;
       stale.current = false;
       lastAt.current = Date.now();
       setRefreshing(true); // já agora (o `refreshing` do React só liga no próximo render)
@@ -90,7 +105,6 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     let retry: ReturnType<typeof setTimeout> | undefined;
     let watchdog: ReturnType<typeof setTimeout> | undefined;
     let poll: { stop: () => void } | null = null;
-    let stopped = false;
     let dropped = false;
     const dispatch = (ev: LiveEvent) => listeners.current.forEach((l) => l(ev));
     // Som em toda mensagem de cliente (conversa nova ou não, em qualquer etapa); ligação atendida e envios da Casa não tocam.
@@ -129,7 +143,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     // Aba que estava oculta e perdeu avisos volta a mostrar o dado novo.
     const onVisible = () => { if (document.visibilityState === "visible" && stale.current) call(); };
     document.addEventListener("visibilitychange", onVisible);
-    return () => { stopped = true; es?.close(); clearTimeout(retry); clearTimeout(watchdog); poll?.stop(); call.cancel(); refresh.current = null; document.removeEventListener("visibilitychange", onVisible); };
+    return () => { stopped = true; es?.close(); clearTimeout(retry); clearTimeout(watchdog); clearTimeout(recheck); poll?.stop(); call.cancel(); refresh.current = null; document.removeEventListener("visibilitychange", onVisible); };
   }, [router]);
 
   const subscribe = useCallback((l: Listener) => { listeners.current.add(l); return () => { listeners.current.delete(l); }; }, []);

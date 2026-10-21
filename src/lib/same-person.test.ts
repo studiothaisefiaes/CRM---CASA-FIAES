@@ -3,22 +3,22 @@ import { groupNames, nameTokens, samePerson } from "./same-person";
 
 describe("samePerson (várias pessoas no mesmo número)", () => {
   it.each([
-    ["Marina Esteves Rezende", "Úrsula Duarte Neves"], ["Tânia De Xavier Salgado", "Lia"], ["Juliana", "Gisele Werneck"], ["Linda Cristiane", "CRISTIANE ATUALIZAR"],
-    ["JACKELINE ANDRADE", "jaqueline modelo"], ["CARLA BARROS VIDAL", "CLARA"], ["Carla Zanetti Jardim Campos", "NANCI MAIA"], ["HELENA DUARTE", "WANDA HELENA OTERO DUARTE"],
-    ["Lara Freitas", "LARA LACERDA DE DUARTE VIDAL"], ["Cris", "INGRID WERNECK"], ["Lu", "Luciana Souza"], ["Marineide Araújo", "Neide"], ["Isa Alves", "Adalgisa Maria Alves"],
-    ["VERA XAVIER", "AIR SOUZA"], ["Anime Wilberger", "amine"], ["Carla Teles", "Bia Aragão"], ["úrsula freitas", "Gabriela Coutinho"], ["Jacineide", "Jacy"],
-    ["Ana Carolina Andrade", "RENATA XAVIER DUARTE"], ["FABIANA XAVIER (PITY)", "PITTY"], ["Carla Igarashi Campos", "Malu"], ["Dra. Paula", "Paula Souza"],
+    ["Marina Otero Otero", "Quênia Otero Neves"], ["Renata De Rezende Vidal", "Lia"], ["Juliana", "Yara Duarte"], ["Linda Cristiane", "CRISTIANE ATUALIZAR"],
+    ["JACKELINE ANDRADE", "jaqueline modelo"], ["CARLA SALGADO ZANETTI", "CLARA"], ["Carla Zanetti Uchoa Klein", "NANCI MAIA"], ["DANIELA JARDIM", "ÚRSULA DANIELA OTERO JARDIM"],
+    ["Yara Xavier", "INGRID QUINTELA DE HENRIQUES FREITAS"], ["Cris", "QUÊNIA DUARTE"], ["Lu", "Luciana Souza"], ["Marineide Araújo", "Neide"], ["Isa Alves", "Adalgisa Maria Alves"],
+    ["ÚRSULA REZENDE", "AIR SOUZA"], ["Anime Wilberger", "amine"], ["Úrsula Quintela", "Bia Aragão"], ["tânia gomes", "Gabriela Coutinho"], ["Jacineide", "Jacy"],
+    ["Ana Carolina Andrade", "ELISA LACERDA HENRIQUES"], ["FABIANA REZENDE (PITY)", "PITTY"], ["Carla Quintela Klein", "Malu"], ["Dra. Paula", "Paula Souza"],
   ])("%s = %s", (a, b) => expect(samePerson(a, b)).toBe(true));
 
   it.each([
-    ["Wanda Rezende", "Helena Rezende"], ["Kelly Zanetti Zanetti", "BIANCA ZANETTI"], ["MARINA KLEIN", "SIMONE"], ["MARINA IGARASHI", "CARLA IGARASHI"],
-    ["Carla Werneck Henriques", "Carla Ingrid Rosa"], ["PATRÍCIA ESTEVES XAVIER ( otero de Esteves )", "Esteves Esteves"], ["HELENA XAVIER (MÃE DE ALINE)", "RENATA REZENDE"],
-    ["INGRID XAVIER", "WANDA CARLA SALGADO MOURA"], ["Wanda Henriques", "ANA BORJA"],
+    ["Tânia Klein", "Patrícia Klein"], ["Daniela Lacerda Jardim", "HELENA JARDIM"], ["MARINA SALGADO", "SIMONE"], ["CARLA CAMPOS", "YARA CAMPOS"],
+    ["Carla Zanetti Henriques", "Carla Quênia Rosa"], ["ELISA OTERO REZENDE ( rezende de Freitas )", "Freitas Quintela"], ["TÂNIA NOGUEIRA (MÃE DE ALINE)", "GISELE REZENDE"],
+    ["ZÉLIA XAVIER", "ÚRSULA ÚRSULA WERNECK JARDIM"], ["Úrsula Vidal", "ANA BORJA"],
   ])("%s ≠ %s", (a, b) => expect(samePerson(a, b)).toBe(false));
 
   it("nome vazio nunca separa; tokens sem acento, sem parêntese e sem 'de'", () => {
     expect(samePerson("", "Bruna")).toBe(true);
-    expect(nameTokens("Dra. Carla da Quintela (mãe)")).toEqual(["maria", "conceicao"]);
+    expect(nameTokens("Dra. Carla da Lacerda (mãe)")).toEqual(["maria", "conceicao"]);
   });
 
   it("groupNames junta por transitividade e mantém a ordem", () => {

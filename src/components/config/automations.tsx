@@ -169,7 +169,7 @@ function Editor({ item, stages, options, onClose }: { item: Item | "new" | null;
       case "mudar_status": return { type, status: "aguardando" };
       case "alertar_gestao": return { type, message: "Atenção: {nome}" };
       case "enviar_mensagem": return { type, message: "Oi, {nome}! " };
-      case "enviar_enquete_confirmacao": return { type, message: "Oi, {nome}! Seu horário na Casa Fiaes é {data}, às {hora}. Você confirma?" };
+      case "enviar_enquete_confirmacao": return { type, message: "Olá, {nome}! Seu horário na Casa Fiaes é {data}, às {hora}. Você confirma?" };
       case "alertar_responsavel": return { type, message: "Hora de falar com {nome}" };
     }
   };
@@ -288,7 +288,7 @@ function Editor({ item, stages, options, onClose }: { item: Item | "new" | null;
               </div>
             ))}
             {v.actions.length < MAX_ACTIONS && <button type="button" onClick={() => setV({ ...v, actions: [...v.actions, newAction("alertar_responsavel")] })} className="self-start text-sm text-gold-ink hover:underline">+ Adicionar ação</button>}
-            <p className="text-xs text-muted">Nas mensagens e legendas você pode usar {"{nome}"}, {"{etapa}"}, {"{minutos}"}, {"{dias}"} e, em agendamentos, {"{data}"} e {"{hora}"}. Mensagem e arquivo podem esperar até {options.maxDelay} min (Configurações › Recursos). Etiqueta, nota, passar para e status valem mesmo com as Automáticas pausadas.</p>
+            <p className="text-xs text-muted">Nas mensagens e legendas você pode usar {"{nome}"}, {"{etapa}"}, {"{minutos}"}, {"{dias}"} e, em agendamentos, {"{data}"} (quinta-feira, 22/10) e {"{hora}"} (14h). Mensagem e arquivo podem esperar até {options.maxDelay} min (Configurações › Recursos). Etiqueta, nota, passar para e status valem mesmo com as Automáticas pausadas.</p>
             {v.actions.some((x) => SEND_ACTIONS.has(x.type)) && <p className="text-sm bg-gold-soft text-gold-ink rounded-[var(--radius-control)] px-3 py-2">Esta automação manda mensagem de verdade para as clientes, pelo número da conversa, só no horário de atendimento e respeitando o limite de envios por hora. Revise o texto antes de ligar.{v.actions.some((x) => x.type === "enviar_enquete_confirmacao") && " A enquete tem duas opções: Confirmo (marca o horário como confirmado) e Preciso remarcar (cria uma tarefa para remarcar)."}{v.actions.some((x) => x.type === "pedir_avaliacao") && " A Pesquisa de satisfação usa a pergunta de Configurações › Depois do atendimento e só sai com ela ligada."}</p>}
           </div>
         </Block>

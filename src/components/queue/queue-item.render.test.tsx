@@ -88,12 +88,12 @@ it("linha 3: duas pílulas, a etapa (cor da etapa) e o status (Aberto / Aguardan
 it("nome em MAIÚSCULAS aparece em Título; à direita a hora da última mensagem (não outro contador)", () => {
   vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-15T12:40:00Z")); // 09:40 em Salvador
   const { container } = render(<HoursProvider hours={HOURS}><QueueList sections={[{ key: "aguardando", items: [
-    { ...base, dealId: "a", name: "SILVIA NOGUEIRA DOS HENRIQUES", lastDirection: "in", lastAt: "2026-10-15T12:31:00Z", awaitingSince: "2026-10-15T12:31:00Z" },
+    { ...base, dealId: "a", name: "BIANCA KLEIN DOS HENRIQUES", lastDirection: "in", lastAt: "2026-10-15T12:31:00Z", awaitingSince: "2026-10-15T12:31:00Z" },
     { ...base, dealId: "b", name: "Marília", lastDirection: "in", lastAt: "2026-10-14T20:00:00Z", awaitingSince: "2026-10-15T12:35:00Z" },
     { ...base, dealId: "c", name: "Nicollas", lastDirection: "in", lastAt: "2026-10-10T20:00:00Z", awaitingSince: "2026-10-15T12:36:00Z" },
   ] }]} /></HoursProvider>);
   const [a, b, c] = [...container.querySelectorAll("[role=option]")];
-  expect(a.querySelector("[data-nome]")!.textContent).toBe("Silvia Nogueira dos Henriques");
+  expect(a.querySelector("[data-nome]")!.textContent).toBe("Bianca Klein dos Henriques");
   expect(a.querySelector("[data-hora]")!.textContent).toBe("09:31");
   expect(b.querySelector("[data-hora]")!.textContent).toBe("ontem");
   expect(c.querySelector("[data-hora]")!.textContent).toBe("10/10");

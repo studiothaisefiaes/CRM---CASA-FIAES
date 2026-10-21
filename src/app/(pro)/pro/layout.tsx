@@ -5,6 +5,8 @@ import { ToastProvider } from "@/components/ui/toast";
 import { ConfirmNoShowProvider } from "@/components/ui/confirm-no-show";
 import { LiveProvider, LiveRefresh } from "@/components/shell/live";
 import { RenewSession } from "@/components/pro/renew-session";
+import { VersionWatch } from "@/components/shell/version-watch";
+import { buildId } from "@/server/build-id";
 import { ProShell, ProSignOut, type ProNavItem } from "@/components/pro/pro-shell";
 import { firstName } from "@/lib/authorship";
 import { titleCase } from "@/lib/pro-day";
@@ -50,6 +52,7 @@ export default async function ProLayout({ children }: LayoutProps<"/pro">) {
       <LiveProvider>
         <LiveRefresh scopes={["agenda"]} />
         <RenewSession />
+        <VersionWatch versao={buildId()} />
         <ProShell name={titleCase(pro.name)} nav={nav}>{children}</ProShell>
       </LiveProvider>
       </ConfirmNoShowProvider>

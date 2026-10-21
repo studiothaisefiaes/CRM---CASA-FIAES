@@ -4,18 +4,13 @@ import { alias } from "drizzle-orm/pg-core";
 import { appointments, contacts, deals, lists, professionals } from "../db/schema";
 import { firstName } from "@/lib/authorship";
 import type { ReplyVars } from "@/lib/quick-reply";
+import { messageDay, messageHour } from "@/lib/client-link";
 
-const OFFSET_MS = 3 * 3_600_000;
-const WEEK = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
-const pad = (n: number) => String(n).padStart(2, "0");
 /** Até quanto tempo para a frente um horário vale (regra do Lote 0: datas absurdas do Avec ficam de fora). */
 const FUTURE_MAX_MS = 180 * 86_400_000;
 
-/** "qui 22/10 às 15:00" (Salvador). */
-export function slotLabel(at: Date): string {
-  const d = new Date(at.getTime() - OFFSET_MS);
-  return `${WEEK[d.getUTCDay()]} ${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)} às ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
-}
+/** {data_horario}: "quinta-feira, 22/10 às 15h" (Salvador), o mesmo formato do lembrete (21/10). */
+export const slotLabel = (at: Date): string => `${messageDay(at)} às ${messageHour(at)}`;
 /** "MAIARA" (apelido do Avec) → "Maiara". */
 const nice = (s: string | null | undefined) => (s?.trim() ? s.trim().toLowerCase().replace(/(^|\s)\p{L}/gu, (c) => c.toUpperCase()) : null);
 

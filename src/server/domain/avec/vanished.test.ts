@@ -16,16 +16,16 @@ beforeEach(async () => { await resetDb(); });
 
 describe("varredura: reserva que sumiu do relatório Reservas", () => {
   it("caso Maria Sonia: 11:30 e 15:00 sumiram e veio 13:30 Pago (mesma cliente, dia e profissional) → cada antiga cancelada como remarcada quando some", async () => {
-    await importa("r1.xlsx", AVEC_H.reservas, [reserva({ dia: "15/10/2026", hora: "11:30", cliente: "Carla Duarte", servico: "Pedicure", pro: "MARILIA" })], { now: NOW });
-    await importa("r2.xlsx", AVEC_H.reservas, [reserva({ dia: "15/10/2026", hora: "15:00", cliente: "Carla Duarte", servico: "Pedicure", pro: "MARILIA" })], { now: NOW });
-    await importa("r3.xlsx", AVEC_H.reservas, [reserva({ dia: "15/10/2026", hora: "13:30", cliente: "Carla Duarte", servico: "Pedicure", pro: "MARILIA", status: "Pago" })], { now: NOW });
+    await importa("r1.xlsx", AVEC_H.reservas, [reserva({ dia: "15/10/2026", hora: "11:30", cliente: "Carla Werneck", servico: "Pedicure", pro: "MARILIA" })], { now: NOW });
+    await importa("r2.xlsx", AVEC_H.reservas, [reserva({ dia: "15/10/2026", hora: "15:00", cliente: "Carla Werneck", servico: "Pedicure", pro: "MARILIA" })], { now: NOW });
+    await importa("r3.xlsx", AVEC_H.reservas, [reserva({ dia: "15/10/2026", hora: "13:30", cliente: "Carla Werneck", servico: "Pedicure", pro: "MARILIA", status: "Pago" })], { now: NOW });
     expect((await rows()).map((r) => [hm(r.startsAt), r.status, r.cancelReason, r.cancelledVia, r.cancelNote])).toEqual([
       ["11:30", "cancelado", "remarcado", "avec", "Sumiu do Avec (remarcado para 15:00)."], // o 2º relatório já trouxe 15:00 no lugar dela
       ["13:30", "compareceu", null, null, null],
       ["15:00", "cancelado", "remarcado", "avec", "Sumiu do Avec (remarcado para 13:30)."],
     ]);
     expect((await db.select().from(auditLog)).filter((a) => a.action === "avec_sumiu")).toHaveLength(2);
-    expect((await importa("r3b.xlsx", AVEC_H.reservas, [reserva({ dia: "15/10/2026", hora: "13:30", cliente: "Carla Duarte", servico: "Pedicure", pro: "MARILIA", status: "Pago" })], { now: NOW })).summary.agendamentos).toBe(0);
+    expect((await importa("r3b.xlsx", AVEC_H.reservas, [reserva({ dia: "15/10/2026", hora: "13:30", cliente: "Carla Werneck", servico: "Pedicure", pro: "MARILIA", status: "Pago" })], { now: NOW })).summary.agendamentos).toBe(0);
   });
 
   it("relatório com só uma profissional não toca o horário de outra; cliente que não está no relatório não é tocada", async () => {
@@ -61,20 +61,20 @@ describe("varredura: reserva que sumiu do relatório Reservas", () => {
 
 describe("revisão final: relatório antigo depois do novo", () => {
   it("o Reservas antigo cancela a remarcada; o próximo que a traz viva desfaz (só o 'remarcado' do Avec, sem mexida do CRM)", async () => {
-    const velho = [reserva({ dia: "15/10/2026", hora: "11:30", cliente: "Carla Duarte", servico: "Pedicure", pro: "MARILIA" })];
-    const novo = [reserva({ dia: "15/10/2026", hora: "13:30", cliente: "Carla Duarte", servico: "Pedicure", pro: "MARILIA" })];
+    const velho = [reserva({ dia: "15/10/2026", hora: "11:30", cliente: "Carla Werneck", servico: "Pedicure", pro: "MARILIA" })];
+    const novo = [reserva({ dia: "15/10/2026", hora: "13:30", cliente: "Carla Werneck", servico: "Pedicure", pro: "MARILIA" })];
     await importa("dia14.xlsx", AVEC_H.reservas, velho, { now: NOW });
     await importa("dia15.xlsx", AVEC_H.reservas, novo, { now: NOW });
     await importa("dia14-de-novo.xlsx", AVEC_H.reservas, [...velho, reserva({ dia: "15/10/2026", hora: "09:00", cliente: "Outra Teste", pro: "MARILIA" })], { now: NOW });
-    expect((await rows()).filter((r) => r.clientName === "Carla Duarte").map((r) => [hm(r.startsAt), r.status])).toEqual([["11:30", "agendado"], ["13:30", "cancelado"]]);
+    expect((await rows()).filter((r) => r.clientName === "Carla Werneck").map((r) => [hm(r.startsAt), r.status])).toEqual([["11:30", "agendado"], ["13:30", "cancelado"]]);
     await importa("dia15-de-novo.xlsx", AVEC_H.reservas, [...novo, reserva({ dia: "15/10/2026", hora: "09:30", cliente: "Outra Teste", pro: "MARILIA" })], { now: NOW });
-    expect((await rows()).filter((r) => r.clientName === "Carla Duarte").map((r) => [hm(r.startsAt), r.status, r.cancelReason])).toEqual([["11:30", "cancelado", "remarcado"], ["13:30", "agendado", null]]);
+    expect((await rows()).filter((r) => r.clientName === "Carla Werneck").map((r) => [hm(r.startsAt), r.status, r.cancelReason])).toEqual([["11:30", "cancelado", "remarcado"], ["13:30", "agendado", null]]);
   });
 
   it("o mesmo arquivo importado de novo (já guardado) não varre", async () => {
-    const a = [reserva({ dia: "15/10/2026", hora: "11:30", cliente: "Carla Duarte", pro: "MARILIA" })];
+    const a = [reserva({ dia: "15/10/2026", hora: "11:30", cliente: "Carla Werneck", pro: "MARILIA" })];
     await importa("a.xlsx", AVEC_H.reservas, a, { now: NOW });
-    await importa("b.xlsx", AVEC_H.reservas, [reserva({ dia: "15/10/2026", hora: "13:30", cliente: "Carla Duarte", pro: "MARILIA" })], { now: NOW });
+    await importa("b.xlsx", AVEC_H.reservas, [reserva({ dia: "15/10/2026", hora: "13:30", cliente: "Carla Werneck", pro: "MARILIA" })], { now: NOW });
     await importa("a-de-novo.xlsx", AVEC_H.reservas, a, { now: NOW }); // mesmo conteúdo: newReport = false
     expect((await rows()).map((r) => [hm(r.startsAt), r.status])).toEqual([["11:30", "cancelado"], ["13:30", "agendado"]]);
   });

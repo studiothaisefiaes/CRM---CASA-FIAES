@@ -6,8 +6,8 @@ import { appointments, auditLog, automations, contacts, deals, outbox, settings,
 import { UserFacingError } from "../errors";
 import { enqueueAutomated } from "../outbox";
 import { visitIdFor } from "../agenda/ports";
-import { hourText, mapsLink, onlyFirstName, serviceParts, shortDay } from "@/lib/client-link";
-import { isEveOf, reminderSendAt, renderReminder } from "@/lib/reminder-d1";
+import { mapsLink, onlyFirstName, serviceParts } from "@/lib/client-link";
+import { isEveOf, reminderSendAt, reminderWhen, renderReminder } from "@/lib/reminder-d1";
 import { slotMs } from "@/lib/schedule";
 import { createClientLink, visitAppointments } from "./links";
 import { holderIdOf } from "../people-on-number";
@@ -87,7 +87,7 @@ async function visitText(visitId: string, tpl: string, cfg: LembreteD1, now: Dat
   // Fase B: endereço e mapa da Página da cliente (o texto da Casa os usa); sem link do mapa, a busca do endereço no Maps.
   const casa = await getCasaInfo();
   const text = renderReminder(tpl, {
-    primeiro_nome: onlyFirstName(appts[0].name) ?? "", data: shortDay(start), hora: hourText(start), servicos: serviceParts(items),
+    primeiro_nome: onlyFirstName(appts[0].name) ?? "", ...reminderWhen(start), servicos: serviceParts(items),
     endereco: casa.endereco ?? "", mapa: casa.mapa ?? (casa.endereco ? mapsLink(casa.endereco) : ""),
   }, link);
   return { text, start, contactId: appts[0].contactId, firstId: appts[0].id };

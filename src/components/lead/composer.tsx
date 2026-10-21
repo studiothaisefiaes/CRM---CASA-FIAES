@@ -19,6 +19,8 @@ import { IconButton } from "@/components/ui/icon-button";
 import { useToast } from "@/components/ui/toast";
 import { searchReplies } from "@/lib/reply-search";
 import { loadSavedDraft, onDraft, reportComposerText, saveDraft } from "./composer-draft";
+import { isVersionSkewError } from "@/lib/version-skew";
+import { versionFailure } from "@/components/shell/version-state";
 import { EASE, T } from "@/lib/motion";
 import { useLive } from "@/components/shell/live";
 import { NEW_WHILE_TYPING, typingText } from "@/lib/collision";
@@ -204,7 +206,7 @@ export function Composer({ dealId, firstName, quickReplies, onOptimistic, onSent
       const body = text.trim();
       if (!body || pending) return;
       start(async () => {
-        const r = await addNoteAction({ dealId, body, mentions: mentionsIn(body, team ?? []) });
+        const r = await addNoteAction({ dealId, body, mentions: mentionsIn(body, team ?? []) }).catch(versionFailure);
         if (!r.ok) { toast(r.error, "error"); return; }
         setText(""); toast("Nota salva (a cliente não vê)", "ok"); onNoteSaved?.();
       });
@@ -488,7 +490,8 @@ function PendingVarFields({ text, onFill }: { text: string; onFill: (key: string
 export const SEND_TIMEOUT_MS = 20_000;
 function semTravar<T extends { ok: boolean }>(p: Promise<T>): Promise<T | { ok: false; error: string }> {
   return Promise.race([
-    p.catch(() => ({ ok: false as const, error: "Não deu para enviar: a conexão caiu. Tente de novo." })),
+    // Versão nova do CRM no meio do envio (20/10): o aviso "Atualizar" aparece e o texto volta para o campo (e fica guardado).
+    p.catch((e: unknown) => (isVersionSkewError(e) ? versionFailure(e) : { ok: false as const, error: "Não deu para enviar: a conexão caiu. Tente de novo." })),
     new Promise<{ ok: false; error: string }>((res) => setTimeout(() => res({ ok: false, error: "Não deu para enviar: o servidor não respondeu. Confira a conversa e, se não saiu, tente de novo." }), SEND_TIMEOUT_MS)),
   ]);
 }

@@ -9,7 +9,7 @@ it("lê a confirmação padrão da Casa: dia e hora (horário de Salvador)", () 
 });
 
 it("com ano curto e minutos (dia DD/MM/AA às HH:MMh)", () => {
-  expect(parseConfirmation("Confirmado agendamento da Wanda Rezende dia 20/10/26 às 14:30h", AT)?.toISOString()).toBe("2026-10-20T17:30:00.000Z");
+  expect(parseConfirmation("Confirmado agendamento da Úrsula Duarte dia 20/10/26 às 14:30h", AT)?.toISOString()).toBe("2026-10-20T17:30:00.000Z");
 });
 
 it("data antes da conversa sem ano: é do ano que vem", () => {
@@ -26,4 +26,12 @@ it("sem a frase da confirmação, ou sem dia/hora, não é confirmação", () =>
   expect(parseConfirmation("Confirmado agendamento! Te espero", AT)).toBeNull();
   expect(parseConfirmation("Confirmado agendamento dia 31/02 às 9h", AT)).toBeNull();
   expect(parseConfirmation(null, AT)).toBeNull();
+});
+
+it("a confirmação no desenho de WhatsApp (21/10): data por extenso e hora em negrito, em linhas próprias", async () => {
+  const { confirmText } = await import("./proposed-slot");
+  const t = confirmText({ day: "2026-10-22", time: "14:30", professionalName: "THAISE FIAES", serviceLabel: "Avaliação" });
+  expect(parseConfirmation(`*SARA - CASA FIAES:*\n${t}`, AT)?.toISOString()).toBe("2026-10-22T17:30:00.000Z");
+  expect(parseConfirmation("Confirmado agendamento de Corte com Jackson\n\n📅 *sábado, 24/10*\n⏰ às *9h*", AT)?.toISOString()).toBe("2026-10-24T12:00:00.000Z");
+  expect(parseConfirmation("Confirmado agendamento para *quinta-feira, dia 22/10*, *às 10h*.", AT)?.toISOString()).toBe("2026-10-22T13:00:00.000Z");
 });

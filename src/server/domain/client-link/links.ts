@@ -9,7 +9,7 @@ import { clientLinkBase } from "@/lib/client-host";
 import { UserFacingError } from "../errors";
 import { visitIdFor } from "../agenda/ports";
 import {
-  changedNotice, dayParts, hourText, LINK_ACTIVE, linkExpiry, linkPageState, mapsLink, onlyFirstName, renderLinkText, servicesText, shortDay, waLink, whenLine,
+  changedNotice, dayParts, hourText, LINK_ACTIVE, linkExpiry, linkPageState, mapsLink, messageDay, messageHour, onlyFirstName, renderLinkText, servicesText, shortDay, waLink, whenLine,
   type LinkAppt, type LinkPage,
 } from "@/lib/client-link";
 import { buildIcs } from "@/lib/ics";
@@ -108,7 +108,7 @@ export async function createClientLink(input: { appointmentId?: string; dealId?:
   });
   const url = clientLinkUrl(token);
   const tpl = input.template ?? (await getClientLinkSettings()).texto;
-  const text = renderLinkText(tpl, { primeiro_nome: onlyFirstName(appts[0]?.name) ?? "", data: shortDay(page.start), hora: hourText(page.start), servicos: servicesText(page.items), link: url });
+  const text = renderLinkText(tpl, { primeiro_nome: onlyFirstName(appts[0]?.name) ?? "", data: messageDay(page.start), hora: messageHour(page.start), servicos: servicesText(page.items), link: url });
   return { url, text, visitId, start: page.start, expiresAt };
 }
 

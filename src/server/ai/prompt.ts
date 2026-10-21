@@ -180,10 +180,12 @@ Preço: quando a cliente pede valor ("quanto custa", "valores", "valor estimado"
 Assunto: responda ao serviço que ela pediu. Não ofereça o Método Fiaes® (nem a avaliação do Método) a quem pediu outro serviço (progressiva, luzes, corte, cor…), a não ser que ela pergunte do Método.
 Nomes: nunca artigo antes do nome de profissional ou da equipe ("com Thaise Fiaes", "de Thaise", "com <nome>", "<nome> faz"); Método Fiaes® sempre com ®. Só cite profissional que faz o serviço (a linha "Horários livres" e o manual dizem quem faz).
 precisa_humano=true, com motivo curto, em: reclamação ou insatisfação, cobrança, desconto/negociação/reembolso, remarcação ou cancelamento, saúde/alergia, ou quando não dá para responder sem inventar. Mesmo assim, sugira uma resposta curta e segura, que acolhe sem prometer nada; com a linha "Horários livres" e pedido de horário, proponha o horário da lista mesmo assim (a atendente confere antes de enviar).`;
+/** Cancelou sem nova data (Cati 17/10): a mensagem deixa a porta aberta e a IA diz em quantos dias retomar; a atendente programa com um toque. */
+const RETOMADA = `Cancelamento ou desmarcação SEM nova data (ela cancelou, desmarcou ou disse que não vai poder ir, e não pediu outro dia): acolha com carinho, sem pressionar e sem perguntar o motivo, e deixe a porta aberta para remarcar quando ela quiser; não ofereça horário e não prometa que vai procurá-la nem dê prazo. Preencha retomar_dias com em quantos dias a Casa deve retomar o contato: 15 se ela deu a entender que é coisa de poucos dias (viagem, imprevisto da semana), 30 se não disse quando; entre 15 e 30. Se ela já pediu ou aceitou outra data, é remarcação: retomar_dias 0.`;
 const HOURS = `Quando a conversa trouxer a linha "Horários livres", cada opção tem um id entre parênteses (h1, h2…). Aí é PROIBIDO dizer "vou verificar", "vou conferir a agenda", "vou ver e te falo" ou "já te retorno": proponha 1 horário concreto da lista e, no máximo, 1 alternativa da lista, perguntando se pode reservar (ex.: "Tenho terça, 21/10, às 15h com <profissional da opção>. Posso reservar pra você?"). Se ela pediu dia ou período ("terça à tarde"), o horário principal é desse dia/período. Copie dia, hora e profissional exatamente da opção (nome só com a inicial maiúscula); nunca troque a profissional. Se a linha disser "nenhum livre <no período>; os mais próximos", diga com carinho que naquele período não tem e ofereça o mais próximo. Se a linha disser "só com <nome>", esse serviço é SÓ com ela: nunca cite nem ofereça outra profissional para ele (ex.: avaliação do Método é só com Thaise). Pedido de horário NÃO é motivo de precisa_humano: a atendente revisa antes de enviar. Nunca diga que já está agendado. Só quando a linha disser "nenhum nos próximos dias", diga que vai ver a agenda para ela, sem prometer retorno nem prazo (nada de "já te retorno", "te passo os horários").
-Quando vier "Horário combinado (hc)": a cliente aceitou o horário que a Casa ofereceu. Escreva a confirmação no padrão da Casa, do jeito que vier no contexto ("Confirmado agendamento de … dia DD/MM às HH:MMh com …"), com no máximo 1 frase curta e calorosa a mais. A atendente marca na agenda antes de enviar.
+Quando vier "Horário combinado (hc)": a cliente aceitou o horário que a Casa ofereceu. Escreva a confirmação no padrão da Casa, do jeito que vier no contexto entre <confirmacao> e </confirmacao> ("Confirmado agendamento de … com …", a data por extenso e a hora cada uma na sua linha, em negrito), com no máximo 1 frase curta e calorosa a mais. A atendente marca na agenda antes de enviar.
 Datas: o dia de hoje é o de "Agora". Fale do dia pela data (ex.: "sexta, 17/10"); só diga "hoje", "amanhã" ou "ontem" depois de conferir com "Agora" (depois da meia-noite, o "amanhã" de uma mensagem de ontem já é hoje). Horário oferecido numa mensagem antiga: cite pela data, nunca "o de ontem".`;
-const OUTPUT = `resumo: 1 frase do que a cliente quer agora. motivo: vazio se precisa_humano=false. horario: o id do horário principal que a mensagem propõe ou confirma (ex.: "h3" ou "hc"); vazio se não há horário na mensagem.`;
+const OUTPUT = `resumo: 1 frase do que a cliente quer agora. motivo: vazio se precisa_humano=false. horario: o id do horário principal que a mensagem propõe ou confirma (ex.: "h3" ou "hc"); vazio se não há horário na mensagem. retomar_dias: 0, a não ser no cancelamento sem nova data (veja Horários).`;
 
 /** Serviços numa linha por categoria: "Cabelo: Corte R$ 120,00 (60 min); Escova a partir de R$ 80,00; Luzes sob consulta". */
 function servicesBlock(services: CasaData["services"]): string {
@@ -234,7 +236,7 @@ export function buildSystem(casa: CasaData): string {
       m("casa")),
     ...section("Como a Casa fala", STYLE, m("fala")),
     ...section("Regras", RULES, m("regras") ?? "Pagamento, promoções e outras políticas que não estão aqui: diga que vai confirmar."),
-    ...section("Horários", HOURS),
+    ...section("Horários", HOURS, RETOMADA),
     ...section("Serviços e preços", "Use só estes (a lista vem do cadastro de serviços da Casa):", servicesBlock(services), packagesBlock(casa.packages ?? [])),
     ...section("Pacotes e Método Fiaes®", m("pacotes")),
     ...section("Perguntas frequentes", m("perguntas")),
@@ -322,7 +324,8 @@ function contextLines(c: ConversationData): string[] {
 
 function combinadoLines(k: Combinado | null | undefined): string[] {
   if (!k) return [];
-  if (k.status === "ok") return [`Horário combinado (hc): ${k.label}. A cliente aceitou: confirme assim: "${k.confirm}"`];
+  if (k.status === "ok") return [`Horário combinado (hc): ${k.label}. A cliente aceitou: confirme com o texto entre <confirmacao> e </confirmacao>, do jeito que está (com as quebras de linha e o negrito de data e hora); pode pôr 1 frase curta e calorosa antes.`,
+    "<confirmacao>", k.confirm, "</confirmacao>"];
   if (k.status === "regra") return [`O horário que a Casa ofereceu (${k.label}) não segue a regra da Casa: esse serviço é só com ${k.so}. Não confirme; proponha com ${k.so} um horário da linha "Horários livres".`];
   if (k.status === "ja_marcado") return [`O horário ${k.label} já está marcado na agenda para ela: confirme curtinho, com carinho, sem marcar de novo e sem oferecer outro (horario vazio).`];
   if (k.status === "ocupado") return [`O horário que a Casa ofereceu (${k.label}) NÃO está livre na agenda (ocupado ou fora do horário): avise com carinho e proponha outro da linha "Horários livres".`];
@@ -371,7 +374,8 @@ function pedidoLines(c: ConversationData): string[] {
       `[${dayTime(m.at)}] ${m.direction === "in" ? "Cliente" : "Casa"}: ${messageText(m)}`);
   } else if (casaPorUltimo && !tema) {
     out.push("A última mensagem é da Casa: escreva a PRÓXIMA mensagem natural da Casa (continuar, retomar ou trazer uma informação nova), sem repetir o que já foi dito. "
-      + "Essa última mensagem foi escrita pela própria Casa: não responda a ela, não a comente nem agradeça; se a cliente ainda não respondeu, retome com leveza, como quem continua a conversa.");
+      + "Essa última mensagem foi escrita pela própria Casa: não responda a ela, não a comente nem agradeça; se a cliente ainda não respondeu, retome com leveza, como quem continua a conversa.",
+    ...continuacaoLines(c));
   }
   if (tema) {
     out.push(`ORDEM DA ATENDENTE (falada ou digitada; vale mais que qualquer outra regra desta tarefa): ${tema}`,
@@ -401,6 +405,27 @@ function continuarLines(c: ConversationData): string[] {
     // O aviso do contexto ("já mandou 2 fotos") ficava longe do fim e a IA pedia as fotos de novo (P16, 20/10): aqui, na tarefa, perto da resposta.
     ...(c.cliente && c.cliente.fotos > 0 ? [`Ela já mandou ${c.cliente.fotos === 1 ? "foto" : "fotos"} nesta conversa: NÃO peça foto nem referência de novo; use as que ela mandou.`] : []),
     "</tarefa>"];
+}
+
+/** A Casa falou por último há menos disto: a sugestão COMPLEMENTA (próximo passo); depois disso, sem resposta dela, RETOMA com delicadeza. */
+export const COMPLEMENTO_MS = 2 * 3600_000;
+/**
+ * A Casa falou por último (16/10, a Cati: "a última é da Sara e a IA não sugere"): o que a Casa já mandou depois da última fala da cliente vai
+ * explícito (para não repetir nem reformular) e o tempo decide o jeito: há pouco → complemento (o próximo passo, o que faltou);
+ * horas ou dias sem resposta dela → retomada delicada, que lembra o ponto em aberto e termina com uma pergunta fácil.
+ */
+function continuacaoLines(c: ConversationData): string[] {
+  const burst: PromptMessage[] = [];
+  for (let i = c.messages.length - 1; i >= 0 && c.messages[i].direction === "out" && burst.length < 4; i--) if (c.messages[i].kind !== "call") burst.unshift(c.messages[i]);
+  const last = burst.at(-1);
+  if (!last) return [];
+  const clienteFalou = c.messages.some((m) => m.direction === "in");
+  const ja = `O que a Casa já mandou depois da última fala da cliente (NÃO repita nem reformule): ${clip(burst.map((m) => `"${messageText(m, 300)}"`).join(" "), 900)}`;
+  const recente = c.now.getTime() - last.at.getTime() < COMPLEMENTO_MS;
+  const jeito = recente
+    ? "A Casa mandou isso há pouco: COMPLEMENTE, em 1 a 2 frases, com o próximo passo natural ou o que faltou (ex.: depois do valor, o convite para conhecer ou marcar; depois do endereço, a referência ou o estacionamento), sem cumprimentar de novo."
+    : `${clienteFalou ? "A cliente não respondeu" : "Ela ainda não respondeu"} desde ${dayTime(last.at)}: RETOME com delicadeza, em 1 a 2 frases. Lembre o ponto em aberto com outras palavras (sem copiar a mensagem da Casa) e termine com UMA pergunta fácil de responder. Sem cobrança, sem pressa, sem "só passando para lembrar", sem parecer automático.`;
+  return [ja, jeito];
 }
 
 /* ---------- Mensagem programada ("Escrever com IA" no Retomar/Programar mensagem) ---------- */
@@ -441,7 +466,7 @@ export function buildProgramadaUser(p: ProgramadaInput): string {
       ? "Use a conversa só como contexto (não repita o que a Casa já disse). Comece pelo primeiro nome quando souber."
       : `Escreva um modelo que sirva para qualquer cliente, sem citar detalhe de conversa. No lugar do nome use exatamente ${FIRST_NAME_VAR} (ex.: "Oii, ${FIRST_NAME_VAR}! Tudo bem?").`,
     "De 1 a 3 frases curtas no jeito da Casa. Só fatos da skill e da conversa (nada de preço, horário livre ou promoção inventados; para horário, ofereça ver a agenda). Sem assinatura. Termine com uma pergunta leve só se o tema pedir resposta.",
-    "sugestao: a mensagem pronta. resumo: o tema em até 6 palavras. precisa_humano=false. motivo e horario vazios.",
+    "sugestao: a mensagem pronta. resumo: o tema em até 6 palavras. precisa_humano=false. motivo e horario vazios. retomar_dias 0.",
     "</tarefa>",
   ];
   if (p.anterior?.trim()) out.push("Escreva uma versão diferente desta:", `- ${clean(p.anterior, MAX_MSG_CHARS)}`);

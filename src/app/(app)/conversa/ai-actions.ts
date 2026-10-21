@@ -9,6 +9,9 @@ import { generateProgramada, programadaAvailable } from "@/server/ai/programada"
 import { bookingFromSuggestion, claimSuggestion, fillSuggestion, generateForDeal, markSuggestion, suggestionState, type SkipReason, type SuggestionState } from "@/server/ai/suggest";
 import type { ProposedSlot } from "@/lib/proposed-slot";
 import { assertCanActOnDeal } from "@/server/domain/deal-scope";
+import { resumeFromSuggestion } from "@/server/domain/retomada";
+import { transcreverDitado } from "@/server/ai/ditado";
+import { revalidatePath } from "next/cache";
 
 /** Sugestão de resposta por IA na conversa. Nenhuma destas ações envia mensagem: "Usar" só marca (o texto vai para a caixa no navegador). */
 export type AiResult<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
@@ -16,11 +19,12 @@ const fail = (e: unknown): { ok: false; error: string } => ({ ok: false, error: 
 const uuid = z.string().uuid();
 
 /** `agendaAt`: ISO de quando os horários oferecidos foram lidos da agenda (a tela pede para conferir). */
-export type AiSuggestionView = { id: string; resumo: string; sugestao: string; precisaHumano: boolean; motivo: string | null; agendaAt: string | null; horario: ProposedSlot | null };
+export type AiSuggestionView = { id: string; resumo: string; sugestao: string; precisaHumano: boolean; motivo: string | null; agendaAt: string | null; horario: ProposedSlot | null;
+  /** Cancelou sem nova data: ISO de quando retomar (botão "Programar retomada"). */ retomarEm: string | null };
 export type AiView = { state: "pronta"; suggestion: AiSuggestionView } | { state: "pode_pedir"; again?: boolean } | { state: "escrevendo" | "nada" };
 const view = (s: SuggestionState): AiView => (s.state === "pronta"
   ? { state: "pronta", suggestion: { id: s.suggestion.id, resumo: s.suggestion.resumo, sugestao: s.suggestion.sugestao, precisaHumano: s.suggestion.precisaHumano, motivo: s.suggestion.motivo,
-    agendaAt: s.suggestion.agendaAt?.toISOString() ?? null, horario: s.suggestion.horario } }
+    agendaAt: s.suggestion.agendaAt?.toISOString() ?? null, horario: s.suggestion.horario, retomarEm: s.suggestion.retomarEm?.toISOString() ?? null } }
   : s.state === "pode_pedir" ? { state: "pode_pedir", again: s.again } : { state: s.state });
 
 /**
@@ -117,5 +121,33 @@ export async function prepareAiBookingAction(input: { id: string; dealId: string
     const b = await bookingFromSuggestion(id, uuid.parse(input.dealId));
     if (!b) return { ok: false, error: "Esta sugestão não tem horário para marcar." };
     return { ok: true, data: { suggestionId: id, ...b } };
+  } catch (e) { return fail(e); }
+}
+
+/**
+ * "Programar retomada" da sugestão (Cati 17/10: a cliente cancelou sem nova data): cria o lembrete no dia proposto pelo mesmo caminho do
+ * "Retomar…". Só no toque da atendente; nenhuma mensagem é programada nem enviada.
+ */
+export async function programarRetomadaAction(input: { id: string; dealId: string }): Promise<AiResult<{ dueAt: string }>> {
+  try {
+    const user = await assertPerm("atendimento.ver");
+    const dealId = uuid.parse(input.dealId);
+    await assertCanActOnDeal(user, dealId);
+    const r = await resumeFromSuggestion(uuid.parse(input.id), dealId, user.id);
+    revalidatePath("/atendimento"); revalidatePath("/");
+    return { ok: true, data: { dueAt: r.dueAt.toISOString() } };
+  } catch (e) { return fail(e); }
+}
+
+/**
+ * "Falar" (Cati 16/10): o áudio que a atendente gravou no "Sobre o quê?" (ou no "Escrever com IA") volta como texto, pelo mesmo transcritor dos
+ * áudios do WhatsApp. Não guarda o áudio, não gera nada e não envia nada: quem decide o que fazer com o texto é a tela.
+ */
+export async function transcreverDitadoAction(form: FormData): Promise<AiResult<{ texto: string }>> {
+  try {
+    await assertPerm("atendimento.ver");
+    const f = form.get("audio");
+    if (!(f instanceof Blob)) return { ok: false, error: "Grave o áudio de novo." };
+    return { ok: true, data: { texto: await transcreverDitado(new Uint8Array(await f.arrayBuffer()), f.type || "audio/webm") } };
   } catch (e) { return fail(e); }
 }

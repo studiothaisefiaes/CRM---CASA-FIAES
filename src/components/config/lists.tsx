@@ -17,7 +17,7 @@ type Item = { id: string; kind: "objection" | "lost_reason" | "quick_reply" | "o
   /** Respostas prontas: anexo (Lote 5); a pasta usa `category`. */ attachment?: { name: string; kind: string } | null;
   /** Resposta pronta pessoal: nome de quem criou (só ela vê). null/ausente = universal. */ ownerName?: string | null };
 /** Dados de exemplo da prévia em Configurações (na conversa, a prévia usa os dados da cliente). */
-const EXEMPLO: ReplyVars = { primeiroNome: "Ana", dataHorario: "qui 22/10 às 15:00", profissional: "Paula", servico: "Corte", meuNome: "Joana" };
+const EXEMPLO: ReplyVars = { primeiroNome: "Ana", dataHorario: "quinta-feira, 22/10 às 15h", profissional: "Paula", servico: "Corte", meuNome: "Joana" };
 const TABS = [["quick_reply", "Respostas prontas", "Aparecem ao digitar / na conversa. Universais: todas usam. Pessoais: só quem criou vê (a equipe cria as suas pela conversa). Variáveis pelos botões; data, profissional e serviço vêm do próximo horário: sem horário, o campo pede para preencher antes de enviar."], ["objection", "Objeções", "O que a cliente diz quando hesita. Viram relatório."], ["lost_reason", "Motivos de perda", "Pedidos ao marcar uma conversa como perdida."], ["keyword", "Palavras-chave", "Palavras ou frases que a cliente escreve e viram etiqueta na Fila (uma por linha). Ex.: etiqueta “Mega hair” para “mega hair” e “aplique”. Sem acento, maiúscula ou pontuação: tanto faz."]] as const;
 
 /**

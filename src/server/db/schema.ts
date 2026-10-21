@@ -1572,6 +1572,8 @@ export const aiSuggestions = pgTable("ai_suggestions", {
   pedido: text("pedido").notNull().default(""),
   /** O horário que a sugestão propôs (0050), já conferido no servidor: dia, hora, profissional, serviço e duração. Vazio = sem proposta. */
   horario: jsonb("horario").$type<import("../../lib/proposed-slot").ProposedSlot>(),
+  /** Quando retomar o contato (0091): a cliente cancelou sem nova data. Só proposta: a retomada só nasce no toque "Programar retomada". */
+  retomarEm: timestamp("retomar_em", { withTimezone: true }),
   requestedBy: uuid("requested_by").references(() => users.id, { onDelete: "set null" }),
   createdAt: createdAt(),
   usedAt: timestamp("used_at", { withTimezone: true }),

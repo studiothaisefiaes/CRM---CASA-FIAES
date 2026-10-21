@@ -7,8 +7,9 @@ vi.mock("@/app/(app)/funil/actions", () => ({ sendMessageAction, sendMediaAction
 vi.mock("@/app/(app)/conversa/actions", () => ({ addNoteAction: vi.fn(), scheduleMessageAction: vi.fn(), sendQuickReplyAction: vi.fn() }));
 import { Composer } from "./composer";
 import { loadSavedDraft, saveDraft } from "./composer-draft";
+import { newVersionKnown, resetVersionState } from "@/components/shell/version-state";
 
-beforeEach(() => window.localStorage.clear());
+beforeEach(() => { window.localStorage.clear(); resetVersionState(); });
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 const tela = (dealId = "d1") => render(<Composer dealId={dealId} firstName="Maria" quickReplies={[]} onOptimistic={() => {}} />);
 
@@ -60,5 +61,20 @@ describe("rascunho guardado (20/10: a tela recarregava e a atendente perdia o te
     await vi.advanceTimersByTimeAsync(20_500);
     await waitFor(() => expect(field.value).toBe("Oi Julia"));
     vi.useRealTimers();
+  });
+  it("envio que cai na troca de versão (Failed to find Server Action): o texto volta, fica guardado para depois de Atualizar e aparece o aviso", async () => {
+    sendMessageAction.mockImplementationOnce(async () => { throw Object.assign(new Error('Server Action "40ab" was not found on the server.'), { name: "UnrecognizedActionError" }); });
+    const a = tela("d5");
+    const field = screen.getByLabelText("Mensagem") as HTMLTextAreaElement;
+    fireEvent.change(field, { target: { value: "Oi Julia, seu horário é amanhã" } });
+    await new Promise((r) => setTimeout(r, 500));
+    fireEvent.keyDown(field, { key: "Enter" });
+    await waitFor(() => expect(field.value).toBe("Oi Julia, seu horário é amanhã"));
+    expect(newVersionKnown()).toBe(true);
+    await waitFor(() => expect(loadSavedDraft("d5")).toBe("Oi Julia, seu horário é amanhã"));
+    // "Atualizar" recarrega a página: a caixa da mesma conversa abre com o texto.
+    a.unmount();
+    tela("d5");
+    expect((screen.getByLabelText("Mensagem") as HTMLTextAreaElement).value).toBe("Oi Julia, seu horário é amanhã");
   });
 });

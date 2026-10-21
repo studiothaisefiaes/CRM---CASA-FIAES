@@ -74,7 +74,8 @@ export function defaultAudioTools(): AudioTools {
 let tools: AudioTools | null = null;
 /** Testes trocam as ferramentas (null volta às de verdade). */
 export function setAudioTools(t: AudioTools | null) { tools = t; }
-const audioTools = () => tools ?? defaultAudioTools();
+/** As ferramentas em uso (as de verdade ou as dos testes): o ditado do "Sugerir resposta" usa o mesmo transcritor (src/server/ai/ditado.ts). */
+export const audioTools = () => tools ?? defaultAudioTools();
 
 /** Avisa uma vez por processo que falta instalar algo (docs/deploy-contabo.md › Áudio). */
 const warned = new Set<string>();

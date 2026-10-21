@@ -365,7 +365,7 @@ it("a frase da spec: horário, pacote, última visita e a conversa com a dona", 
     ...vazio, lastVisitOn: "2026-09-25", rhythmDays: 45,
     nextAppointment: { startsAt: "2026-10-16T17:00:00Z", professionalName: "MAIARA" },
     activePackage: { usedSessions: 3, totalSessions: 4 },
-    conversation: { stageName: "Aguardando cliente", stageKind: "followup", ownerName: "Daniela Rezende", enteredAt: "2026-10-15T13:00:00Z", awaitingSince: null, late: false },
+    conversation: { stageName: "Aguardando cliente", stageKind: "followup", ownerName: "Yara Igarashi", enteredAt: "2026-10-15T13:00:00Z", awaitingSince: null, late: false },
   }, NOW);
   expect(s.sentence).toBe("Tem horário amanhã 14:00 com Maiara · pacote 3/4 · última visita há 20 dias · conversa aguardando cliente há 2 h com Sara");
   expect(s.states).toEqual([]);
@@ -4098,7 +4098,7 @@ import { contactsCsv, type ContactExportRow } from "./contacts-csv";
 
 const row = (o: Partial<ContactExportRow> = {}): ContactExportRow => ({
   id: "c1", name: "Rita Fictícia", phone: "+5571966000601", email: "rita@exemplo.com", instagram: null, isClient: true, clientSince: null, lastServiceAt: null,
-  ignored: false, hasAvatar: false, lastDealId: null, openDealId: null, openDealOwnerId: null, openDealOwnerName: "Daniela Rezende", deals: 1, snippet: null,
+  ignored: false, hasAvatar: false, lastDealId: null, openDealId: null, openDealOwnerId: null, openDealOwnerName: "Yara Igarashi", deals: 1, snippet: null,
   visits: 7, lastVisitOn: "2026-09-25", nextAppointmentAt: null, nextProfessional: null, preferredProfessional: "MAIARA", pkg: { used: 3, total: 10 },
   birthday: "17/10", origin: "Instagram", situation: "última visita há 20 dias", states: [], tags: ["Noiva", "VIP"], totalCents: 123_456, ...o,
 });
@@ -4107,7 +4107,7 @@ it("CSV sem coluna de valor para quem não vê valores", () => {
   const csv = contactsCsv([row()], { money: false });
   const [header, line] = csv.replace(/^﻿/, "").split("\r\n");
   expect(header).toBe("Nome;Telefone;E-mail;Situação;Última visita;Visitas;Próximo horário;Profissional preferida;Pacote;Aniversário;Responsável;Etiquetas;Como conheceu");
-  expect(line).toBe("Rita Fictícia;+5571966000601;rita@exemplo.com;última visita há 20 dias;25/09/2026;7;;Maiara;3/10;17/10;Daniela Rezende;Noiva, VIP;Instagram");
+  expect(line).toBe("Rita Fictícia;+5571966000601;rita@exemplo.com;última visita há 20 dias;25/09/2026;7;;Maiara;3/10;17/10;Yara Igarashi;Noiva, VIP;Instagram");
   expect(csv).not.toMatch(/1234|Total gasto/);
 });
 

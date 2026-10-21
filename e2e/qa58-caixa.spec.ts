@@ -64,7 +64,7 @@ test.describe("QA r58: caixa", () => {
   test("C-1, C-2 e C-3: falta no dinheiro com sobra no Pix pede a gestão; Caixa e Financeiro batem; cortesia fora do faturamento", async ({ page, isMobile }) => {
     test.skip(isMobile, "desktop: a fila e a comanda lado a lado");
     await comanda(901, "Silvana Couto", { kind: "produto", label: "Kit Silvana", cents: 15000 });
-    await comanda(902, "Kelly Salgado", { kind: "servico", label: "Corte", cents: 6000 });
+    await comanda(902, "Fabiana Henriques", { kind: "servico", label: "Corte", cents: 6000 });
     await comanda(903, "Tânia Troco", { kind: "produto", label: "Kit Tânia", cents: 7000 });
     await comanda(904, "Paula Parcial", { kind: "produto", label: "Kit Paula", cents: 9000 });
 
@@ -87,7 +87,7 @@ test.describe("QA r58: caixa", () => {
     await receber(p, "Débito", "30", { bandeira: "Visa" });
     await expect(page.getByText(/comanda 901 fechada$/)).toBeVisible();
 
-    p = await abrir(902, "Kelly Salgado");
+    p = await abrir(902, "Fabiana Henriques");
     await receber(p, "Cortesia", "60", { motivo: "aniversário da cliente" });
     await expect(page.getByText(/comanda 902 fechada$/)).toBeVisible();
 

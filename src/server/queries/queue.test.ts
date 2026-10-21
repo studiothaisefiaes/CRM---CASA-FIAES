@@ -462,6 +462,17 @@ describe("getQueue: escopo, views e filtros", () => {
     expect(all(await getQueue(asUser(gestora), { now: NOW, q: "5571999900" }))).toHaveLength(2);
   });
 
+  it("mãe e filha no mesmo número (21/10): buscar o nome da filha acha a conversa do número (a da mãe), também nas Encerradas", async () => {
+    const { gestora, lead } = await setup();
+    const mae = await lead({ awaitingReplySince: ago(1) });
+    await db.update(contacts).set({ name: "Marta Souza" }).where(eq(contacts.id, mae.contactId));
+    await db.insert(contacts).values({ name: "Bruna Lins", phoneE164: "pessoa:00000000-0000-4000-8000-0000000000b1", sharesPhoneWith: mae.contactId, phoneRelation: "filha" });
+    await lead({ awaitingReplySince: ago(1) });
+    expect(all(await getQueue(asUser(gestora), { now: NOW, q: "bruna" }))).toEqual([mae.id]);
+    await db.update(deals).set({ conversationArchivedAt: ago(1) }).where(eq(deals.id, mae.id));
+    expect(all(await getQueue(asUser(gestora), { now: NOW, view: "arquivadas" as QueueView, q: "bruna" }))).toEqual([mae.id]);
+  });
+
   it("telefone em qualquer formato: com ou sem +55, DDD, máscara e o 9 da frente (também na lista das Encerradas)", async () => {
     const { gestora, lead } = await setup();
     const a = await lead({ awaitingReplySince: ago(1) });

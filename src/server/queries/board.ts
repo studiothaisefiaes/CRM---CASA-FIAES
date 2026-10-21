@@ -64,7 +64,8 @@ export function boardConds(filter: BoardFilter = {}, viewer?: Who): { conds: SQL
     const like = `%${filter.q.trim().toLowerCase()}%`;
     const vs = phoneSearchVariants(filter.q);
     const cpfQ = cpfSearchDigits(filter.q);
-    conds.push(or(sql`lower(coalesce(${contacts.name}, '')) like ${like}`, ...vs.map((v) => sql`${contacts.phoneE164} like ${"%" + v + "%"}`), ...(cpfQ ? [sql`${contacts.cpf} like ${"%" + cpfQ + "%"}`] : []))!);
+    // Mãe e filha no mesmo número (0051, 21/10): o nome de outra pessoa do número acha o cartão do número.
+    conds.push(or(sql`lower(coalesce(${contacts.name}, '')) like ${like}`, sql`exists (select 1 from contacts pp where pp.shares_phone_with = ${contacts.id} and lower(coalesce(pp.name, '')) like ${like})`, ...vs.map((v) => sql`${contacts.phoneE164} like ${"%" + v + "%"}`), ...(cpfQ ? [sql`${contacts.cpf} like ${"%" + cpfQ + "%"}`] : []))!);
   }
   if (filter.filtro === "atrasados") {
     // Mesma regra do contador de atrasados: alerta de espera aberto (que não é de tarefa), sem contato ignorado.

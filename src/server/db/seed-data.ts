@@ -40,7 +40,8 @@ export const DEFAULT_QUICK_REPLIES = [
   { label: "boas-vindas", folder: "Primeiro contato", body: "{saudacao}, {primeiro_nome}! Que bom falar com você. Aqui é a {meu_nome}, da Casa Fiaes. Como posso te ajudar?" },
   { label: "avaliacao", folder: "Primeiro contato", body: "O Método Fiaes® começa por uma avaliação do seu cabelo aqui na Casa: é nela que a gente entende o que ele precisa e passa os valores certinhos para você. Quer que eu veja um horário?" },
   { label: "fotos-cabelo", folder: "Primeiro contato", body: "Para adiantar, me manda 2 ou 3 fotos do seu cabelo com luz natural: de frente, de lado e de costas. Assim já te explico melhor como funciona." },
-  { label: "confirmar", folder: "Agendamento", body: "{saudacao}, {primeiro_nome}! Passando para confirmar seu horário de {servico}: {data_horario}, com {profissional}. Posso confirmar?" },
+  // 21/10: no desenho do lembrete (data e hora em negrito numa linha própria). Só vale para instalação nova: o seed não sobrescreve.
+  { label: "confirmar", folder: "Agendamento", body: "{saudacao}, {primeiro_nome}! 💛\n\nPassando para confirmar seu horário na Casa Fiaes:\n\n📅 *{data_horario}*\n✨ {servico} com {profissional}\n\nPosso confirmar?" },
   { label: "endereco", folder: "Agendamento", body: "Estamos na Alameda das Seringueiras, 44, Caminho das Árvores, Salvador. Se quiser, te mando a localização por aqui." },
   { label: "retomar", folder: "Relacionamento", body: "Oi, {primeiro_nome}! Passando para saber se ficou alguma dúvida. Posso reservar um horário para você?" },
   { label: "pos-atendimento", folder: "Pós-atendimento", body: "Oi, {primeiro_nome}! Como ficou o cabelo depois do atendimento? Conta para a gente, a sua opinião é muito importante." },

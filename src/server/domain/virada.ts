@@ -7,8 +7,8 @@ import { funcaoParam } from "./funcoes";
 import { deliverAutomated, resolveChannel, SendError } from "./send";
 import { ensureTeamConversation } from "./summary-whatsapp";
 import { getCasaInfo, getLembreteD1 } from "./client-link/settings";
-import { renderReminder } from "@/lib/reminder-d1";
-import { hourText, mapsLink, onlyFirstName, serviceParts, shortDay } from "@/lib/client-link";
+import { reminderWhen, renderReminder } from "@/lib/reminder-d1";
+import { mapsLink, onlyFirstName, serviceParts } from "@/lib/client-link";
 import { bahiaParts, slotMs } from "@/lib/schedule";
 import { shiftDay } from "@/lib/agenda";
 import {
@@ -102,7 +102,7 @@ export async function viradaPreview(alvo: ViradaAlvo, o: { nome: string | null; 
     const [cfg, casa] = await Promise.all([getLembreteD1(), getCasaInfo()]);
     const start = new Date(slotMs(shiftDay(bahiaParts(o.now.getTime()).date, 1), "10:00"));
     const text = renderReminder(cfg.texto, {
-      primeiro_nome: primeiro, data: shortDay(start), hora: hourText(start), servicos: serviceParts([{ service: "Escova", pro: null }]),
+      primeiro_nome: primeiro, ...reminderWhen(start), servicos: serviceParts([{ service: "Escova", pro: null }]),
       endereco: casa.endereco ?? "", mapa: casa.mapa ?? (casa.endereco ? mapsLink(casa.endereco) : ""),
     }, cfg.comLink ? "(o link da cliente)" : null);
     return { kind: "text", text };

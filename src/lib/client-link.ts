@@ -39,6 +39,16 @@ export const longDay = (d: Date) => LONG.format(d).replace("-feira", "");
 /** "sexta, 16/10". */
 export const shortDay = (d: Date) => SHORT_DAY.format(d).replace("-feira", "");
 
+/*
+ * Data e hora nas mensagens para a cliente (lembrete, remarcação, confirmação; 21/10, Cati: "a cliente não vê bem a data e a hora").
+ * Por extenso, com o dia da semana inteiro, e a hora do jeito que a Casa escreve. Sempre no relógio de Salvador.
+ */
+const MSG_DAY = new Intl.DateTimeFormat("pt-BR", { timeZone: TZ, weekday: "long", day: "2-digit", month: "2-digit" });
+/** "quinta-feira, 22/10"; "sábado, 24/10". */
+export const messageDay = (d: Date) => MSG_DAY.format(d);
+/** "14h", "9h", "14h30" (sem o ":00" e sem o zero na frente). */
+export const messageHour = (d: Date) => { const [h, m] = HOUR.format(d).split(":"); return `${Number(h)}h${m === "00" ? "" : m}`; };
+
 export type LinkAppt = { startsAt: Date; durationMin: number | null; status: string; service: string; pro: string | null };
 export type LinkState = "agendado" | "confirmado" | "cancelado" | "aconteceu" | "solicitado";
 export type LinkPage = {

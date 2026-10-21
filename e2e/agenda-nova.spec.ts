@@ -95,7 +95,7 @@ test.describe("Nova Agenda › Dia", () => {
     await expect.poll(async () => doHorario(id)).toMatchObject({ pro: "Carla", starts_at: new Date(em(dia(1), "13:00")) });
     expect(await e2eSql("select 1 from outbox o join deals d on d.id = o.deal_id where d.contact_id = $1", [mel])).toHaveLength(0);
     await page.getByRole("button", { name: "Abrir conversa" }).click();
-    await expect(page.getByRole("textbox", { name: "Mensagem", exact: true })).toHaveValue(/Seu horário na Casa Fiaes foi remarcado para:\n\n📅 \*.*\* às \*13:00\*\nCorte com Carla\n/);
+    await expect(page.getByRole("textbox", { name: "Mensagem", exact: true })).toHaveValue(/Seu horário na Casa Fiaes foi remarcado para:\n\n📅 \*.*\*\n⏰ às \*13h\*\n✨ Corte com Carla\n/);
   });
 
   test("fileira de fotos: clique = só ela, Shift+clique junta, Todas volta; a escolha fica na URL", async ({ page, isMobile }) => {

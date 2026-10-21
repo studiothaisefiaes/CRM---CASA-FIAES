@@ -46,7 +46,7 @@ export function ClientPageSettings({ casa, link }: { casa: CasaInfo; link: Clien
         <h2 className="text-lg font-semibold">O link da cliente</h2>
         <p className="mt-1 text-sm text-graphite">O botão &quot;Enviar link de confirmação&quot; da conversa só preenche este texto: quem envia é a atendente.</p>
         <div className="mt-4 flex flex-col gap-3">
-          <Field label="Texto da mensagem" htmlFor="pc-texto" hint="Use {primeiro_nome}, {data}, {hora}, {servicos} e {link}. Sem {link}, o link vai no fim.">
+          <Field label="Texto da mensagem" htmlFor="pc-texto" hint="Use {primeiro_nome}, {data} (quinta-feira, 22/10), {hora} (14h), {servicos} e {link}. Sem {link}, o link vai no fim. *texto* sai em negrito no WhatsApp.">
             <Textarea id="pc-texto" value={texto} maxLength={600} onChange={(e) => setTexto(e.target.value)} />
           </Field>
           <Field label="A cliente cancela pelo link até quantas horas antes?" htmlFor="pc-horas" hint="Depois disso, a página mostra 'Falar com a Casa'. 0 = até a hora.">

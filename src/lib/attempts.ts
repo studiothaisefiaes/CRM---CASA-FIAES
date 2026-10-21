@@ -53,7 +53,7 @@ export function attemptDueAt(fromMs: number, days: number, hours: BusinessHours)
 /** Primeiro nome da cliente para títulos de tarefa; sem nome, "a cliente". */
 /** Contato sem nome guarda o telefone no nome: no título vira "(71) 99000-0002", nunca o número cru. */
 const isPhoneLike = (s: string) => /^\+?[\d\s()-]{8,}$/.test(s);
-/** O nome inteiro para títulos de combinado: em Título ("WANDA REZENDE" → "Wanda Rezende") ou o telefone formatado. */
+/** O nome inteiro para títulos de combinado: em Título ("ÚRSULA DUARTE" → "Úrsula Duarte") ou o telefone formatado. */
 export const clientFullName = (name: string | null | undefined): string => {
   const n = name?.trim();
   if (!n) return "a cliente";

@@ -47,9 +47,9 @@ async function lixo() {
     { externalKey: "avec:item:b", contactId: k.contactId, soldOn: "2026-10-12", item: "Corte", kind: "servico", origin: "avec", totalCents: 100 },
   ]);
   // remarcação antiga: o Reservas guardado (importado depois) não traz mais a reserva das 11:30 da Maria com a MAIARA
-  await importa("r.xlsx", AVEC_H.reservas, [reserva({ dia: "15/10/2026", hora: "13:30", cliente: "Carla Duarte", pro: "MAIARA", status: "Pago" })], { now: NOW });
+  await importa("r.xlsx", AVEC_H.reservas, [reserva({ dia: "15/10/2026", hora: "13:30", cliente: "Carla Werneck", pro: "MAIARA", status: "Pago" })], { now: NOW });
   const [maiara] = await db.execute(sql`select id from professionals where name = 'MAIARA'`).then((r) => r.rows as { id: string }[]);
-  await ap({ startsAt: bahia(15, 11, 30), clientName: "Carla Duarte", professionalId: maiara.id, createdAt: new Date("2026-10-01T10:00:00Z"), externalKey: "avec:res:2026-10-15T11:30|carla duarte|corte" });
+  await ap({ startsAt: bahia(15, 11, 30), clientName: "Carla Werneck", professionalId: maiara.id, createdAt: new Date("2026-10-01T10:00:00Z"), externalKey: "avec:res:2026-10-15T11:30|carla werneck|corte" });
   await db.insert(contacts).values({ name: "ANA VELHA (COMPLETAR CADASTRO)", phoneE164: "+5571988881111" }); // depois do importa (que já limparia)
   return { viva };
 }

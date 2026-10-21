@@ -59,6 +59,20 @@ export function pediuHorario(texts: (string | null | undefined)[], year = new Da
   return ps.some((raw) => { const p = raw.replace(CANCELA, " "); return PEDE.test(p) || (QUANDO.test(p) && INTENCAO.test(p)); });
 }
 
+/** Cancelou ou não vai poder ir ("vou ter que desmarcar", "não vou conseguir ir sábado", "cancela pra mim"). */
+const DESISTE = /\b(?:desagend|desmarc|cancel)\w*|\bnao vou (?:mais )?(?:poder|conseguir) (?:ir|comparecer)\b|\bvou ter que faltar\b/;
+/**
+ * A cliente cancelou SEM nova data (Cati 17/10: "a IA programa um retorno mais para frente")? Alguma das mensagens dela cancela ou desmarca
+ * e nenhuma pede outra data (remarcar, outro dia) nem horário novo. Pergunta sobre a regra ("até quando posso cancelar?") não conta.
+ */
+export function cancelouSemData(texts: (string | null | undefined)[], year = new Date().getFullYear()): boolean {
+  const ps = texts.filter((t): t is string => !!t).map((t) => semCadastro(plain(t), year).replace(GREET, " "));
+  if (!ps.some((p) => DESISTE.test(p) && !/\b(?:posso|pode|como|ate quando|da pra)\b[^.?!]*\bcancel\w*[^.!]*\?/.test(p))) return false;
+  // Remarcação de verdade: pede outra data agora ("dá pra remarcar pra sexta?"). "Depois eu remarco", "quando souber eu vejo outra data": sem data.
+  const depois = /\b(?:depois|mais pra frente|mais para frente|quando (?:eu )?(?:puder|souber|der|tiver)|assim que|ainda nao sei|sem previsao)\b/;
+  return !ps.some((p) => REMARCA.test(p) && !depois.test(p) && (QUANDO.test(p) || INTENCAO.test(p)));
+}
+
 /** Recusa ou pausa ("não deixe esse horário reservado", "vou pensar", "dar mais um tempo", "desisti"): não é pedido de horário. */
 const RECUSA = /\bnao (?:deixe|deixa|precisa|quero mais|vou mais)\b|\bvou pensar\b|\b(?:dar|dando|dei) (?:mais )?um tempo\b|\bdesist|\blibera(?:r)? (?:o|esse|meu|a) (?:horario|vaga|reserva)\b/;
 /** Ela pede para a Casa conferir com alguém ("verifica com ele", "confirma com o Jackson", "pergunta pra Thaise"): a resposta é conferir. */

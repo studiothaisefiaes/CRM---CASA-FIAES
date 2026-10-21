@@ -235,7 +235,7 @@ test("Serviços: capturas com dados fictícios", async ({ page, isMobile }) => {
       await e2eSql("insert into package_defs (name, price_cents, validity_days, description, items, avec_name) values ($1, $2, $3, $4, $5, 'e2e-shot')", [name, price, days, desc, JSON.stringify(its)]);
     }
     const CLI = [["Marina Alves", "Combo Manutenção Método Fiaes", "Manutenção Método Fiaes", 1, 300], ["Beatriz Costa", "Combo Manutenção Método Fiaes", "Manutenção Método Fiaes", 3, 120],
-      ["Juliana Reis", "Combo Ritual 4 Sessões", "Ritual de Tratamento", 2, 40], ["Kelly Salgado", "Combo Ritual 4 Sessões", "Ritual de Tratamento", 3, 12], ["Patrícia Gomes", "Combo 4 Escovas", "Escova", 0, 85]] as const;
+      ["Juliana Reis", "Combo Ritual 4 Sessões", "Ritual de Tratamento", 2, 40], ["Fabiana Henriques", "Combo Ritual 4 Sessões", "Ritual de Tratamento", 3, 12], ["Patrícia Gomes", "Combo 4 Escovas", "Escova", 0, 85]] as const;
     for (const [i, [cli, pk, sv, used, left]] of CLI.entries()) {
       await e2eSql(`insert into client_packages (client_name, package_name, service_label, total_sessions, used_sessions, price_cents, purchased_on, valid_until, origin, external_key, package_def_id)
         select $1, $2, $3, 4, $4, d.price_cents, current_date - 20, current_date + $5::int, 'crm', 'e2e:shot:' || $6, d.id from package_defs d where d.name = $2 and d.avec_name = 'e2e-shot'`, [cli, pk, sv, used, left, i]);

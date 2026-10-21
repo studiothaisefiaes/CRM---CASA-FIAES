@@ -8,10 +8,11 @@ const searchClientsAction = vi.fn();
 const rescheduleAction = vi.fn();
 const createRecurringVisitsAction = vi.fn();
 const auxPreviewAction = vi.fn(async () => ({ ok: true, data: [] }));
+const peopleOnNumberAction = vi.fn(async (_id: string) => ({ ok: true, data: [] as { id: string; name: string; relation: string | null; isHolder: boolean }[] }));
 vi.mock("@/app/(app)/agenda/actions", () => ({
   auxPreviewAction: (...a: unknown[]) => auxPreviewAction(...(a as [])),
   createRecurringVisitsAction: (...a: unknown[]) => createRecurringVisitsAction(...a),
-  peopleOnNumberAction: vi.fn(async () => ({ ok: true, data: [] })),
+  peopleOnNumberAction: (id: string) => peopleOnNumberAction(id),
   freeSlotsAction: (...a: unknown[]) => freeSlotsAction(...a), createVisitAction: (...a: unknown[]) => createVisitAction(...a),
   searchClientsAction: (...a: unknown[]) => searchClientsAction(...a), rescheduleAction: (...a: unknown[]) => rescheduleAction(...a), resolveWaitlistAction: vi.fn(),
 }));
@@ -55,6 +56,24 @@ it("marca: busca a cliente, escolhe o serviço, vê 'Livre' e manda a visita com
     items: [expect.objectContaining({ serviceId: "s-corte", professionalId: "p-ana", preference: "escolhida" })],
   }));
   expect(p.onDone).toHaveBeenCalledWith({ day: "2026-10-16", message: expect.stringContaining("Horário marcado: Paula"), confirm: expect.stringMatching(/^Marcado: .*às 10:00, Corte com Ana\.$/) });
+});
+
+it("mãe e filha no mesmo número (21/10): da conversa da mãe, escolher a filha marca para ela e a confirmação diz para quem é", async () => {
+  peopleOnNumberAction.mockResolvedValueOnce({ ok: true, data: [
+    { id: "c-marta", name: "Marta Souza", relation: null, isHolder: true }, { id: "c-bruna", name: "Bruna Souza", relation: "filha", isHolder: false },
+  ] });
+  freeSlotsAction.mockResolvedValue({ ok: true, data: livre });
+  createVisitAction.mockResolvedValue({ ok: true, data: { visitId: "v1", appointmentIds: ["a1"], day: "2026-10-16", reused: false } });
+  const p = props({ initial: { day: "2026-10-16", time: "10:00", professionalId: "p-ana", client: { contactId: "c-marta", name: "Marta Souza" }, dealId: "d1" } });
+  render(<BookingSheet {...p} />);
+  expect(await screen.findByText(/Para quem é o horário\? Este número tem 2 pessoas/)).toBeTruthy();
+  fireEvent.click(screen.getByRole("radio", { name: /Bruna Souza/ }));
+  fireEvent.change(screen.getByLabelText("Serviço 1"), { target: { value: "s-corte" } });
+  expect(await screen.findByText("Livre")).toBeTruthy();
+  fireEvent.click(screen.getByRole("radio", { name: "Ela quer a Ana" }));
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Marcar" })); });
+  expect(createVisitAction).toHaveBeenCalledWith(expect.objectContaining({ client: { contactId: "c-bruna" } }));
+  expect(p.onDone).toHaveBeenCalledWith({ day: "2026-10-16", message: expect.stringContaining("Horário marcado: Bruna"), confirm: expect.stringMatching(/^Marcado para Bruna: .*às 10:00, Corte com Ana\.$/) });
 });
 
 it("conflito: o botão principal é 'Escolher outro horário'; 'Encaixar mesmo assim' é secundário, pede o motivo e manda fitIn", async () => {

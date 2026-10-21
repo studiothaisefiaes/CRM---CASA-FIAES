@@ -97,10 +97,10 @@ it("Aniversário hoje: até 3 com Parabéns; o painel tem todas e os próximos 7
 
 it("O dia na Casa: números (faltam pagar só com caixa), as 2 próximas chegadas e 'Ver o dia todo' abre a tabela", () => {
   const visits = [
-    visita("Helena Esteves", [s("confirmado", { start: at("10:00") })]),
+    visita("Fabiana Otero", [s("confirmado", { start: at("10:00") })]),
     visita("Helaine Neves", [s("agendado", { start: at("13:00"), service: "Luzes e Mechas", pro: "Thaise" })]),
     visita("Beatriz Villa Nova", [s("confirmado", { start: at("13:00"), service: "Avaliação", pro: "Gilvan" })]),
-    visita("Alice Uchoa", [s("agendado", { start: at("16:00") })]),
+    visita("Fabiana Uchoa", [s("agendado", { start: at("16:00") })]),
     visita("Thamires Domingues", [s("chegou")]),
     visita("Suzana Melo", [s("compareceu")]),
     visita("Camilla Santos", [s("faltou")]),

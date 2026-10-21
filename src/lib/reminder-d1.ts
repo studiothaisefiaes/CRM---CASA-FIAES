@@ -5,6 +5,7 @@
 import { bahiaParts, slotMs } from "./schedule";
 import { shiftDay } from "./agenda";
 import { CASA_CONFIRMACAO_D1 } from "./casa-texts";
+import { messageDay, messageHour } from "./client-link";
 
 export const REMINDER_WINDOW = { from: 8 * 60, to: 20 * 60 } as const;
 /** O que entra no fim do lembrete e da remarcação quando o link está ligado (`lembrete_d1.comLink`). */
@@ -41,11 +42,39 @@ export const isEveOf = (ms: number, startMs: number) => bahiaParts(ms).date === 
  * ({@link CASA_CONFIRMACAO_D1}), com endereço e mapa.
  */
 export const DEFAULT_REMINDER_TEXT = CASA_CONFIRMACAO_D1;
-/** Mensagem na hora em que o horário é remarcado (mesma chave do lembrete, desligada junto). */
+/** Mensagem na hora em que o horário é remarcado (mesma chave do lembrete, desligada junto). Mesmo desenho do lembrete (21/10). */
 export const DEFAULT_RESCHEDULED_TEXT = [
-  "Oi, {primeiro_nome}! 💛", "", "Seu horário na Casa Fiaes foi remarcado para:", "", "📅 *{data}* às *{hora}*", "{servicos}", "",
-  "Se o novo horário não ficar bom para você, é só me avisar por aqui.",
+  "Olá, {primeiro_nome}! 💛", "", "Seu horário na Casa Fiaes foi remarcado para:", "",
+  "📅 *{data}*", "⏰ às *{hora}*", "✨ {servicos}", "",
+  "Se o novo horário não ficar bom para você, é só responder por aqui.",
 ].join("\n");
+
+/**
+ * Textos padrão de antes, palavra por palavra. A tela salva o texto inteiro (inclusive quando ninguém mexeu nele): texto salvo igual a um
+ * destes não é personalização da gestão, então vale o padrão de hoje. Texto que a gestão mudou fica como está.
+ */
+export const LEGACY_REMINDER_TEXTS = [
+  "Oi, {primeiro_nome}! Lembrete do seu horário na Casa Fiaes: {data} às {hora}, {servicos}. Até lá!",
+  ["Oi, {primeiro_nome}! 💛", "", "Passando para lembrar do seu horário amanhã na Casa Fiaes:", "", "📅 *{data}* às *{hora}*", "{servicos}", "",
+    "Pode confirmar sua presença? É só responder SIM por aqui. Se precisar remarcar, é só me avisar."].join("\n"),
+  ["Oi, {primeiro_nome}! 💛", "", "Podemos confirmar sua presença amanhã na Casa Fiaes?", "", "📅 *{data}* às *{hora}*", "{servicos}", "",
+    "📍 {endereco}", "{mapa}", "", "Temos tolerância de 15 minutos. Se precisar remarcar, é só responder por aqui."].join("\n"),
+] as const;
+export const LEGACY_RESCHEDULED_TEXTS = [
+  "Oi, {primeiro_nome}! Seu horário na Casa Fiaes foi remarcado para {data} às {hora}, {servicos}.",
+  ["Oi, {primeiro_nome}! 💛", "", "Seu horário na Casa Fiaes foi remarcado para:", "", "📅 *{data}* às *{hora}*", "{servicos}", "",
+    "Se o novo horário não ficar bom para você, é só me avisar por aqui."].join("\n"),
+] as const;
+
+const sameText = (a: string, b: string) => a.replace(/\r\n?/g, "\n").trim() === b.replace(/\r\n?/g, "\n").trim();
+/** O texto que vale: o salvo, a não ser que esteja vazio ou seja um padrão antigo sem mudança (aí, o padrão de hoje). */
+export function effectiveText(saved: unknown, current: string, legacy: readonly string[]): string {
+  if (typeof saved !== "string" || !saved.trim()) return current;
+  return legacy.some((l) => sameText(saved, l)) ? current : saved;
+}
+
+/** `{data}` e `{hora}` do lembrete, da remarcação e da prévia: "quinta-feira, 22/10" e "14h" (relógio de Salvador). */
+export const reminderWhen = (start: Date) => ({ data: messageDay(start), hora: messageHour(start) });
 /** Os serviços: cada item já é "Serviço com Profissional". `endereco` e `mapa` (Fase B) vêm da Página da cliente; vazios somem do texto. */
 export type ReminderVars = { primeiro_nome: string; data: string; hora: string; servicos: string[]; endereco?: string; mapa?: string };
 /** "a", "a e b", "a, b e c". */
@@ -61,8 +90,9 @@ export function renderReminder(tpl: string, v: ReminderVars, link: string | null
   // Fase B: a linha com {endereco} sai sem endereço; a com {mapa}, sem mapa (ou sem endereço). Sem deixar linha em branco dupla.
   const lines = tpl.split("\n"), kept = lines.filter((l) => !(l.includes("{endereco}") && !endereco) && !(l.includes("{mapa}") && !mapa));
   if (kept.length !== lines.length) tpl = kept.join("\n").replace(/\n{3,}/g, "\n\n");
-  const alone = /^[ \t]*\{servicos\}[ \t]*$/m.test(tpl);
-  const vars = { ...v, servicos: alone ? v.servicos.join("\n") : joinPt(v.servicos), endereco, mapa };
+  // Linha só com {servicos} (ou com um marcador antes, como "✨ {servicos}"): um serviço por linha, cada um com o mesmo marcador.
+  const alone = /^([ \t]*[^\p{L}\p{N}\s{}]*[ \t]*)\{servicos\}[ \t]*$/mu.exec(tpl);
+  const vars = { ...v, servicos: alone ? v.servicos.join(`\n${alone[1]}`) : joinPt(v.servicos), endereco, mapa };
   const fill = (s: string) => s.replace(/\{(primeiro_nome|data|hora|servicos|endereco|mapa|link)\}/g, (_m, k: keyof typeof vars | "link") => (k === "link" ? link ?? "" : vars[k]));
   let text = fill(tpl);
   if (link && !tpl.includes("{link}")) text = `${text.trim()}${text.includes("\n") ? "\n\n" : " "}${fill(LINK_SUFFIX)}`;

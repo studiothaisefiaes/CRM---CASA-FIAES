@@ -143,7 +143,7 @@ describe("signBody", () => {
 
 describe("cadastro da assinatura", () => {
   it("normaliza, compara sem acento e valida", () => {
-    expect(normalizeSignature("  sara   taise ")).toBe("DANIELA REZENDE");
+    expect(normalizeSignature("  sara   taise ")).toBe("YARA IGARASHI");
     expect(signatureKey("José")).toBe(signatureKey("JOSE"));
     expect(isValidSignature("Sara")).toBe(true);
     expect(isValidSignature("Maria José")).toBe(true);
@@ -174,7 +174,7 @@ Expected: FAIL com `Failed to resolve import "./signature"`
 const SIGNATURE_RE = /^\s*\*\s*(\p{L}[\p{L} ]{0,29}?)\s*[-–]\s*CASA\s+FIAES\s*:\s*\*[ \t]*(?:\r?\n)?/iu;
 const VALID = /^\p{Lu}[\p{Lu} ]{1,29}$/u;
 
-/** "  sara  taise " → "DANIELA REZENDE". */
+/** "  sara  taise " → "YARA IGARASHI". */
 export function normalizeSignature(raw: string): string {
   return raw.normalize("NFC").trim().replace(/\s+/g, " ").toLocaleUpperCase("pt-BR");
 }
@@ -354,10 +354,10 @@ Em `src/server/domain/members.test.ts`:
 ```ts
 describe("assinatura (Configurações › Equipe)", () => {
   it("guarda em maiúsculas, recusa repetida (mesmo com acento) e inválida, vazio tira; tudo auditado", async () => {
-    const sara = await createMember({ name: "Daniela Rezende", email: "s@c.com", password: "12345678", profileId: recepcao }, g);
+    const sara = await createMember({ name: "Yara Igarashi", email: "s@c.com", password: "12345678", profileId: recepcao }, g);
     const cati = await createMember({ name: "Caticilene", email: "c@c.com", password: "12345678", profileId: recepcao }, g);
     expect(await setMemberSignature(sara.id, "  sara ", g)).toEqual({ signature: "SARA" });
-    await expect(setMemberSignature(cati.id, "Sára", g)).rejects.toThrow("A assinatura SÁRA já é de Daniela Rezende.");
+    await expect(setMemberSignature(cati.id, "Sára", g)).rejects.toThrow("A assinatura SÁRA já é de Yara Igarashi.");
     await expect(setMemberSignature(cati.id, "CATI 2", g)).rejects.toThrow("Use só letras e espaço");
     expect(await setMemberSignature(cati.id, "cati", g)).toEqual({ signature: "CATI" });
     expect(await setMemberSignature(sara.id, "   ", g)).toEqual({ signature: null });
@@ -439,8 +439,8 @@ afterEach(cleanup);
 
 it("assinatura: mostra como a cliente vê e salva em maiúsculas", async () => {
   render(<TeamEditor me="g" profiles={[{ id: "p", name: "Atendente", key: "atendente" }]}
-    members={[{ id: "u1", name: "Daniela Rezende", email: "s@c.com", profileId: "p", active: true, pending: false, signature: null }]} />);
-  fireEvent.click(screen.getByRole("button", { name: "Assinatura de Daniela Rezende: sem assinatura" }));
+    members={[{ id: "u1", name: "Yara Igarashi", email: "s@c.com", profileId: "p", active: true, pending: false, signature: null }]} />);
+  fireEvent.click(screen.getByRole("button", { name: "Assinatura de Yara Igarashi: sem assinatura" }));
   fireEvent.change(screen.getByLabelText("Assinatura"), { target: { value: "sara" } });
   expect(screen.getByText("*SARA - CASA FIAES:*")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Salvar assinatura" }));
@@ -451,7 +451,7 @@ it("assinatura: mostra como a cliente vê e salva em maiúsculas", async () => {
 - [ ] **Step 12: Rodar e ver falhar**
 
 Run: `npx vitest run src/components/config/team.test.tsx`
-Expected: FAIL com `Unable to find an accessible element with the role "button" and name "Assinatura de Daniela Rezende: sem assinatura"`
+Expected: FAIL com `Unable to find an accessible element with the role "button" and name "Assinatura de Yara Igarashi: sem assinatura"`
 
 - [ ] **Step 13: Implementar na tela**
 
@@ -591,8 +591,8 @@ const avisos = () => db.select().from(alerts).where(eq(alerts.type, "respondida_
 
 beforeEach(async () => {
   c = 0; o = 0; await resetDb();
-  sara = await person("Daniela Rezende", "atendente", "SARA");
-  cati = await person("Natália Campos", "gestao", "CATI");
+  sara = await person("Yara Igarashi", "atendente", "SARA");
+  cati = await person("Helena Henriques", "gestao", "CATI");
 });
 
 describe("autoria pela assinatura", () => {
@@ -1151,9 +1151,9 @@ import { conversationWith, firstName, lastMessagePrefix, outMeta, ownerLine, tea
 
 describe("nomes de quem atende", () => {
   it("primeiro nome e nome da equipe (assinatura primeiro)", () => {
-    expect(firstName("Daniela Rezende")).toBe("Sara");
+    expect(firstName("Yara Igarashi")).toBe("Sara");
     expect(firstName("  ")).toBeNull();
-    expect(teamShortName({ name: "Natália Campos", signature: "CATI" })).toBe("Cati");
+    expect(teamShortName({ name: "Helena Henriques", signature: "CATI" })).toBe("Cati");
     expect(teamShortName({ name: "Joaquim Salles", signature: null })).toBe("Joaquim");
   });
 });
@@ -1161,7 +1161,7 @@ describe("nomes de quem atende", () => {
 describe("outMeta (rodapé do balão da Casa)", () => {
   it("nome e por onde saiu", () => {
     expect(outMeta({ fromPhone: true, sentVia: "celular", sender: "Cati" })).toBe("Cati · pelo celular · ");
-    expect(outMeta({ fromPhone: false, sentVia: "crm", sender: "Daniela Rezende" })).toBe("Sara · ");
+    expect(outMeta({ fromPhone: false, sentVia: "crm", sender: "Yara Igarashi" })).toBe("Sara · ");
     expect(outMeta({ fromPhone: true, sender: null, body: "*MARIA JOSÉ - CASA FIAES:*\nOi" })).toBe("Maria José · pelo celular · ");
     expect(outMeta({ fromPhone: true, sender: null, body: "Oi" })).toBe("pelo celular · ");
     expect(outMeta({ fromPhone: false, sender: null, body: "Lembrete" })).toBe("automática · ");
@@ -1176,13 +1176,13 @@ describe("Fila e Quadro", () => {
     expect(lastMessagePrefix("out", null, "Lembrete")).toBe("Casa: ");
   });
   it("linha da dona", () => {
-    expect(ownerLine("Daniela Rezende", null)).toBe("Sara");
+    expect(ownerLine("Yara Igarashi", null)).toBe("Sara");
     expect(ownerLine("Sara", "Cati")).toBe("Dona: Sara · respondida por Cati");
     expect(ownerLine(null, null)).toBe("Sem dono");
     expect(ownerLine(null, "Cati")).toBe("Sem dono · respondida por Cati");
   });
   it("agenda: com quem está a conversa", () => {
-    expect(conversationWith("Daniela Rezende")).toBe("Conversa com: Sara");
+    expect(conversationWith("Yara Igarashi")).toBe("Conversa com: Sara");
     expect(conversationWith(null)).toBe("Conversa sem dono");
   });
 });
@@ -1199,7 +1199,7 @@ Expected: FAIL com `Failed to resolve import "./authorship"`
 // src/lib/authorship.ts
 import { parseSignature, signatureDisplayName } from "./signature";
 
-/** "Daniela Rezende" → "Sara". */
+/** "Yara Igarashi" → "Sara". */
 export const firstName = (name: string | null | undefined): string | null => name?.trim().split(/\s+/)[0] || null;
 
 /** Como a equipe se chama: pela assinatura ("CATI" → "Cati"); sem assinatura, o primeiro nome. */
@@ -1262,7 +1262,7 @@ describe("quem enviou", () => {
   it("balão da Casa mostra nome e por onde saiu, sem repetir a assinatura no texto", () => {
     render(<Conversation onReply={() => {}} messages={[
       msg({ id: "a", direction: "out", status: "sent", fromPhone: true, sentVia: "celular", sender: "Cati", body: "*CATI - CASA FIAES:*\nConfirmado!" }),
-      msg({ id: "b", direction: "out", status: "sent", fromPhone: false, sentVia: "crm", sender: "Daniela Rezende", body: "*SARA - CASA FIAES:*\nOi" }),
+      msg({ id: "b", direction: "out", status: "sent", fromPhone: false, sentVia: "crm", sender: "Yara Igarashi", body: "*SARA - CASA FIAES:*\nOi" }),
       msg({ id: "c", direction: "out", status: "sent", fromPhone: true, sender: null, body: "*MARIA - CASA FIAES:*\nOlá" }),
       msg({ id: "d", direction: "out", status: "sent", fromPhone: false, sender: null, body: "Lembrete" }),
     ]} />);
@@ -1418,7 +1418,7 @@ it("mostra quem respondeu no lugar de 'Você:' e 'Dona: … · respondida por �
   const items: QueueItem[] = [{
     dealId: "1", contactId: "1", name: "Ana", phone: "+55", hasAvatar: false, awaitingSince: null, slaMinutes: 5,
     lastMessage: "*CATI - CASA FIAES:*\nConfirmado!", lastKind: "text", lastDirection: "out", lastAt: null, stageKey: "atendimento", stageName: "Atendimento",
-    sourceLabel: "", ownerName: "Daniela Rezende", ownerShort: "Sara", lastAuthorName: "Cati", repliedByName: "Cati", signals: [], tags: [],
+    sourceLabel: "", ownerName: "Yara Igarashi", ownerShort: "Sara", lastAuthorName: "Cati", repliedByName: "Cati", signals: [], tags: [],
   }];
   const { container } = render(<HoursProvider hours={HOURS}><QueueList sections={[{ key: "aguardando-cliente", items }]} /></HoursProvider>);
   expect(container.textContent).toContain("Cati: Confirmado!");
@@ -1630,7 +1630,7 @@ Em `src/server/queries/journey.test.ts`, dentro do `describe("getJourney")`:
 
 ```ts
   it("cada pessoa traz a dona: nome da equipe e iniciais", async () => {
-    const [u] = await db.insert(users).values({ name: "Natália Campos", email: "c@c.com", role: "gestor", passwordHash: "x", signature: "CATI" }).returning();
+    const [u] = await db.insert(users).values({ name: "Helena Henriques", email: "c@c.com", role: "gestor", passwordHash: "x", signature: "CATI" }).returning();
     const a = await mk("atendimento", { owner: u.id }); const b = await mk("atendimento");
     const people = (await getJourney()).stations.find((s) => s.key === "atendimento")!.people;
     expect(people.find((p) => p.dealId === a.id)).toMatchObject({ ownerName: "Cati", ownerInitials: "CC" });
@@ -1873,8 +1873,8 @@ const minAgo = (m: number) => new Date(NOW.getTime() - m * 60_000);
 beforeEach(resetDb);
 
 it("cada pessoa com estado, esperando, dela e a última resposta; quem não fez nada (e convite pendente) fica de fora", async () => {
-  const [sara] = await db.insert(users).values({ name: "Daniela Rezende", email: "s@c.com", role: "atendente", passwordHash: "x", signature: "SARA", availability: "ausente" }).returning();
-  const [cati] = await db.insert(users).values({ name: "Natália Campos", email: "c@c.com", role: "gestor", passwordHash: "x", signature: "CATI", availability: "disponivel", lastSeenAt: minAgo(2) }).returning();
+  const [sara] = await db.insert(users).values({ name: "Yara Igarashi", email: "s@c.com", role: "atendente", passwordHash: "x", signature: "SARA", availability: "ausente" }).returning();
+  const [cati] = await db.insert(users).values({ name: "Helena Henriques", email: "c@c.com", role: "gestor", passwordHash: "x", signature: "CATI", availability: "disponivel", lastSeenAt: minAgo(2) }).returning();
   await db.insert(users).values({ name: "Joaquim", email: "j@c.com", role: "gestor", passwordHash: "x" });
   await db.insert(users).values({ name: "Convite", email: "v@c.com", role: "atendente", passwordHash: null, availability: "disponivel", lastSeenAt: minAgo(1) });
   const [lead] = await db.select().from(stages).where(eq(stages.key, "lead"));
@@ -2205,8 +2205,8 @@ async function cenario() {
 
 beforeEach(async () => {
   n = 0; await resetDb();
-  sara = await person("Daniela Rezende", "atendente", "SARA");
-  cati = await person("Natália Campos", "gestao", "CATI");
+  sara = await person("Yara Igarashi", "atendente", "SARA");
+  cati = await person("Helena Henriques", "gestao", "CATI");
 });
 
 describe("acerto para trás pela assinatura", () => {
@@ -9431,7 +9431,7 @@ Nada aqui envia WhatsApp. Ordem: código → assinaturas → acerto do 1A → ta
    sudo mv /opt/crm /opt/crm-anterior-r13 && sudo mv /opt/crm-r14 /opt/crm
    cd /opt/crm && sudo -u crm pm2 start crm-web && curl -s https://crm.217-76-54-18.sslip.io/api/health   # web ok; worker.ok false é esperado aqui
    ```
-6. Assinaturas, pela tela (Configurações › Equipe): SARA em "Daniela Rezende" e CATI em "Natália Campos".
+6. Assinaturas, pela tela (Configurações › Equipe): SARA em "Yara Igarashi" e CATI em "Helena Henriques".
 7. Lote 1A: `cd /opt/crm && sudo -u crm npx tsx scripts/autoria-assinaturas.ts --dry-run` → mostrar as tabelas ao dono → `sudo -u crm npx tsx scripts/autoria-assinaturas.ts --aplicar` (tem de terminar em "Conferência: nada pendente.").
 8. Lote 1B: `sudo -u crm npx tsx scripts/tarefas-sem-responsavel.ts --dry-run` → ok do dono → `sudo -u crm env BACKUP_DIR=/home/crm/backups npx tsx scripts/tarefas-sem-responsavel.ts --aplicar`.
 9. Lote 1C: `sudo -u crm npx tsx scripts/migrar-funil-lote1c.ts --dry-run` (comparar com a tabela "Migração" da spec; até 3 de diferença por linha é normal) → ok do dono →
@@ -9718,7 +9718,7 @@ Esperado: a web responde; `worker.ok: false` é esperado (o worker fica parado a
 
 **I7. Assinaturas e acerto do Lote 1A (ensaio → aplicar)**
 
-1. Em Configurações › Equipe (pela tela, como gestão): SARA em "Daniela Rezende" e CATI em "Natália Campos".
+1. Em Configurações › Equipe (pela tela, como gestão): SARA em "Yara Igarashi" e CATI em "Helena Henriques".
 2. Ensaio, só leitura:
    ```bash
    cd /opt/crm && sudo -u crm npx tsx scripts/autoria-assinaturas.ts --dry-run

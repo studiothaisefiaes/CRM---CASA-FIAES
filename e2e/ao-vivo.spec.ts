@@ -36,7 +36,7 @@ test.beforeAll(async () => {
   await e2eSql("insert into professionals (name, agenda_position, color) values ('Thaise', 0, 'rosa'), ('Sidney', 5, null), ('Jamille', 6, 'oliva')");
   await e2eSql("update professionals set assistant_of = (select id from professionals where name = 'Thaise') where name = 'Sidney'");
   // Thaise: atendendo agora (começou 10:05, 90 min); Sidney, assistente dela, com a próxima já na Casa; depois mais duas.
-  await horario({ cliente: "Alice Freitas", pro: "Thaise", hm: "10:00", min: 90, servico: "LUZES E MECHAS", status: "em_atendimento", comecou: "10:05" });
+  await horario({ cliente: "Carla Henriques", pro: "Thaise", hm: "10:00", min: 90, servico: "LUZES E MECHAS", status: "em_atendimento", comecou: "10:05" });
   await horario({ cliente: "Larissa Couto", pro: "Sidney", hm: "10:30", servico: "escova progressiva", status: "chegou" });
   await horario({ cliente: "Rita Souza", pro: "Thaise", hm: "13:00", servico: "Coloração", status: "confirmado" });
   await horario({ cliente: "Bruna Lima", pro: "Thaise", hm: "15:00", servico: "Corte" });
@@ -72,7 +72,7 @@ test("Hoje › Ao vivo: uma coluna por profissional, o topo e o que fica de fora
   const thaise = coluna(page, "Thaise");
   await expect(thaise.getByText("com Sidney", { exact: true })).toBeVisible();
   const agora = thaise.getByTestId("agora");
-  await expect(agora.getByText("Alice Freitas")).toBeVisible();
+  await expect(agora.getByText("Carla Henriques")).toBeVisible();
   await expect(agora.getByText("Luzes e Mechas")).toBeVisible();
   await expect(agora.getByText("há 15 min")).toBeVisible();
   await expect(agora.getByText("faltam 1h15")).toBeVisible();
@@ -101,8 +101,8 @@ test("Hoje › Ao vivo: uma coluna por profissional, o topo e o que fica de fora
   await shot(page, "ao-vivo-desktop");
 
   // Tocar na cliente abre a visita do dia (com a comanda, porque o caixa do e2e está no CRM).
-  await agora.getByRole("button", { name: "Abrir a visita de Alice Freitas" }).click();
-  const visita = page.getByRole("dialog", { name: "Alice Freitas" });
+  await agora.getByRole("button", { name: "Abrir a visita de Carla Henriques" }).click();
+  const visita = page.getByRole("dialog", { name: "Carla Henriques" });
   await expect(visita.getByText(/Visita de hoje/)).toBeVisible();
   await expect(visita.getByRole("button", { name: "Finalizar" })).toBeVisible();
   await expect(visita.getByRole("button", { name: /comanda/ })).toBeVisible();
