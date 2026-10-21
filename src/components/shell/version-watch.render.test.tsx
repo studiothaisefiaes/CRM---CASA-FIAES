@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { VERSION_POLL_MS, VersionWatch } from "./version-watch";
+import { AUTO_RELOAD_CHECK_MS, AUTO_RELOAD_IDLE_MS, VERSION_POLL_MS, VersionWatch } from "./version-watch";
 import { resetVersionState } from "./version-state";
 
 let serverVersion = "b1";
@@ -11,10 +11,11 @@ beforeEach(() => { resetVersionState(); serverVersion = "b1"; vi.stubGlobal("fet
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); fetchMock.mockClear(); });
 
 describe("aviso de versão nova do CRM (20/10, Cati: atualização derrubava a tela)", () => {
-  it("pergunta a cada minuto; com versão nova, mostra o aviso fixo e só recarrega quando a pessoa toca", async () => {
+  it("pergunta a cada minuto; com versão nova e a pessoa digitando, mostra o aviso fixo e só recarrega quando ela toca", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const reload = vi.fn();
-    render(<VersionWatch versao="b1" onReload={reload} />);
+    render(<><textarea aria-label="Mensagem" defaultValue="Oi, Maria" /><VersionWatch versao="b1" onReload={reload} /></>);
+    screen.getByLabelText("Mensagem").focus(); // está digitando: a tela não pode recarregar sozinha
     await act(async () => { await vi.advanceTimersByTimeAsync(VERSION_POLL_MS + 10); });
     expect(fetchMock).toHaveBeenCalledWith("/api/versao", expect.objectContaining({ cache: "no-store" }));
     expect(screen.queryByTestId("versao-nova")).toBeNull();
@@ -22,10 +23,38 @@ describe("aviso de versão nova do CRM (20/10, Cati: atualização derrubava a t
     await act(async () => { await vi.advanceTimersByTimeAsync(VERSION_POLL_MS + 10); });
     const aviso = await screen.findByTestId("versao-nova");
     expect(aviso.textContent).toContain("Versão nova do CRM.");
-    // Ninguém tocou: nada recarrega, nem depois de muito tempo (pode estar digitando).
+    // Digitando: nada recarrega, nem depois de muito tempo.
     await act(async () => { await vi.advanceTimersByTimeAsync(10 * VERSION_POLL_MS); });
     expect(reload).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Atualizar" }));
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it("versão nova e ninguém digitando: recarrega sozinha (21/10: a aba parava de atualizar e as mensagens não apareciam)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const reload = vi.fn();
+    serverVersion = "b2";
+    render(<VersionWatch versao="b1" onReload={reload} />);
+    act(() => { window.dispatchEvent(new Event("focus")); });
+    await screen.findByTestId("versao-nova");
+    await act(async () => { await vi.advanceTimersByTimeAsync(AUTO_RELOAD_IDLE_MS + AUTO_RELOAD_CHECK_MS + 10); });
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it("digitando ou com janela aberta espera; quando larga o campo vazio, recarrega", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const reload = vi.fn();
+    serverVersion = "b2";
+    render(<><textarea aria-label="Mensagem" defaultValue="Oi" /><VersionWatch versao="b1" onReload={reload} /></>);
+    const campo = screen.getByLabelText("Mensagem") as HTMLTextAreaElement;
+    campo.focus();
+    act(() => { window.dispatchEvent(new Event("focus")); });
+    await screen.findByTestId("versao-nova");
+    await act(async () => { await vi.advanceTimersByTimeAsync(5 * AUTO_RELOAD_CHECK_MS); });
+    expect(reload).not.toHaveBeenCalled();
+    fireEvent.change(campo, { target: { value: "" } });
+    campo.blur();
+    await act(async () => { await vi.advanceTimersByTimeAsync(AUTO_RELOAD_IDLE_MS + AUTO_RELOAD_CHECK_MS + 10); });
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
