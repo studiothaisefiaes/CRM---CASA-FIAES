@@ -18,7 +18,7 @@ const REFRESH_MAX_WAIT_MS = 2000; // fluxo contínuo de avisos não adia o refre
 const FOCUS_MIN_GAP_MS = 5000; // voltar para a aba/janela não recarrega se acabou de recarregar
 const SSE_WAIT_MS = 3000; // sem o primeiro aviso nesse prazo, o stream está preso no caminho (proxy/túnel): vai de long-polling
 const POLL_MODE_KEY = "crm-live-mode"; // a aba lembra: depois da primeira vez já começa no long-polling
-const VERSION_FRESH_MS = 5000; // a versão conferida há menos disso vale para o próximo refresh
+const VERSION_FRESH_MS = 60_000; // a versão conferida há menos disso vale para o próximo refresh (21/10: 5 s custava uma ida ao servidor a cada mensagem)
 const VERSION_RETRY_MS = 5000; // servidor fora do ar (troca de versão): espera e confere de novo
 const VERSION_RETRIES = 6;
 const Ctx = createContext<Api>({ subscribe: () => () => {}, requestRefresh: () => {} });

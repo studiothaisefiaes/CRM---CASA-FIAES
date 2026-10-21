@@ -114,6 +114,8 @@ export type QueueOptions = {
 };
 
 export const QUEUE_LIMIT = 1000;
+/** Quantas a Fila mostra de início (o resto vem por "Mostrar mais"). */
+export const QUEUE_PAGE = 80;
 const ETAPA_KEY = /^[a-z0-9_]{1,40}$/i;
 /** `etapa=followup` (a estação "Aguardando cliente" da Jornada) é a etapa desse tipo, como a coluna do Quadro. */
 export const FOLLOWUP_STATION = "followup";

@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { can } from "@/lib/permissions";
 import { redirect } from "next/navigation";
 import { requirePerm } from "@/server/auth/session";
-import { getBulkOptions, getQueue, getQueueFilterOptions, getQueueItem } from "@/server/queries/queue";
+import { getBulkOptions, getQueue, getQueueFilterOptions, getQueueItem, QUEUE_LIMIT, QUEUE_PAGE } from "@/server/queries/queue";
 import { LiveRefresh } from "@/components/shell/live";
 import { ConversationPaneRoute } from "@/components/queue/conversation-pane";
 import { QueueRestore } from "@/components/queue/queue-route";
@@ -40,11 +40,14 @@ export default async function AtendimentoPage({ searchParams }: PageProps<"/aten
   const dias = parseDias(str("dias"));
   const setor = isUuid(str("setor")) ? str("setor") : null;
   const leadId = isUuid(lead) ? lead : null;
+  // 21/10 (dono: "lento pra porra"): "Todas" tinha 257 conversas (233 KB) e a tela baixava tudo a cada mensagem que chegava.
+  // Vêm as primeiras 80 (as que mais pedem atenção); "Mostrar mais" traz de 150 em 150. A busca continua procurando em todas.
+  const limite = Math.min(QUEUE_LIMIT, Math.max(QUEUE_PAGE, Number(str("limite")) || QUEUE_PAGE));
   // Celular: a conversa é uma tela própria. Decide aqui, antes de carregar e montar o lead; o ViewportRedirect cobre o resto (janela estreita no desktop).
   if (leadId && isMobileUserAgent((await headers()).get("user-agent"))) redirect(`/atendimento/${leadId}`);
   const foco = parseQueueFoco(sp.foco);
   const aba = view === "arquivadas" || view === "equipe" || view === "fornecedores" || view === "nao-cliente" ? null : parseQueueAba(sp.aba);
-  const [queue, bulk, team, tagList, options, programadas, dayProgress] = await Promise.all([getQueue(user, { view, aba, foco, q, filtro, dono, etapa, fonte, etiqueta, etiquetas: etiquetasList, regraEtiqueta: parseEtiquetaRegra(regra), diasSemConversa: dias, setor }), getBulkOptions(user), getTeamNow(), listTags(), getQueueFilterOptions(user), countScheduled(user), getDayProgressLine()]);
+  const [queue, bulk, team, tagList, options, programadas, dayProgress] = await Promise.all([getQueue(user, { view, aba, foco, q, filtro, dono, etapa, fonte, etiqueta, etiquetas: etiquetasList, regraEtiqueta: parseEtiquetaRegra(regra), diasSemConversa: dias, setor, limit: limite }), getBulkOptions(user), getTeamNow(), listTags(), getQueueFilterOptions(user), countScheduled(user), getDayProgressLine()]);
   const params = { view: str("view") ? view : null, aba, foco, filtro, etapa, dono, fonte, etiqueta, etiquetas, regra: regra ? parseEtiquetaRegra(regra) : null, dias: dias ? String(dias) : null, q };
   const query = queueQuery(params);
   // O painel abre com o item da Fila (nome, foto, espera, última mensagem) e busca a conversa depois. Fora da lista (filtro, busca), pede só esse lead.
