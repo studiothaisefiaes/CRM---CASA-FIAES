@@ -1,5 +1,8 @@
 import Link from "next/link";
+import { eq } from "drizzle-orm";
 import { findInvite } from "@/server/auth/users";
+import { db } from "@/server/db";
+import { profiles } from "@/server/db/schema";
 import { AuthShell } from "@/components/auth-shell";
 import { InviteForm } from "./invite-form";
 
@@ -15,8 +18,9 @@ export default async function InvitePage({ params }: PageProps<"/convite/[token]
       </AuthShell>
     );
   }
+  const [profile] = invite.profileId ? await db.select({ name: profiles.name }).from(profiles).where(eq(profiles.id, invite.profileId)) : [];
   return (
-    <AuthShell title={`Olá, ${invite.name.split(" ")[0]}`} subtitle={`Você foi convidada para o CRM como ${invite.role === "gestor" ? "gestão" : "atendimento"}.`}>
+    <AuthShell title={`Olá, ${invite.name.split(" ")[0]}`} subtitle={profile ? `Você foi convidada para o CRM com o perfil ${profile.name}.` : "Você foi convidada para o CRM."}>
       <InviteForm token={token} />
     </AuthShell>
   );

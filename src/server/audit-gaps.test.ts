@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "./db";
-import { alerts, channels, deals, messages, users } from "./db/schema";
+import { alerts, channels, contacts, deals, messages, users } from "./db/schema";
 import { recordInbound, recordOutbound, moveDeal, ReopenConflict } from "./domain/deals";
 import { ingestEvolution } from "./whatsapp/webhook";
 import { sendFromCrm } from "./domain/send";
@@ -21,13 +21,13 @@ describe("lacunas da auditoria", () => {
     expect((await db.select().from(deals)).length).toBe(1);
   });
 
-  it("@lid sem número não some: avisa a gestão", async () => {
+  it("@lid sem número não some: vira lead com 'Número oculto' (pedido 14/10; antes só avisava a gestão)", async () => {
     const r = await ingestEvolution({ event: "messages.upsert", instance: "casa-principal", data: {
       key: { remoteJid: "12345678901234@lid", fromMe: false, id: "LID2" }, pushName: "Desconhecida", message: { conversation: "oi" } } });
-    expect(r).toMatchObject({ ignored: "lid_sem_numero" });
-    const [a] = await db.select().from(alerts);
-    expect(a.audience).toBe("gestao");
-    expect(a.message).toContain("Desconhecida");
+    expect(r).toMatchObject({ ok: true, kind: "in" });
+    const [c] = await db.select().from(contacts).where(eq(contacts.waLid, "12345678901234"));
+    expect(c).toMatchObject({ phoneE164: "lid:12345678901234", name: "Desconhecida" });
+    expect(await db.select().from(deals).where(eq(deals.contactId, c.id))).toHaveLength(1);
   });
 
   it("nunca dois leads abertos: reabrir com outro aberto é recusado", async () => {

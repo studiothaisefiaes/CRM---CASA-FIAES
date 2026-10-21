@@ -1,0 +1,59 @@
+import type { SessionUser } from "../auth/sessions-store";
+import { can } from "@/lib/permissions";
+import { summaryLinkHref } from "../../lib/report-links";
+import type { ReportFilter } from "./common";
+import {
+  crmVsPhone, dataQuality, demandHeatmap, executiveNumbers, financeWithPaid, firstResponse, followupEfficacy, funnelMilestones, lossesByReasonAndStage,
+  personVsGoal, sourceToSale, staleNow, type ExecutiveNumbers, type SourceRow,
+} from "./queries";
+import { dailySummaryText } from "./summary-text";
+import { returnCohorts } from "./cohort";
+import { salonFinance } from "./salon";
+import { replyTimesByAuthor } from "./replies";
+
+export type ScreenUser = Pick<SessionUser, "id" | "perms" | "name" | "email">;
+
+/** Sem "números de toda a equipe", só os próprios leads; com ela, filtra por pessoa se quiser. */
+export const scopedFilter = (user: ScreenUser, f: ReportFilter): ReportFilter => ({ ...f, compare: true, ownerId: can(user.perms, "relatorios.equipe") ? f.ownerId ?? null : user.id });
+
+/** Valores em R$ só para quem tem "ver valores": para o resto o dado nem chega à tela. */
+export type ExecutiveView = Omit<ExecutiveNumbers, "vendas" | "ticketMedio"> & {
+  vendas: { atual: { n: number; cents: number | null }; anterior: { n: number; cents: number | null } };
+  ticketMedio: ExecutiveNumbers["ticketMedio"] | null;
+};
+export type SourceView = Omit<SourceRow, "receitaCents"> & { receitaCents: number | null };
+
+export function hideMoney(n: ExecutiveNumbers, gestor: boolean): ExecutiveView {
+  if (gestor) return n;
+  return { ...n, vendas: { atual: { n: n.vendas.atual.n, cents: null }, anterior: { n: n.vendas.anterior.n, cents: null } }, ticketMedio: null };
+}
+
+export async function loadOverview(user: ScreenUser, filter: ReportFilter) {
+  const gestor = can(user.perms, "valores.ver");
+  const f = scopedFilter(user, filter);
+  const [summary, numbers, response, funnel, stale, sources, losses, channel, quality] = await Promise.all([
+    dailySummaryText(user, f.now), executiveNumbers(f), firstResponse(f), funnelMilestones(f), staleNow({ now: f.now, ownerId: f.ownerId, source: f.source }),
+    sourceToSale(f), lossesByReasonAndStage(f), crmVsPhone(f), dataQuality(f),
+  ]);
+  return {
+    summary: {
+      text: summary.text, highlight: summary.highlight,
+      links: summary.links.flatMap((l) => { const href = summaryLinkHref(l.href); return href && !href.startsWith("/relatorios") ? [{ label: l.label, href }] : []; }),
+    },
+    numbers: hideMoney(numbers, gestor), response, funnel, stale, losses, channel, quality,
+    sources: sources.map((s): SourceView => ({ ...s, receitaCents: gestor ? s.receitaCents : null })),
+  };
+}
+
+export async function loadAnalysis(user: ScreenUser, filter: ReportFilter) {
+  const team = can(user.perms, "relatorios.equipe"), money = can(user.perms, "valores.ver");
+  const f = scopedFilter(user, filter);
+  const [followup, heatmap, people, finance, cohort, salon, replies] = await Promise.all([
+    followupEfficacy(f), demandHeatmap(f), team ? personVsGoal(f) : null, team && money ? financeWithPaid(f) : null,
+    team ? returnCohorts(f.now ?? new Date()) : null, team && money ? salonFinance(f) : null, replyTimesByAuthor(f),
+  ]);
+  return { followup, heatmap, people, finance, cohort, salon, replies };
+}
+
+export type Overview = Awaited<ReturnType<typeof loadOverview>>;
+export type Analysis = Awaited<ReturnType<typeof loadAnalysis>>;

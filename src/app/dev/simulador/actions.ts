@@ -1,7 +1,7 @@
 "use server";
 import { notFound } from "next/navigation";
 import { env } from "@/server/env";
-import { assertUser } from "@/server/auth/session";
+import { assertPerm } from "@/server/auth/session";
 import { ingestEvolution } from "@/server/whatsapp/webhook";
 import { normalizePhone } from "@/server/domain/phone";
 import { db } from "@/server/db";
@@ -10,7 +10,7 @@ import { channels } from "@/server/db/schema";
 /** Simula a Evolution chamando o webhook (só desenvolvimento). */
 export async function simulateAction(input: { phone: string; name: string; text: string; fromMe: boolean; ad: boolean }) {
   if (!env().DEV_TOOLS) notFound();
-  await assertUser("gestor");
+  await assertPerm("config.sistema");
   const [ch] = await db.select().from(channels).limit(1);
   const id = "SIM" + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 6).toUpperCase();
   const r = await ingestEvolution({

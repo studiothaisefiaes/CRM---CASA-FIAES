@@ -1,10 +1,15 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { UserFacingError } from "./errors";
+import { REMOVED_SUFFIX } from "@/server/whatsapp/channel-removed";
 import { z } from "zod";
-import { db } from "../db";
-import { automations, automationVersions, auditLog, channels, lists, settings, stages, users } from "../db/schema";
+import { db, type Tx } from "../db";
+import { automations, automationVersions, auditLog, channels, libraryFiles, lists, settings, stages, users } from "../db/schema";
+import { funcaoParam } from "./funcoes";
 import { automationInputSchema, type AutomationInput } from "../rules/types";
+import { sendsMessages } from "../rules/templates";
 import { whatsapp } from "../whatsapp/evolution";
-import { createInvite } from "../auth/users";
+import { getLembreteD1 } from "./client-link/settings";
+import { startQuietIfPaired } from "./quiet";
 
 const audit = (userId: string, action: string, entity: string, entityId: string | null, data: Record<string, unknown> = {}) =>
   db.insert(auditLog).values({ userId, action, entity, entityId, data });
@@ -25,6 +30,9 @@ export async function moveStage(id: string, dir: -1 | 1, userId: string) {
   const all = await db.select().from(stages).orderBy(asc(stages.position));
   const i = all.findIndex((s) => s.id === id); const j = i + dir;
   if (i < 0 || j < 0 || j >= all.length) return;
+  // Lote 4: a primeira etapa de cada tipo é a que o sistema usa (stageByKind); uma extra do mesmo tipo nunca passa à frente dela.
+  if (all[i].kind === all[j].kind && all[i].active && all[j].active)
+    throw new UserFacingError("A primeira etapa de cada tipo é a que o sistema usa: uma etapa extra do mesmo tipo fica depois dela.");
   await db.transaction(async (tx) => {
     await tx.update(stages).set({ position: all[j].position }).where(eq(stages.id, all[i].id));
     await tx.update(stages).set({ position: all[i].position }).where(eq(stages.id, all[j].id));
@@ -43,12 +51,54 @@ export async function saveBusinessHours(input: unknown, userId: string) {
 }
 
 /* ---------- Automações (com versões) ---------- */
-export async function saveAutomation(id: string | null, input: AutomationInput, userId: string) {
+type AutoShape = { enabled: boolean; trigger: unknown; actions: unknown };
+const actionTypes = (a: AutoShape) => (Array.isArray(a.actions) ? (a.actions as { type?: string }[]).map((x) => x.type) : []);
+const isAgendamento = (a: AutoShape) => (a.trigger as { type?: string } | null)?.type === "agendamento_em_horas";
+
+/**
+ * O lembrete da véspera (Configurações › Mensagens, `lembrete_d1`) é a fonte única (Plano 5). Ligado, nenhuma automação de agendamento
+ * que manda mensagem ou enquete liga: a cliente receberia duas. A trava enquete × lembrete entre automações saiu com as duas automações do seed.
+ */
+async function assertNoReminderConflict(tx: Tx, v: AutoShape) {
+  const mine = actionTypes(v);
+  if (!v.enabled || !isAgendamento(v) || !(mine.includes("enviar_enquete_confirmacao") || mine.includes("enviar_mensagem"))) return;
+  await tx.execute(sql`select pg_advisory_xact_lock(7120013)`); // duas telas salvando ao mesmo tempo não furam a regra (a mesma de saveLembreteD1)
+  if ((await getLembreteD1(tx)).enabled) throw new Error("Desligue o lembrete do horário (no fim desta tela) antes de ligar este.");
+}
+
+/** Ligar (ou salvar ligada) uma automação que manda mensagem à cliente pede a confirmação de envio real vinda da tela (send-confirm). */
+const SEND_CONFIRM_ERROR = "Confirme o envio real para ligar.";
+function assertSendConfirmed(enabled: boolean, actions: readonly { type: string }[], opts?: { confirmouEnvio?: boolean }) {
+  if (enabled && sendsMessages(actions) && opts?.confirmouEnvio !== true) throw new UserFacingError(SEND_CONFIRM_ERROR);
+}
+
+/**
+ * As ações que dependem de outras telas (Fase B, Task 7): o arquivo precisa estar na Biblioteca e o atraso não passa do número
+ * "Atraso máximo de uma ação" (Configurações › Recursos › Regras por acontecimento).
+ */
+async function assertActionsValid(actions: AutomationInput["actions"]) {
+  const maxDelay = await funcaoParam("regras_acontecimento", "atraso_max_min");
+  for (const a of actions) {
+    if ((a.type === "enviar_mensagem" || a.type === "enviar_arquivo") && (a.delayMinutes ?? 0) > maxDelay)
+      throw new UserFacingError(`O atraso máximo de uma ação é ${maxDelay} min (Configurações › Recursos).`);
+  }
+  const fileIds = [...new Set(actions.flatMap((a) => (a.type === "enviar_arquivo" ? [a.fileId] : [])))];
+  if (fileIds.length) {
+    const found = await db.select({ id: libraryFiles.id }).from(libraryFiles).where(and(inArray(libraryFiles.id, fileIds), isNull(libraryFiles.deletedAt)));
+    if (found.length !== fileIds.length) throw new UserFacingError("Esse arquivo saiu da Biblioteca. Escolha outro.");
+  }
+}
+
+export async function saveAutomation(id: string | null, input: AutomationInput, userId: string, opts?: { confirmouEnvio?: boolean }) {
   const v = automationInputSchema.parse(input);
+  assertSendConfirmed(v.enabled, v.actions, opts);
+  await assertActionsValid(v.actions);
   return db.transaction(async (tx) => {
+    await assertNoReminderConflict(tx, v);
     if (!id) {
       const [a] = await tx.insert(automations).values({ ...v, updatedBy: userId }).returning();
       await tx.insert(automationVersions).values({ automationId: a.id, version: 1, snapshot: v, userId });
+      await tx.insert(auditLog).values({ userId, action: "criou", entity: "automation", entityId: a.id, data: { enabled: v.enabled, envia: sendsMessages(v.actions) } });
       return a.id;
     }
     const [cur] = await tx.select().from(automations).where(eq(automations.id, id));
@@ -56,17 +106,29 @@ export async function saveAutomation(id: string | null, input: AutomationInput, 
     const next = cur.version + 1;
     await tx.update(automations).set({ ...v, version: next, updatedBy: userId, updatedAt: new Date() }).where(eq(automations.id, id));
     await tx.insert(automationVersions).values({ automationId: id, version: next, snapshot: v, userId });
+    // Quem salvou uma automação ligada que manda mensagem fica registrado (com a confirmação "envio real" da tela, conferida acima).
+    await tx.insert(auditLog).values({ userId, action: "editou", entity: "automation", entityId: id, data: { enabled: v.enabled, envia: sendsMessages(v.actions), versao: next } });
     return id;
   });
 }
-export async function toggleAutomation(id: string, enabled: boolean, userId: string) {
-  await db.update(automations).set({ enabled, updatedBy: userId, updatedAt: new Date() }).where(eq(automations.id, id));
-  await audit(userId, enabled ? "ligou" : "desligou", "automation", id);
+export async function toggleAutomation(id: string, enabled: boolean, userId: string, opts?: { confirmouEnvio?: boolean }) {
+  await db.transaction(async (tx) => {
+    const [cur] = await tx.select().from(automations).where(eq(automations.id, id)).for("update");
+    if (cur) assertSendConfirmed(enabled, (cur.actions ?? []) as { type: string }[], opts);
+    if (cur) await assertNoReminderConflict(tx, { ...cur, enabled });
+    await tx.update(automations).set({ enabled, updatedBy: userId, updatedAt: new Date() }).where(eq(automations.id, id));
+  });
+  const [after] = await db.select({ actions: automations.actions }).from(automations).where(eq(automations.id, id));
+  await audit(userId, enabled ? "ligou" : "desligou", "automation", id, { envia: sendsMessages((after?.actions ?? []) as { type: string }[]) });
 }
 export async function restoreAutomation(id: string, version: number, userId: string) {
   const [v] = await db.select().from(automationVersions).where(and(eq(automationVersions.automationId, id), eq(automationVersions.version, version)));
   if (!v) throw new Error("Versão não encontrada");
-  return saveAutomation(id, automationInputSchema.parse(v.snapshot), userId);
+  const snap = automationInputSchema.parse(v.snapshot);
+  // Restaurar nunca liga envio por trás: com ação de mensagem, volta desligada (a gestão liga depois, com o aviso de envio real).
+  const disabled = sendsMessages(snap.actions);
+  await saveAutomation(id, disabled ? { ...snap, enabled: false } : snap, userId);
+  return { id, disabled };
 }
 export async function deleteAutomation(id: string, userId: string) {
   await db.delete(automations).where(eq(automations.id, id));
@@ -89,18 +151,34 @@ export async function previewAutomation(input: AutomationInput) {
 }
 
 /* ---------- Listas ---------- */
-export const listKinds = ["objection", "lost_reason", "quick_reply", "origin"] as const;
+export const listKinds = ["objection", "lost_reason", "quick_reply", "origin", "service", "keyword"] as const;
+/** Palavras-chave: as frases ficam uma por linha, sem linhas vazias. */
+const cleanPhrases = (body: string | null) => (body ?? "").split("\n").map((l) => l.trim()).filter(Boolean).join("\n");
 export async function addListItem(kind: (typeof listKinds)[number], label: string, body: string | null, userId: string) {
   const l = z.string().trim().min(1).max(60).parse(kind === "quick_reply" ? label.replace(/^\//, "").toLowerCase().replace(/\s+/g, "-") : label);
   if (kind === "quick_reply" && !body?.trim()) throw new Error("Escreva o texto da resposta pronta.");
+  if (kind === "keyword") { body = cleanPhrases(body); if (!body) throw new UserFacingError("Escreva ao menos uma palavra ou frase."); }
   const [{ max }] = (await db.execute(sql`select coalesce(max(position), -1)::int as max from lists where kind = ${kind}`)).rows as { max: number }[];
   await db.insert(lists).values({ kind, label: l, body: body?.trim() || null, position: max + 1 })
     .onConflictDoUpdate({ target: [lists.kind, lists.label], set: { active: true, body: body?.trim() || null } });
   await audit(userId, "adicionou", "list", null, { kind, label: l });
 }
+/** O tipo do item da lista (a action escolhe a permissão: serviço pede "Mudar serviços e preços"). */
+export async function listItemKind(id: string): Promise<string | null> {
+  const [cur] = await db.select({ kind: lists.kind }).from(lists).where(eq(lists.id, id));
+  return cur?.kind ?? null;
+}
 export async function updateListItem(id: string, label: string, body: string | null, active: boolean, userId: string) {
+  const [cur] = await db.select({ kind: lists.kind }).from(lists).where(eq(lists.id, id));
+  if (cur?.kind === "keyword") { body = cleanPhrases(body); if (!body) throw new UserFacingError("Escreva ao menos uma palavra ou frase."); }
   await db.update(lists).set({ label: z.string().trim().min(1).max(60).parse(label), body: body?.trim() || null, active }).where(eq(lists.id, id));
   await audit(userId, "editou", "list", id, { label, active });
+}
+
+/** Palavra-chave: "Subir na Fila" (a conversa passa na frente dentro da sua seção). */
+export async function setKeywordBoost(id: string, boost: boolean, userId: string) {
+  await db.update(lists).set({ meta: { boost } }).where(and(eq(lists.id, id), eq(lists.kind, "keyword")));
+  await audit(userId, "editou", "list", id, { boost });
 }
 
 /* ---------- WhatsApp ---------- */
@@ -123,6 +201,8 @@ export async function channelQr(id: string) {
   const r = await whatsapp().connect(c.instanceName);
   const status = r.status === "conectado" ? "conectado" : r.status === "aguardando_qr" ? "aguardando_qr" : c.status;
   await db.update(channels).set({ status, ...(r.status === "aguardando_qr" ? { lastQrAt: new Date() } : {}) }).where(eq(channels.id, id));
+  // A tela pode saber da conexão antes do webhook: liga o modo quieto aqui também (idempotente).
+  if (status === "conectado") await startQuietIfPaired(c, null);
   return r;
 }
 export async function channelState(id: string) {
@@ -130,6 +210,7 @@ export async function channelState(id: string) {
   if (!c) throw new Error("Número não encontrado");
   const st = await whatsapp().state(c.instanceName);
   if (st !== c.status) await db.update(channels).set({ status: st }).where(eq(channels.id, id));
+  if (st === "conectado") await startQuietIfPaired(c, null);
   return st;
 }
 export async function disconnectChannel(id: string, remove: boolean, userId: string) {
@@ -141,7 +222,7 @@ export async function disconnectChannel(id: string, remove: boolean, userId: str
       try { await whatsapp().logout(c.instanceName); } catch { /* já desconectado */ }
       try { await whatsapp().remove(c.instanceName); } catch (e) { console.error("[canal] não foi possível apagar a instância", c.instanceName, e); }
     }
-    await db.update(channels).set({ status: "desconectado", name: `${c.name} (removido)` }).where(eq(channels.id, id));
+    await db.update(channels).set({ status: "desconectado", name: `${c.name}${REMOVED_SUFFIX}` }).where(eq(channels.id, id));
   } else {
     try { await whatsapp().logout(c.instanceName); } catch { /* já desconectado */ }
     await db.update(channels).set({ status: "desconectado" }).where(eq(channels.id, id));
@@ -149,21 +230,5 @@ export async function disconnectChannel(id: string, remove: boolean, userId: str
   await audit(userId, remove ? "removeu" : "desconectou", "channel", id);
 }
 
-/* ---------- Equipe ---------- */
-export async function inviteMember(input: { name: string; email: string; role: "gestor" | "atendente" }, userId: string) {
-  const v = z.object({ name: z.string().trim().min(2).max(80), email: z.string().trim().email("E-mail inválido"), role: z.enum(["gestor", "atendente"]) }).parse(input);
-  const token = await createInvite(v);
-  await audit(userId, "convidou", "user", null, { email: v.email, role: v.role });
-  return token;
-}
-export async function setMember(id: string, patch: { role?: "gestor" | "atendente"; active?: boolean }, userId: string) {
-  if (id === userId && (patch.active === false || patch.role === "atendente")) throw new Error("Você não pode tirar o próprio acesso de gestão.");
-  if (patch.role === "atendente" || patch.active === false) {
-    const [{ n }] = (await db.execute(sql`select count(*)::int as n from users where role = 'gestor' and active and id <> ${id}`)).rows as { n: number }[];
-    if (n === 0) throw new Error("O CRM precisa de pelo menos uma pessoa na gestão.");
-  }
-  await db.update(users).set(patch).where(eq(users.id, id));
-  if (patch.active === false) await db.execute(sql`delete from sessions where user_id = ${id}`);
-  await audit(userId, "alterou", "user", id, patch);
-}
+/* ---------- Equipe: ver ./profiles.ts (perfis, convite com perfil, ativar/desativar) ---------- */
 

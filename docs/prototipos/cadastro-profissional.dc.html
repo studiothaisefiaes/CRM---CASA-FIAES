@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Cadastro da profissional</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f4f2ee}
+a{color:#7a5524}a:hover{color:#121212}
+.pick{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:12px;padding:10px;border-radius:14px;min-height:60px}
+.pick:hover{background:#f4f2ee}
+.pick:focus-visible,.sw:focus-visible,.day:focus-visible{outline:3px solid #b8863f;outline-offset:2px}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:13px;font-weight:500;color:#2a2a29}
+.field input{height:44px;padding:0 14px;border-radius:12px;border:1px solid #d3cfc7;background:#fdfdfc;font:400 15px Inter,sans-serif;color:#121212}
+.sw{all:unset;cursor:pointer;width:36px;height:36px;border-radius:999px}
+.day{all:unset;box-sizing:border-box;cursor:pointer;height:44px;min-width:58px;padding:0 10px;border-radius:12px;display:grid;place-items:center;font:600 14px Inter,sans-serif}
+.svc{display:flex;align-items:center;gap:10px;min-height:40px;font-size:14px}
+.svc input{width:18px;height:18px;accent-color:#121212}
+</style>
+</helmet>
+<div style="font-family: Inter, ui-sans-serif, system-ui, sans-serif; color: #121212; box-sizing: border-box; max-width: 1440px; margin: 0 auto; padding: 28px 32px 48px; display: flex; flex-direction: column; gap: 18px;">
+  <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px;">
+    <div style="display: flex; flex-direction: column; gap: 4px;">
+      <span style="font-size: 13px; color: #6f6a62;">Configurações</span>
+      <h1 style="margin: 0; font-size: 32px; font-weight: 600; letter-spacing: -0.02em;">Profissionais</h1>
+    </div>
+    <button style="height: 44px; padding: 0 18px; border-radius: 12px; border: 0; background: #121212; color: #fdfdfc; font: 600 14px Inter, sans-serif;">+ Adicionar profissional</button>
+  </div>
+
+  <div style="display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start;">
+    <aside style="flex: 1 1 260px; max-width: 320px; background: #fdfdfc; border-radius: 18px; padding: 12px; display: flex; flex-direction: column; gap: 2px;">
+      <span style="font-size: 12px; font-weight: 600; color: #6f6a62; padding: 6px 10px;">Ativas · 18</span>
+      <sc-for list="{{pros}}" as="p" hint-placeholder-count="6">
+        <button class="pick" onClick="{{p.pick}}" aria-pressed="{{p.on}}" style="{{p.bg}}">
+          <div style="{{p.avatar}}">{{p.ini}}</div>
+          <div style="display: flex; flex-direction: column;">
+            <span style="font-size: 15px; font-weight: 600;">{{p.nome}}</span>
+            <span style="font-size: 12px; color: #6f6a62;">{{p.cargo}} · {{p.servicos}}</span>
+          </div>
+        </button>
+      </sc-for>
+      <button style="all: unset; cursor: pointer; padding: 12px 10px; font-size: 13px; color: #7a5524; font-weight: 500;">Desativadas · 83 ›</button>
+    </aside>
+
+    <section style="flex: 999 1 640px; min-width: 0; display: flex; flex-direction: column; gap: 14px;">
+      <div style="background: #fdfdfc; border-radius: 18px; padding: 22px; display: flex; flex-wrap: wrap; gap: 24px; align-items: center;">
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 10px;">
+          <div style="{{cur.photo}}" role="img" aria-label="Foto de {{cur.nome}}">
+            <span style="font-size: 34px; font-weight: 600;">{{cur.ini}}</span>
+          </div>
+          <div style="display: flex; gap: 6px;">
+            <button style="height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #d3cfc7; background: #fdfdfc; font: 500 13px Inter, sans-serif;">Enviar foto</button>
+            <button style="height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid #d3cfc7; background: #fdfdfc; font: 500 13px Inter, sans-serif;">Tirar foto</button>
+          </div>
+        </div>
+        <div style="flex: 1 1 320px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px;">
+          <div class="field"><label for="ap">Nome na agenda</label><input id="ap" value="{{cur.nome}}"></div>
+          <div class="field"><label for="cg">Cargo</label><input id="cg" value="{{cur.cargo}}"></div>
+          <div class="field" style="grid-column: span 2;"><label for="nc">Nome completo (liga com as vendas do Avec)</label><input id="nc" value="{{cur.completo}}"></div>
+          <div class="field"><label for="em">E-mail para o app dela</label><input id="em" placeholder="ex.: nome@gmail.com"></div>
+          <div class="field"><span style="font-size: 13px; font-weight: 500;">Cor na agenda</span>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <sc-for list="{{swatches}}" as="s" hint-placeholder-count="6">
+                <button class="sw" onClick="{{s.pick}}" aria-label="Cor {{s.nome}}" aria-pressed="{{s.on}}" style="{{s.style}}"></button>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 14px;">
+        <div style="flex: 1 1 380px; background: #fdfdfc; border-radius: 18px; padding: 22px; display: flex; flex-direction: column; gap: 14px;">
+          <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap;">
+            <h2 style="margin: 0; font-size: 18px; font-weight: 600;">Dias e horário de trabalho</h2>
+            <span style="font-size: 13px; color: #6f6a62;">Sem mudar nada, segue a Casa: ter–sáb, 9h–18h</span>
+          </div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <sc-for list="{{days}}" as="d" hint-placeholder-count="7">
+              <button class="day" onClick="{{d.pick}}" aria-pressed="{{d.on}}" style="{{d.style}}">{{d.label}}</button>
+            </sc-for>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;">
+            <div class="field"><label for="hi">Entra</label><input id="hi" value="09:00"></div>
+            <div class="field"><label for="hf">Sai</label><input id="hf" value="18:00"></div>
+            <div class="field"><label for="ii">Almoço de</label><input id="ii" value="12:00"></div>
+            <div class="field"><label for="if">até</label><input id="if" value="13:00"></div>
+          </div>
+          <span style="font-size: 13px; color: #5c5c5c;">Folga, curso ou médico num dia só: use "Bloquear horário" na Agenda.</span>
+        </div>
+
+        <div style="flex: 1 1 380px; background: #fdfdfc; border-radius: 18px; padding: 22px; display: flex; flex-direction: column; gap: 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap;">
+            <h2 style="margin: 0; font-size: 18px; font-weight: 600;">Serviços que faz</h2>
+            <span style="font-size: 13px; color: #6f6a62;">{{cur.servicos}}</span>
+          </div>
+          <div style="background: #f3e9d8; border-radius: 12px; padding: 12px 14px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between;">
+            <span style="font-size: 14px; color: #7a5524;">O Avec mostra que ela fez mais 3 serviços este ano.</span>
+            <button style="height: 40px; padding: 0 12px; border-radius: 10px; border: 0; background: #121212; color: #fdfdfc; font: 600 13px Inter, sans-serif;">Ver e marcar</button>
+          </div>
+          <label for="bs" style="font-size: 13px; font-weight: 500;">Procurar serviço</label>
+          <input id="bs" placeholder="ex.: escova" style="height: 44px; padding: 0 14px; border-radius: 12px; border: 1px solid #d3cfc7; background: #fdfdfc; font: 400 15px Inter, sans-serif;">
+          <sc-for list="{{grupos}}" as="g" hint-placeholder-count="3">
+            <div style="display: flex; flex-direction: column; gap: 2px;">
+              <span style="font-size: 12px; font-weight: 600; color: #6f6a62; margin-top: 6px;">{{g.nome}}</span>
+              <sc-for list="{{g.itens}}" as="i" hint-placeholder-count="3">
+                <label class="svc"><input type="checkbox" checked="{{i.on}}"> <span style="flex: 1;">{{i.nome}}</span><span style="font-size: 12px; color: #6f6a62;">{{i.dur}}</span></label>
+              </sc-for>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap;">
+        <button style="height: 48px; padding: 0 18px; border-radius: 12px; border: 1px solid #d3cfc7; background: #fdfdfc; font: 500 15px Inter, sans-serif;">Desativar</button>
+        <button style="height: 48px; padding: 0 22px; border-radius: 12px; border: 0; background: #121212; color: #fdfdfc; font: 600 15px Inter, sans-serif;">Salvar</button>
+      </div>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1180}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { sel: 'ana', cor: '#9a6b2f', days: { ter: true, qua: true, qui: true, sex: true, sab: true } }; }
+  renderVals() {
+    const PROS = [
+      { id: 'ana', nome: 'Ana', cargo: 'Cabeleireira', completo: 'Ana [SOBRENOME]', n: 14, cor: '#9a6b2f', tint: '#f6eddf' },
+      { id: 'bruna', nome: 'Bruna', cargo: 'Cabeleireira', completo: 'Bruna [SOBRENOME]', n: 11, cor: '#2f6b6b', tint: '#e6f0ef' },
+      { id: 'carla', nome: 'Carla', cargo: 'Manicure', completo: 'Carla [SOBRENOME]', n: 9, cor: '#8a4560', tint: '#f5e7ec' },
+      { id: 'duda', nome: 'Duda', cargo: 'Tricologista', completo: 'Duda [SOBRENOME]', n: 6, cor: '#4a5a7a', tint: '#e8ebf2' },
+      { id: 'elis', nome: 'Elis', cargo: 'Cabeleireira', completo: 'Elis [SOBRENOME]', n: 12, cor: '#5f6f2a', tint: '#eef1e2' },
+      { id: 'fabi', nome: 'Fabi', cargo: 'Maquiadora', completo: 'Fabi [SOBRENOME]', n: 4, cor: '#8a5a3a', tint: '#f3e8de' },
+    ];
+    const sel = this.state.sel;
+    const avatar = (p, size, fs) => 'width:' + size + 'px;height:' + size + 'px;border-radius:999px;display:grid;place-items:center;flex:none;font-weight:600;font-size:' + fs + 'px;background:' + p.tint + ';color:' + p.cor + ';box-shadow:0 0 0 2px #fdfdfc,0 0 0 4px ' + p.cor;
+    const pros = PROS.map((p) => ({ ...p, ini: p.nome.slice(0, 2).toUpperCase(), servicos: p.n + ' serviços', avatar: avatar(p, 44, 15), on: sel === p.id,
+      bg: sel === p.id ? 'background:#f3e9d8' : '', pick: () => this.setState({ sel: p.id, cor: p.cor }) }));
+    const c = pros.find((p) => p.id === sel);
+    const cor = this.state.cor;
+    const cur = { ...c, photo: 'width:120px;height:120px;border-radius:999px;display:grid;place-items:center;background:' + c.tint + ';color:' + cor + ';box-shadow:0 0 0 3px #fdfdfc,0 0 0 6px ' + cor };
+    const swatches = [['dourado', '#9a6b2f'], ['verde-água', '#2f6b6b'], ['vinho', '#8a4560'], ['azul', '#4a5a7a'], ['oliva', '#5f6f2a'], ['terracota', '#8a5a3a'], ['grafite', '#3a3a38']]
+      .map(([nome, hex]) => ({ nome, on: cor === hex, pick: () => this.setState({ cor: hex }), style: 'background:' + hex + ';box-shadow:' + (cor === hex ? '0 0 0 3px #fdfdfc,0 0 0 5px #121212' : 'none') }));
+    const D = [['seg', 'Seg'], ['ter', 'Ter'], ['qua', 'Qua'], ['qui', 'Qui'], ['sex', 'Sex'], ['sab', 'Sáb'], ['dom', 'Dom']];
+    const days = D.map(([k, label]) => { const on = !!this.state.days[k]; return { label, on,
+      pick: () => this.setState({ days: { ...this.state.days, [k]: !on } }),
+      style: on ? 'background:#121212;color:#fdfdfc' : 'background:#f4f2ee;color:#6f6a62;box-shadow:inset 0 0 0 1px #d3cfc7' }; });
+    const grupos = [
+      { nome: 'Método Fiaes', itens: [['Manutenção Método Fiaes', '[DURAÇÃO]', true], ['Cabelo Método Fiaes 1', '[DURAÇÃO]', true], ['Finalização Método Fiaes', '[DURAÇÃO]', true]] },
+      { nome: 'Corte e cor', itens: [['Corte Feminino', '[DURAÇÃO]', true], ['Coloração ou Tonalização', '[DURAÇÃO]', true], ['Luzes e Mechas', '[DURAÇÃO]', false]] },
+      { nome: 'Unhas', itens: [['Manicure e Pedicure', '[DURAÇÃO]', false], ['Esmaltação em Gel', '[DURAÇÃO]', false]] },
+    ].map((g) => ({ nome: g.nome, itens: g.itens.map(([nome, dur, on]) => ({ nome, dur, on })) }));
+    return { pros, cur, swatches, days, grupos };
+  }
+}
+</script>
+</body>
+</html>

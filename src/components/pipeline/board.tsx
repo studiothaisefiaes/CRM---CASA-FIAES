@@ -1,75 +1,114 @@
 "use client";
-import { useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { DndContext, DragOverlay, PointerSensor, TouchSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
-import { AnimatePresence, LayoutGroup, motion } from "motion/react";
+import {
+  closestCenter, DndContext, DragOverlay, KeyboardSensor, PointerSensor, pointerWithin, TouchSensor, useDraggable, useDroppable, useSensor, useSensors,
+  type Announcements, type CollisionDetection, type DragEndEvent, type DragStartEvent, type KeyboardCoordinateGetter, type ScreenReaderInstructions,
+} from "@dnd-kit/core";
+import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "motion/react";
 import type { BoardCard, BoardStage } from "@/server/queries/board";
+import type { Viewer } from "@/app/(app)/atendimento/actions";
 import { DealCard } from "./deal-card";
-import { urgencyOf, useHours, useNow } from "./timer";
+import { StageSheets } from "./stage-sheets";
+import { BoardLeadPanel } from "./board-lead-panel";
+import { isUuid } from "@/lib/uuid";
 import { moveDealAction } from "@/app/(app)/funil/actions";
 import { useToast } from "@/components/ui/toast";
-import { StageDialogs, type PendingMove } from "./stage-dialogs";
-import { SPRING } from "@/lib/motion";
+import { orderByUrgency } from "@/lib/board-order";
+import { formatPhoneClient, nameFallback } from "@/lib/phone-client";
+import { LIMITS, SPRING_UI } from "@/lib/motion";
 import { cn } from "@/lib/cn";
+import { FOLLOWUP_COLUMN, RETOMAR_COLUMN, toColumns, type Column } from "@/lib/board-columns";
 
-type ListOpt = { id: string; label: string };
 
-type Column = BoardStage & { virtual?: boolean; stageNames?: Record<string, string> };
+/** Agendado, Fechado e Perdido pedem dados (data, venda, motivo): soltar ali abre a folha da Fila em vez de mover direto. */
+const OWN_ACTION_KINDS = ["agendado", "fechado", "perdido"];
+/** Na Casa só vem da Agenda (Chegou/Em atendimento): soltar ali não move, e sair dela não se desfaz por aqui. */
+const AGENDA_ONLY_KINDS = ["na_casa"];
+const cardName = (c: BoardCard) => c.contactName?.trim() || nameFallback(c.phone);
 
-/** Junta Follow-up 1–4 numa coluna só (lei de Hick): o número vai no card. */
-function toColumns(stages: BoardStage[]): Column[] {
-  const fus = stages.filter((s) => s.kind === "followup");
-  const out: Column[] = [];
-  for (const s of stages) {
-    if (s.kind !== "followup") { out.push(s); continue; }
-    if (s.id !== fus[0].id) continue;
-    out.push({ ...fus[0], id: "followup", key: "followup_1", name: "Follow-up", virtual: true,
-      stageNames: Object.fromEntries(fus.map((f) => [f.id, f.name])),
-      cards: fus.flatMap((f) => f.cards).sort((a, b) => (a.stageEnteredAt < b.stageEnteredAt ? -1 : 1)) });
-  }
-  return out;
-}
+/** Anúncios do leitor de tela (pt-BR) e as instruções de quem usa o teclado. */
+const INSTRUCTIONS: ScreenReaderInstructions = {
+  draggable: "Para mudar esta conversa de coluna, aperte Espaço. Depois use as setas para a esquerda e para a direita para escolher a coluna, Espaço para soltar e Esc para cancelar.",
+};
 
-export function Board({ stages, lostReasons }: { stages: BoardStage[]; lostReasons: ListOpt[] }) {
+/** Teclado: cada seta move o card para o centro da coluna vizinha (o padrão do dnd-kit andaria 25 px por vez). */
+const columnCoordinates: KeyboardCoordinateGetter = (event, { context: { active, droppableRects, droppableContainers, collisionRect } }) => {
+  if (!active || !collisionRect) return undefined;
+  const dir = event.code === "ArrowRight" ? 1 : event.code === "ArrowLeft" ? -1 : 0;
+  if (event.code.startsWith("Arrow")) event.preventDefault(); // as setas não rolam a página enquanto o card está na mão
+  if (!dir) return undefined;
+  const cols = droppableContainers.getEnabled().flatMap((c) => { const r = droppableRects.get(c.id); return r ? [{ id: c.id, rect: r }] : []; }).sort((a, b) => a.rect.left - b.rect.left);
+  if (!cols.length) return undefined;
+  const cx = collisionRect.left + collisionRect.width / 2;
+  const here = cols.reduce((best, c, i) => (Math.abs(c.rect.left + c.rect.width / 2 - cx) < Math.abs(cols[best].rect.left + cols[best].rect.width / 2 - cx) ? i : best), 0);
+  const target = cols[Math.min(cols.length - 1, Math.max(0, here + dir))].rect;
+  return { x: target.left + target.width / 2 - collisionRect.width / 2, y: Math.max(target.top, 0) + 12 };
+};
+
+/** Ponteiro: a coluna sob o dedo. Teclado (sem ponteiro): a coluna de centro mais próximo. */
+const collision: CollisionDetection = (args) => {
+  if (args.pointerCoordinates) { const hit = pointerWithin(args); if (hit.length) return hit; }
+  return closestCenter(args);
+};
+
+export function Board({ stages, viewer }: { stages: BoardStage[]; viewer: Viewer }) {
   const [board, setBoard] = useState(stages);
   const [prevStages, setPrevStages] = useState(stages);
   if (stages !== prevStages) { setPrevStages(stages); setBoard(stages); }
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [pending, setPending] = useState<PendingMove | null>(null);
+  // Soltou em Agendado/Fechado/Perdido: a folha da Fila abre; `n` renova a folha a cada soltura.
+  const [sheet, setSheet] = useState<{ n: number; cardId: string; name: string; to: { id: string; key: string } } | null>(null);
+  const [focusId, setFocusId] = useState<string | null>(null);
+  // O card que está esperando a folha abrir (a busca do lead leva um instante): mostra "Abrindo…".
+  const [openingId, setOpeningId] = useState<string | null>(null);
+  const sheetReady = useCallback(() => setOpeningId(null), []);
   const [, start] = useTransition();
   const toast = useToast();
   const router = useRouter();
+  const reduced = useReducedMotion();
   const sp = useSearchParams();
   const filtersQs = useMemo(() => { const p = new URLSearchParams(sp.toString()); p.delete("lead"); return p.toString(); }, [sp]);
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 6 } }));
+  // ?lead=ID: a conversa abre no mesmo painel da Fila, numa gaveta por cima das colunas.
+  const lead = sp.get("lead");
+  const leadId = isUuid(lead) ? lead : null;
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 6 } }),
+    // Espaço pega e solta (Enter segue abrindo o lead, que é um link); Esc cancela.
+    useSensor(KeyboardSensor, { coordinateGetter: columnCoordinates, keyboardCodes: { start: ["Space"], cancel: ["Escape"], end: ["Space"] } }),
+  );
 
   const [openClosed, setOpenClosed] = useState<Record<string, boolean>>({});
   const columns = useMemo(() => toColumns(board), [board]);
   const findCard = (id: string) => { for (const s of board) { const c = s.cards.find((x) => x.id === id); if (c) return { card: c, stage: s }; } return null; };
   const active = activeId ? findCard(activeId) : null;
+  const columnName = (id: unknown) => columns.find((c) => c.id === id)?.name ?? null;
 
   function applyMove(cardId: string, toStageId: string) {
     setBoard((b) => {
       const from = b.find((s) => s.cards.some((c) => c.id === cardId)); if (!from) return b;
       const card = from.cards.find((c) => c.id === cardId)!;
       return b.map((s) => s.id === from.id ? { ...s, cards: s.cards.filter((c) => c.id !== cardId) }
-        : s.id === toStageId ? { ...s, cards: [{ ...card, stageId: toStageId, stageEnteredAt: new Date().toISOString() }, ...s.cards] } : s);
+        : s.id === toStageId ? { ...s, cards: orderByUrgency([{ ...card, stageId: toStageId, stageEnteredAt: new Date().toISOString() }, ...s.cards]) } : s);
     });
   }
 
-  function commit(move: PendingMove, extra?: Record<string, unknown>) {
+  function commit(cardId: string, name: string, to: { id: string; key: string; name: string }) {
     const snapshot = board;
-    const from = findCard(move.cardId)?.stage;
-    applyMove(move.cardId, move.to.id);
+    const from = findCard(cardId)?.stage;
+    applyMove(cardId, to.id);
     start(async () => {
-      const r = await moveDealAction(move.cardId, move.to.key, extra);
+      const r = await moveDealAction(cardId, to.key);
       if (!r.ok) { setBoard(snapshot); toast(r.error, "error"); return; }
       router.refresh();
-      // Movimento comum e reversível: desfazer em vez de pedir confirmação (Apple HIG).
-      toast(`${move.name} foi para ${move.to.name}`, "ok", from ? { label: "Desfazer", onClick: () => {
+      // Movimento comum e reversível: desfazer em vez de pedir confirmação (Apple HIG). Sair de Agendado, Fechado ou Perdido não se desfaz aqui:
+      // voltar exigiria a ação própria (data, venda, motivo).
+      const undo = from && !OWN_ACTION_KINDS.includes(from.kind) && !AGENDA_ONLY_KINDS.includes(from.kind) ? { label: "Desfazer", onClick: () => {
         setBoard(snapshot);
-        start(async () => { const u = await moveDealAction(move.cardId, from.key); if (!u.ok) toast(u.error, "error"); router.refresh(); });
-      } } : undefined);
+        start(async () => { const u = await moveDealAction(cardId, from.key); if (!u.ok) toast(u.error, "error"); router.refresh(); });
+      } } : undefined;
+      toast(`${name} foi para ${to.name}`, "ok", undo);
     });
   }
 
@@ -77,28 +116,54 @@ export function Board({ stages, lostReasons }: { stages: BoardStage[]; lostReaso
     setActiveId(null);
     const toId = e.over?.id as string | undefined; const cardId = e.active.id as string;
     const from = findCard(cardId); if (!toId || !from || from.stage.id === toId) return;
-    if (toId === "followup" && from.stage.kind === "followup") return;
-    const to = toId === "followup" ? board.find((s) => s.key === "followup_1")! : board.find((s) => s.id === toId)!;
-    const move: PendingMove = { cardId, name: from.card.contactName ?? "Lead", to: { id: to.id, key: to.key, name: to.name, kind: to.kind } };
-    if (to.kind === "agendado" || to.kind === "perdido" || to.kind === "fechado") setPending(move);
-    else commit(move);
+    if (toId === RETOMAR_COLUMN) { const c = from.card; toast(`Para retomar: abra a conversa de ${cardName(c)} e use "Para retomar" no status para escolher a data.`, "info"); return; }
+    if (toId === FOLLOWUP_COLUMN && from.stage.kind === "followup") return;
+    const to = toId === FOLLOWUP_COLUMN ? board.find((s) => s.kind === "followup") : board.find((s) => s.id === toId);
+    if (!to) return;
+    const name = cardName(from.card);
+    if (e.activatorEvent instanceof KeyboardEvent) setFocusId(cardId);
+    if (AGENDA_ONLY_KINDS.includes(to.kind)) { toast(`${to.name} vem da Agenda: marque Chegou no horário de ${name}.`, "info"); return; }
+    if (OWN_ACTION_KINDS.includes(to.kind)) { setOpeningId(cardId); setSheet((s) => ({ n: (s?.n ?? 0) + 1, cardId, name, to: { id: to.id, key: to.key } })); }
+    else commit(cardId, name, to);
   }
+
+  // O dnd-kit anuncia "sobre a coluna X" logo depois de pegar, o que cobriria o "Pegou…": o primeiro aviso de "sobre" (a coluna de origem) fica de fora.
+  const justPicked = useRef(false);
+  const announcements: Announcements = {
+    onDragStart: ({ active: a }) => { justPicked.current = true; const f = findCard(a.id as string); return f ? `Pegou ${cardName(f.card)}, da coluna ${f.stage.name}.` : undefined; },
+    onDragOver: ({ active: a, over }) => {
+      const f = findCard(a.id as string); if (!f) return undefined;
+      if (justPicked.current) { justPicked.current = false; if (over && (over.id === f.stage.id || (over.id === FOLLOWUP_COLUMN && f.stage.kind === "followup"))) return undefined; }
+      return over ? `${cardName(f.card)} está sobre a coluna ${columnName(over.id) ?? "?"}.` : `${cardName(f.card)} está fora das colunas.`;
+    },
+    onDragEnd: ({ active: a, over }) => {
+      const f = findCard(a.id as string); if (!f) return undefined;
+      const to = over ? columns.find((c) => c.id === over.id) : null;
+      if (!to) return `${cardName(f.card)} foi solto fora das colunas e ficou onde estava.`;
+      if (to.id === f.stage.id || (to.id === FOLLOWUP_COLUMN && f.stage.kind === "followup")) return `${cardName(f.card)} ficou em ${to.name}.`;
+      return OWN_ACTION_KINDS.includes(to.kind) ? `${cardName(f.card)} solto em ${to.name}. Preencha os dados para confirmar.` : `${cardName(f.card)} foi para ${to.name}.`;
+    },
+    onDragCancel: ({ active: a }) => { const f = findCard(a.id as string); return f ? `Movimento cancelado. ${cardName(f.card)} continua em ${f.stage.name}.` : undefined; },
+  };
 
   return (
     <>
-      <DndContext id="funil" sensors={sensors} onDragStart={(e: DragStartEvent) => setActiveId(e.active.id as string)} onDragEnd={onDragEnd} onDragCancel={() => setActiveId(null)}>
+      <DndContext id="funil" sensors={sensors} collisionDetection={collision} accessibility={{ announcements, screenReaderInstructions: INSTRUCTIONS, restoreFocus: false }}
+        onDragStart={(e: DragStartEvent) => { setActiveId(e.active.id as string); setFocusId(null); }} onDragEnd={onDragEnd} onDragCancel={() => setActiveId(null)}>
         <LayoutGroup>
-          <div className="flex gap-3 overflow-x-auto scroll-thin px-5 lg:px-8 pb-6 snap-x snap-mandatory lg:snap-none" style={{ height: "calc(100dvh - 190px)" }}>
+          <motion.div layoutScroll className="flex gap-3 overflow-x-auto scroll-thin px-5 lg:px-8 pb-6 snap-x snap-mandatory lg:snap-none" style={{ height: "calc(100dvh - 190px)" }}>
             {columns.map((s) => (s.kind === "fechado" || s.kind === "perdido") && !openClosed[s.id]
               ? <CollapsedColumn key={s.id} stage={s} onOpen={() => setOpenClosed((o) => ({ ...o, [s.id]: true }))} />
-              : <ColumnView key={s.id} stage={s} activeId={activeId} filtersQs={filtersQs} onCollapse={s.kind === "fechado" || s.kind === "perdido" ? () => setOpenClosed((o) => ({ ...o, [s.id]: false })) : undefined} />)}
-          </div>
+              : <ColumnView key={s.id} stage={s} activeId={activeId} focusId={focusId} openingId={openingId} filtersQs={filtersQs} onCollapse={s.kind === "fechado" || s.kind === "perdido" ? () => setOpenClosed((o) => ({ ...o, [s.id]: false })) : undefined} />)}
+          </motion.div>
         </LayoutGroup>
-        <DragOverlay dropAnimation={{ duration: 220, easing: "cubic-bezier(0.22,1,0.36,1)" }}>
-          {active && <div className="w-[272px]"><DealCard card={active.card} slaMinutes={active.stage.slaMinutes} stageKind={active.stage.kind} stageName={active.stage.name} dragging filtersQs={filtersQs} /></div>}
+        {/* "Reduzir movimento": o card solta e pronto, sem o voo de volta. */}
+        <DragOverlay dropAnimation={reduced ? null : { duration: 220, easing: "cubic-bezier(0.22,1,0.36,1)" }}>
+          {active && <div className="w-[272px]"><DealCard card={active.card} slaMinutes={active.stage.slaMinutes} stageKind={active.stage.kind} dragging filtersQs={filtersQs} /></div>}
         </DragOverlay>
       </DndContext>
-      <StageDialogs pending={pending} lostReasons={lostReasons} onCancel={() => setPending(null)} onConfirm={(extra) => { const m = pending!; setPending(null); commit(m, extra); }} />
+      <BoardLeadPanel dealId={leadId} name={leadId ? (() => { const f = findCard(leadId); return f ? cardName(f.card) : null; })() : null} />
+      {sheet && <StageSheets key={sheet.n} dealId={sheet.cardId} name={sheet.name} toKey={sheet.to.key} viewer={viewer} onMoved={() => { applyMove(sheet.cardId, sheet.to.id); router.refresh(); }} onReady={sheetReady} />}
     </>
   );
 }
@@ -106,50 +171,72 @@ export function Board({ stages, lostReasons }: { stages: BoardStage[]; lostReaso
 function CollapsedColumn({ stage, onOpen }: { stage: Column; onOpen: () => void }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage.id });
   return (
-    <button ref={setNodeRef} type="button" onClick={onOpen} aria-label={`Mostrar ${stage.name}, ${stage.cards.length} leads`}
-      className={cn("shrink-0 w-12 rounded-[16px] flex flex-col items-center gap-3 pt-3 transition-colors", isOver ? "bg-gold-soft ring-1 ring-gold/40" : "bg-paper-2 hover:bg-paper-3")}>
+    <button ref={setNodeRef} type="button" onClick={onOpen} aria-label={`Mostrar ${stage.name}, ${stage.cards.length} conversas`}
+      className={cn("shrink-0 w-12 rounded-[var(--radius-card)] flex flex-col items-center gap-3 pt-3 transition-colors", isOver ? "bg-gold-soft ring-1 ring-gold/40" : "bg-paper-2 hover:bg-paper-3")}>
       <span className="size-2 rounded-full" style={{ background: stage.color }} />
-      <span className="text-[12px] text-muted tabular">{stage.cards.length}</span>
-      <span className="text-[12.5px] font-semibold [writing-mode:vertical-rl] rotate-180">{stage.name}</span>
+      <span className="text-xs text-muted tabular">{stage.cards.length}</span>
+      <span className="text-sm font-semibold [writing-mode:vertical-rl] rotate-180">{stage.name}</span>
     </button>
   );
 }
 
-function ColumnView({ stage, activeId, filtersQs, onCollapse }: { stage: Column; activeId: string | null; filtersQs: string; onCollapse?: () => void }) {
+function ColumnView({ stage, activeId, focusId, openingId, filtersQs, onCollapse }: { stage: Column; activeId: string | null; focusId: string | null; openingId: string | null; filtersQs: string; onCollapse?: () => void }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage.id });
-  const now = useNow();
-  const hours = useHours();
-  const late = stage.cards.filter((c) => urgencyOf(c.awaitingReplySince, stage.slaMinutes, now, hours) === "late").length;
+  // Atrasado = alerta de espera aberto (a regra da Fila e da Jornada), não o relógio da tela.
+  const late = stage.cards.filter((c) => c.urgency === "late").length;
+  const card = (c: Column["cards"][number]) => (
+    <Draggable id={c.id} refocus={c.id === focusId}>
+      {(a11y) => <DealCard card={c} slaMinutes={stage.slaMinutes} stageKind={stage.kind} filtersQs={filtersQs} a11y={a11y} opening={c.id === openingId} />}
+    </Draggable>
+  );
   return (
-    <section ref={setNodeRef} aria-label={`${stage.name}, ${stage.cards.length} leads`}
-      className={cn("snap-start shrink-0 w-[288px] flex flex-col rounded-[16px] transition-colors duration-200", isOver ? "bg-gold-soft/70 ring-1 ring-gold/40" : "bg-paper-2")}>
+    <section ref={setNodeRef} aria-label={`${stage.name}, ${stage.cards.length} conversas`}
+      className={cn("snap-start shrink-0 w-[288px] flex flex-col rounded-[var(--radius-card)] transition-colors duration-200",
+        isOver ? "bg-gold-soft/70 ring-1 ring-gold/40" : "bg-paper-2")}>
       <header className="flex items-center justify-between px-3.5 pt-3 pb-2.5">
         <div className="flex items-center gap-2">
           <span className="size-2 rounded-full" style={{ background: stage.color }} />
-          <h2 className="text-[13px] font-semibold">{stage.name}</h2>
-          <span className="text-[12px] text-muted tabular">{stage.cards.length}</span>
-          {onCollapse && <button type="button" onClick={onCollapse} className="text-[11.5px] text-muted hover:text-ink ml-1" aria-label={`Recolher ${stage.name}`}>recolher</button>}
+          <h2 className="text-sm font-semibold">{stage.name}</h2>
+          <span className="text-xs tabular text-muted">{stage.cards.length}</span>
+          {onCollapse && <button type="button" onClick={onCollapse} className="text-xs text-muted hover:text-ink ml-1" aria-label={`Recolher ${stage.name}`}>recolher</button>}
         </div>
-        {late > 0 && <span suppressHydrationWarning className="text-[11px] font-semibold text-alert bg-alert-soft rounded-[6px] px-1.5 h-5 grid place-items-center">{late} atrasado{late > 1 ? "s" : ""}</span>}
+        {(() => { const w = stage.cards.filter((c) => c.esperando).length; return w > 0 ? <span className="text-xs font-semibold text-alert bg-alert-soft rounded-[6px] px-1.5 h-5 grid place-items-center">{w} esperando você</span> : null; })()}
+        {late > 0 && <span className="text-xs font-semibold text-alert bg-alert-soft rounded-[6px] px-1.5 h-5 grid place-items-center">{late} atrasado{late > 1 ? "s" : ""}</span>}
       </header>
-      <div className="flex-1 overflow-y-auto scroll-thin px-2 pb-2 flex flex-col gap-2 min-h-24">
-        <AnimatePresence initial={false}>
-          {stage.cards.map((c) => (
-            <motion.div key={c.id} layout layoutId={c.id} transition={SPRING}
-              initial={{ opacity: 0, y: -8, scale: 0.98 }} animate={{ opacity: c.id === activeId ? 0.35 : 1, y: 0, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }}>
-              <Draggable id={c.id}><DealCard card={c} slaMinutes={stage.slaMinutes} stageKind={stage.kind} stageName={stage.stageNames?.[c.stageId]} filtersQs={filtersQs} /></Draggable>
-            </motion.div>
-          ))}
-        </AnimatePresence>
-        {stage.cards.length === 0 && <p className="text-[12px] text-muted text-center py-6 px-4">Arraste um lead para cá</p>}
-      </div>
+      <motion.div layoutScroll role={stage.cards.length ? "list" : "group"} aria-label={`Conversas em ${stage.name}`} className="flex-1 overflow-y-auto scroll-thin px-2 pb-2 flex flex-col gap-2 min-h-24">
+        {/* Até LIMITS.layoutItems cards a coluna anima entrada, saída e troca de lugar; acima disso, lista comum (animar 100 cards custa mais do que ajuda).
+            `layoutDependency` = coluna e posição: só o que mudou de lugar é medido, o relógio nunca dispara medição. */}
+        {stage.cards.length > LIMITS.layoutItems
+          ? stage.cards.map((c) => <div key={c.id} className={c.id === activeId ? "opacity-35" : undefined}>{card(c)}</div>)
+          : (
+            <AnimatePresence initial={false}>
+              {stage.cards.map((c, i) => (
+                <motion.div key={c.id} layout layoutId={c.id} layoutDependency={`${stage.id}:${i}`} transition={SPRING_UI}
+                  initial={{ opacity: 0, y: -8, scale: 0.98 }} animate={{ opacity: c.id === activeId ? 0.35 : 1, y: 0, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }}>
+                  {card(c)}
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          )}
+        {stage.cards.length === 0 && <p className="text-xs text-muted text-center py-6 px-4">Arraste uma conversa para cá</p>}
+      </motion.div>
     </section>
   );
 }
 
-function Draggable({ id, children }: { id: string; children: React.ReactNode }) {
+/**
+ * O card arrastável. O foco fica no link (Enter abre o lead, Espaço pega o card); o resto dos atributos do dnd-kit
+ * (instruções para o leitor de tela) vai para o link também. `refocus`: depois de soltar pelo teclado, o foco volta ao card, que mudou de coluna.
+ */
+function Draggable({ id, refocus, children }: { id: string; refocus: boolean; children: (a11y: { "aria-describedby"?: string; "aria-roledescription": string }) => React.ReactNode }) {
   const { setNodeRef, listeners, attributes } = useDraggable({ id });
-  return <div ref={setNodeRef} {...listeners} {...attributes} role="listitem" className="touch-manipulation outline-none">{children}</div>;
+  const box = useRef<HTMLDivElement | null>(null);
+  useEffect(() => { if (refocus) box.current?.querySelector("a")?.focus(); }, [refocus]);
+  return (
+    <div ref={(el) => { box.current = el; setNodeRef(el); }} {...listeners} role="listitem" data-deal-id={id} className="touch-manipulation outline-none">
+      {children({ "aria-describedby": attributes["aria-describedby"], "aria-roledescription": "conversa arrastável" })}
+    </div>
+  );
 }
 
 export type { BoardCard };

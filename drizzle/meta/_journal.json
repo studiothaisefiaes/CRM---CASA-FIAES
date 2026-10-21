@@ -57,6 +57,566 @@
       "when": 1791577673513,
       "tag": "0007_contato_ignorado",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791582037848,
+      "tag": "0008_melhorias",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791655764622,
+      "tag": "0009_indices",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791695283201,
+      "tag": "0010_wait_key_legado",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791929123736,
+      "tag": "0011_perfis",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1791929195059,
+      "tag": "0012_perfil_padrao",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1791932968793,
+      "tag": "0013_distribuicao",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1791935887208,
+      "tag": "0014_palavras_chave",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1791936321236,
+      "tag": "0015_disponibilidade_manual",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1791942108213,
+      "tag": "0016_relatorios_pdf",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1791984154956,
+      "tag": "0017_etiquetas",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1791984486994,
+      "tag": "0018_profissionais",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1791986246574,
+      "tag": "0019_conversa_arquivada",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791988682439,
+      "tag": "0020_chatguru_importacao",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1791990094858,
+      "tag": "0021_numero_oculto",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1791995135623,
+      "tag": "0022_avec_agenda",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1792040987935,
+      "tag": "0023_quem_atende",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1792061287242,
+      "tag": "0024_funil_novo",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1792064382891,
+      "tag": "0025_ficha_contatos",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1792080041376,
+      "tag": "0026_relatorios_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1792080042376,
+      "tag": "0027_lote5_chatguru",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1792080043376,
+      "tag": "0028_lote5_ligacoes",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1792080044376,
+      "tag": "0029_audio_transcricao",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1792080045376,
+      "tag": "0030_agenda_base",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1792080046376,
+      "tag": "0031_agenda_viva",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1792080047376,
+      "tag": "0032_comanda_caixa",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1792080048376,
+      "tag": "0033_app_profissional",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1792080049376,
+      "tag": "0034_area_cliente",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1792091964477,
+      "tag": "0035_na_casa",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1792097317554,
+      "tag": "0036_nao_lidas",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1792115563805,
+      "tag": "0037_equipe",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1792121028958,
+      "tag": "0038_aviso_mensagem_unico",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1792121228667,
+      "tag": "0039_alertas_abertos_idx",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1792145158463,
+      "tag": "0040_user_preferences",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1792151368169,
+      "tag": "0041_cpf_motivo_outro",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1792154013904,
+      "tag": "0042_dados_da_cliente",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1792161437407,
+      "tag": "0043_ia_sugestao",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1792164941374,
+      "tag": "0044_servicos_descricao",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1792168556550,
+      "tag": "0045_pacotes_descricao",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1792173058843,
+      "tag": "0046_ia_programada",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1792174233600,
+      "tag": "0047_outbox_status_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1792175474568,
+      "tag": "0048_ia_qualquer",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1792176600000,
+      "tag": "0049_importar_whatsapp",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1792260000000,
+      "tag": "0050_ia_marca",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1792270000000,
+      "tag": "0051_mesmo_numero",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1792280000000,
+      "tag": "0052_ia_citavel",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1792290000000,
+      "tag": "0053_assistente",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1792300000000,
+      "tag": "0054_tipo_contato",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1792310000000,
+      "tag": "0055_caixa_por_pessoa",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1792340000000,
+      "tag": "0058_avec_recusadas",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1792350000000,
+      "tag": "0059_contagem_cega_padrao",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1792360000000,
+      "tag": "0060_avec_conferir",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1792370000000,
+      "tag": "0061_assistentes_comanda",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1792380000000,
+      "tag": "0062_taxas_cartao",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1792390000000,
+      "tag": "0063_regras_comissao",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1792400000000,
+      "tag": "0064_repasse_comissao",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1792410000000,
+      "tag": "0065_vales_bonus_descontos",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1792420000000,
+      "tag": "0066_divida_cliente",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1792430000000,
+      "tag": "0067_permissoes_area",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1792440000000,
+      "tag": "0068_recibo_congelado",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1792450000000,
+      "tag": "0069_setores",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1792460000000,
+      "tag": "0070_consentimento_pausa",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1792470000000,
+      "tag": "0071_biblioteca",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1792480000000,
+      "tag": "0072_pesquisa_satisfacao",
+      "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1792490000000,
+      "tag": "0073_nao_lida_acompanhar",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1792500000000,
+      "tag": "0074_financeiro_despesas",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1792510000000,
+      "tag": "0075_produtos_estoque",
+      "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1792520000000,
+      "tag": "0076_fiscal",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1792530000000,
+      "tag": "0077_permissoes_nota",
+      "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1792540000000,
+      "tag": "0078_nota_resolver",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1792550000000,
+      "tag": "0079_marcador_tipo_horario",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1792560000000,
+      "tag": "0080_uso_de_imagem",
+      "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1792570000000,
+      "tag": "0081_fichas",
+      "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1792580000000,
+      "tag": "0082_fidelidade",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1792590000000,
+      "tag": "0083_servico_completo",
+      "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1792600000000,
+      "tag": "0084_repetir",
+      "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1792610000000,
+      "tag": "0085_unir_cadastros",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1792620000000,
+      "tag": "0086_caixa_fluxo",
+      "breakpoints": true
+    },
+    {
+      "idx": 85,
+      "version": "7",
+      "when": 1792630000000,
+      "tag": "0087_permissoes_qa66",
+      "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1792640000000,
+      "tag": "0088_ocultar_mensagem",
+      "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1792650000000,
+      "tag": "0089_auxiliares_horario",
+      "breakpoints": true
     }
   ]
 }

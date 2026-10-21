@@ -2,7 +2,7 @@ import { forwardRef, type InputHTMLAttributes, type TextareaHTMLAttributes, type
 import { cn } from "@/lib/cn";
 
 const control =
-  "w-full bg-paper border border-control/70 rounded-[10px] px-3 text-[14px] text-ink placeholder:text-muted transition-[border-color,box-shadow] duration-150 hover:border-graphite/40 focus:outline-none focus:border-ink focus:shadow-[0_0_0_3px_rgb(184_134_63/0.22)] aria-[invalid=true]:border-alert disabled:bg-paper-2 disabled:text-muted";
+  "w-full bg-paper border border-control rounded-[var(--radius-control)] px-3 text-md md:text-base text-ink placeholder:text-muted transition-[border-color,box-shadow] duration-150 hover:border-graphite focus:outline-none focus:border-ink focus:shadow-[0_0_0_3px_rgb(184_134_63/0.22)] aria-[invalid=true]:border-alert disabled:bg-paper-2 disabled:text-muted";
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input({ className, ...p }, ref) {
   return <input ref={ref} className={cn(control, "h-10", className)} {...p} />;
@@ -23,9 +23,9 @@ export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSel
 export function Field({ label, hint, error, children, htmlFor }: { label: string; hint?: ReactNode; error?: string | null; children: ReactNode; htmlFor?: string }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={htmlFor} className="text-[12.5px] font-medium text-graphite">{label}</label>
+      <label htmlFor={htmlFor} className="text-sm font-medium text-graphite">{label}</label>
       {children}
-      {error ? <p className="text-[12.5px] text-alert" role="alert">{error}</p> : hint ? <p className="text-[12.5px] text-muted">{hint}</p> : null}
+      {error ? <p className="text-sm text-alert" role="alert">{error}</p> : hint ? <p className="text-sm text-muted">{hint}</p> : null}
     </div>
   );
 }

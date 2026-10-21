@@ -1,0 +1,1 @@
+ALTER TYPE "public"."stage_kind" ADD VALUE IF NOT EXISTS 'na_casa';

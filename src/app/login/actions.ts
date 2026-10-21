@@ -3,8 +3,10 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { checkCredentials } from "@/server/auth/users";
-import { createSession, destroySession } from "@/server/auth/session";
+import { createSession, destroySession, getSessionUser } from "@/server/auth/session";
+import { setAvailability } from "@/server/domain/presence";
 import { allow, resetLimit } from "@/server/auth/rate-limit";
+import { clientIp } from "@/server/auth/client-ip";
 
 /** Só aceita voltar para uma página do próprio CRM (bloqueia //, /\\ e URLs externas). */
 function safeReturn(voltar?: string) {
@@ -24,7 +26,7 @@ export async function login(_: LoginState, form: FormData): Promise<LoginState> 
   const parsed = schema.safeParse(Object.fromEntries(form));
   const email = String(form.get("email") ?? "");
   if (!parsed.success) return { error: "Preencha um e-mail válido e a senha.", email };
-  const ip = (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
+  const ip = clientIp(await headers());
   const key = `${ip}:${parsed.data.email.toLowerCase()}`;
   if (!allow(`ip:${ip}`, 30) || !allow(key)) return { error: "Muitas tentativas. Espere alguns minutos e tente de novo.", email };
   const user = await checkCredentials(parsed.data.email, parsed.data.password);
@@ -35,6 +37,9 @@ export async function login(_: LoginState, form: FormData): Promise<LoginState> 
 }
 
 export async function logout() {
+  // Saiu: fica ausente na hora (e devolve os leads sem resposta, se a distribuição estiver ligada). Nunca impede de sair.
+  const user = await getSessionUser().catch(() => null);
+  if (user) await setAvailability(user.id, "ausente", new Date(), { manual: false }).catch((e) => console.error("[sair] disponibilidade", e));
   await destroySession();
   redirect("/login");
 }

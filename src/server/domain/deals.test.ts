@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
-import { deals, messages, stages, contacts, users, dealEvents } from "../db/schema";
+import { deals, messages, stages, contacts, users, dealEvents, profiles } from "../db/schema";
 import { recordInbound, recordOutbound, moveDeal, detectOrigin } from "./deals";
 import { resetDb } from "../../../test/db";
+import { etapasAntigasAtivas } from "../../../test/legacy-stages"; // histórico de antes da nova organização (16/10)
 
 async function stageKeyOf(dealId: string) {
   const [r] = await db.select({ key: stages.key }).from(deals).innerJoin(stages, eq(stages.id, deals.stageId)).where(eq(deals.id, dealId));
@@ -11,7 +12,7 @@ async function stageKeyOf(dealId: string) {
 }
 
 describe("fluxo do lead", () => {
-  beforeEach(resetDb);
+  beforeEach(async () => { await resetDb(); await etapasAntigasAtivas(); });
 
   it("mensagem nova cria contato e lead na etapa Lead, esperando resposta", async () => {
     const r = await recordInbound({ channelId: null, externalId: "A1", phoneRaw: "5571999812244@s.whatsapp.net", pushName: "Mariana", body: "Oi! Queria saber o valor" });
@@ -23,6 +24,20 @@ describe("fluxo do lead", () => {
     const [c] = await db.select().from(contacts);
     expect(c.name).toBe("Mariana");
     expect(c.phoneE164).toBe("+5571999812244");
+  });
+
+  it("cliente que escreve depois de Resolvida volta para a Fila como Aberto e a etapa não muda (20/10)", async () => {
+    const t0 = new Date("2026-10-09T10:00:00Z");
+    const r = await recordInbound({ channelId: null, externalId: "R1", phoneRaw: "71999812244", body: "oi", at: t0 });
+    if (!("dealId" in r)) throw new Error();
+    await moveDeal(r.dealId, "agendado", null, "teste");
+    const stageBefore = await stageKeyOf(r.dealId);
+    await db.update(deals).set({ conversationArchivedAt: new Date("2026-10-09T11:00:00Z"), awaitingReplySince: null }).where(eq(deals.id, r.dealId));
+    await recordInbound({ channelId: null, externalId: "R2", phoneRaw: "71999812244", body: "Posso mudar o horário?", at: new Date("2026-10-10T09:00:00Z") });
+    const [d] = await db.select().from(deals).where(eq(deals.id, r.dealId));
+    expect(d.conversationArchivedAt).toBeNull(); // saiu das Resolvidas
+    expect(d.awaitingReplySince).not.toBeNull(); // Aberto: a Casa precisa responder
+    expect(await stageKeyOf(r.dealId)).toBe(stageBefore); // Agendado continua (o Veio/Faltou depende dela)
   });
 
   it("mesmo webhook duas vezes não duplica mensagem nem lead", async () => {
@@ -68,7 +83,7 @@ describe("fluxo do lead", () => {
   it("cliente que responde no follow-up volta para Atendimento", async () => {
     const r = await recordInbound({ channelId: null, externalId: "M1", phoneRaw: "71999812244", body: "oi" });
     if (!("dealId" in r)) throw new Error();
-    await moveDeal(r.dealId, "followup_2", null);
+    await moveDeal(r.dealId, "followup_1", null);
     await recordInbound({ channelId: null, externalId: "M2", phoneRaw: "71999812244", body: "voltei" });
     expect(await stageKeyOf(r.dealId)).toBe("atendimento");
   });
@@ -94,12 +109,34 @@ describe("fluxo do lead", () => {
     expect(await recordOutbound({ phoneRaw: "71988887777", channelId: null, externalId: "X", body: "oi" })).toEqual({ skipped: "sem_contato" });
   });
 
-  it("sem atendente ativa (convite não aceito), o lead fica com a gestão", async () => {
-    const [g] = await db.insert(users).values([{ name: "Thaíse", email: "g@c.com", role: "gestor", passwordHash: "x" }]).returning();
+  it("sem ninguém que receba leads (só a gestão ativa), o lead fica Sem dono: a gestão nunca recebe conversa sozinha (pedido da Casa)", async () => {
+    await db.insert(users).values([{ name: "Thaíse", email: "g@c.com", role: "gestor", passwordHash: "x" }]);
     await db.insert(users).values({ name: "Ana", email: "a@c.com", role: "atendente", passwordHash: null });
     const r = await recordInbound({ channelId: null, externalId: "OW1", phoneRaw: "71999990000", body: "oi" });
     if (!("dealId" in r)) throw new Error();
-    expect((await db.select().from(deals))[0].ownerId).toBe(g.id);
+    expect((await db.select().from(deals))[0].ownerId).toBeNull();
+  });
+
+  it("distribui só para quem tem 'Receber leads da distribuição' no perfil (Recepção recebe; perfil sem a caixinha não)", async () => {
+    const [rec] = await db.select().from(profiles).where(eq(profiles.key, "recepcao"));
+    const [semDist] = await db.insert(profiles).values({ name: "Só olha", permissions: ["atendimento.ver"] }).returning();
+    const [rita] = await db.insert(users).values({ name: "Rita", email: "r@c.com", passwordHash: "x", profileId: rec.id }).returning();
+    await db.insert(users).values({ name: "Olga", email: "o@c.com", passwordHash: "x", profileId: semDist.id });
+    for (let i = 0; i < 3; i++) {
+      const r = await recordInbound({ channelId: null, externalId: `P${i}`, phoneRaw: `7199900010${i}`, body: "oi" });
+      if (!("dealId" in r)) throw new Error();
+      expect((await db.select().from(deals).where(eq(deals.id, r.dealId)))[0].ownerId).toBe(rita.id);
+    }
+  });
+
+  it("com atendente no rodízio, a gestão (perfil padrão) não recebe leads", async () => {
+    await db.insert(users).values([{ name: "Thaíse", email: "g@c.com", role: "gestor", passwordHash: "x" }, { name: "Ana", email: "a@c.com", role: "atendente", passwordHash: "x" }]);
+    const [ana] = await db.select().from(users).where(eq(users.email, "a@c.com"));
+    for (let i = 0; i < 3; i++) {
+      const r = await recordInbound({ channelId: null, externalId: `G${i}`, phoneRaw: `7199900020${i}`, body: "oi" });
+      if (!("dealId" in r)) throw new Error();
+      expect((await db.select().from(deals).where(eq(deals.id, r.dealId)))[0].ownerId).toBe(ana.id);
+    }
   });
 
   it("distribui para a atendente com menos leads", async () => {
@@ -123,5 +160,24 @@ describe("fluxo do lead", () => {
     expect(detectOrigin({ body: "a Carla me indicou" })).toBe("Indicação");
     expect(detectOrigin({ isClient: true })).toBe("Já é cliente");
     expect(detectOrigin({ body: "oi" })).toBe("WhatsApp");
+  });
+});
+
+describe("tempo de espera mostrado ao responder ('Respondido em X')", () => {
+  beforeEach(async () => { await resetDb(); await etapasAntigasAtivas(); });
+  it("conta só o expediente, igual ao SLA: sábado 16h59 → segunda 8h02 = 3 min, não 39 h", async () => {
+    const { waitedBusinessSeconds } = await import("./deals");
+    const r = await recordInbound({ channelId: null, externalId: "W1", phoneRaw: "71999995151", body: "oi" });
+    if (!("dealId" in r)) throw new Error();
+    const since = new Date("2026-10-17T19:59:00Z"); // sáb 16h59 em Salvador (fecha às 17h; domingo fechado)
+    await db.update(deals).set({ awaitingReplySince: since }).where(eq(deals.id, r.dealId));
+    expect(await waitedBusinessSeconds(r.dealId, new Date("2026-10-19T11:02:00Z"))).toBe(180); // 1 min sábado + 2 min segunda
+  });
+  it("sem espera aberta: null", async () => {
+    const { waitedBusinessSeconds } = await import("./deals");
+    const r = await recordInbound({ channelId: null, externalId: "W2", phoneRaw: "71999995152", body: "oi" });
+    if (!("dealId" in r)) throw new Error();
+    await db.update(deals).set({ awaitingReplySince: null }).where(eq(deals.id, r.dealId));
+    expect(await waitedBusinessSeconds(r.dealId)).toBeNull();
   });
 });

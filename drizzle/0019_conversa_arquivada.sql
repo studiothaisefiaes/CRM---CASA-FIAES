@@ -1,0 +1,1 @@
+ALTER TABLE "deals" ADD COLUMN "conversation_archived_at" timestamp with time zone;

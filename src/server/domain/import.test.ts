@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { db } from "../db";
 import { contacts } from "../db/schema";
-import { importClients, parseCsv } from "./import";
+import { importClients, parseCsv, previewImport, previewImportWithDb, importLimitError } from "./import";
 import { recordInbound } from "./deals";
 import { resetDb } from "../../../test/db";
 
@@ -44,5 +44,52 @@ describe("importação do histórico de clientes", () => {
 
   it("sem coluna de telefone avisa", async () => {
     expect(await importClients("Nome;Cidade\nAna;Salvador")).toMatchObject({ missingPhoneColumn: true });
+  });
+});
+
+describe("prévia da importação", () => {
+  beforeEach(resetDb);
+  it("prévia aponta duplicado pelo telefone normalizado e linha inválida", () => {
+    expect(previewImport("nome;telefone\nAna;71 99999-0001\nAna B;(71)999990001\nX;123")).toMatchObject({ rows: 1, duplicates: 1, invalid: [{ line: 4, value: "123" }] });
+  });
+  it("lê vírgula e BOM, avisa sem coluna de telefone e não grava nada", async () => {
+    expect(previewImport("\ufeffNome,Celular\nAna,71988880000")).toMatchObject({ rows: 1, duplicates: 0, invalid: [] });
+    expect(previewImport("Nome;Cidade\nAna;Salvador")).toMatchObject({ missingPhoneColumn: true });
+    await previewImportWithDb("nome;telefone\nAna;71 99999-0001");
+    expect(await db.select().from(contacts)).toHaveLength(0);
+  });
+  it("conta quem já existe no banco", async () => {
+    await db.insert(contacts).values({ phoneE164: "+5571999990001" });
+    expect(await previewImportWithDb("nome;telefone\nAna;71 99999-0001\nBia;71 99999-0002")).toMatchObject({ rows: 2, existing: 1 });
+  });
+  it("limites: 10 MB e 10.000 linhas, com mensagem clara", () => {
+    expect(importLimitError(11 * 1024 * 1024)).toMatch(/10 MB/);
+    expect(importLimitError(100, "telefone\n" + Array(10001).fill("71999990001").join("\n"))).toMatch(/10\.000/);
+    expect(importLimitError(100, "telefone\n" + Array(6400).fill("71999990001").join("\n"))).toBeNull();
+  });
+
+  it("cadastro do Avec: Celular antes de Telefone, aniversário sem ano, 'Cadastrado', 'Como Conheceu' e nome sem prefixo estranho", async () => {
+    const AVEC = `Cliente;Código;Aniversário;Telefone;Celular;E-mail;Sexo;Como Conheceu;Cadastrado
+": Elissandra Morais";3482;07/8/1981;;71990000006;ellis@x.com;F;Instagram;24/02/2024
+(LOLI)Maria Iolanda;6430;25/3;;7190000005;;F;amiga de thaise;22/08/2026
+Só Telefone;7000;;(71) 3333-4444;;;F;;01/01/2025`;
+    const r = await importClients(AVEC);
+    expect(r).toMatchObject({ total: 3, imported: 3 });
+    const all = await db.select().from(contacts);
+    const eli = all.find((c) => c.phoneE164 === "+5571990000006")!;
+    expect(eli).toMatchObject({ name: "Elissandra Morais", birthDay: 7, birthMonth: 8, birthYear: 1981, isClient: true });
+    expect(eli.clientSince?.toISOString().slice(0, 10)).toBe("2024-02-24");
+    expect(eli.importedFields?.avec).toMatchObject({ comoConheceu: "Instagram", codigo: "3482" });
+    const loli = all.find((c) => c.phoneE164 === "+5571990000005")!; // celular de 8 dígitos ganha o 9
+    expect(loli).toMatchObject({ birthDay: 25, birthMonth: 3, birthYear: null, name: "(LOLI)Maria Iolanda" });
+    expect(all.find((c) => c.name === "Só Telefone")?.phoneE164).toBe("+557133334444");
+  });
+
+  it("não apaga o que a equipe já tinha: nome e campos do ChatGuru continuam", async () => {
+    await db.insert(contacts).values({ phoneE164: "+5571990000006", name: "Elis (cliente fiel)", importedFields: { chatguru: { responsavel: "Sara" } } });
+    await importClients(`Cliente;Celular;Como Conheceu\nElissandra;71990000006;Instagram`);
+    const [c] = await db.select().from(contacts);
+    expect(c.name).toBe("Elis (cliente fiel)");
+    expect(c.importedFields).toMatchObject({ chatguru: { responsavel: "Sara" }, avec: { comoConheceu: "Instagram" } });
   });
 });

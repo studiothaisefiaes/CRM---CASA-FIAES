@@ -1,91 +1,125 @@
-import { seconds } from "@/lib/format";
-import Link from "next/link";
+import { can } from "@/lib/permissions";
+import { CashClosedNotice } from "@/components/caixa/cash-closed-notice";
 import { requireUser } from "@/server/auth/session";
-import { getToday, type TodayItem } from "@/server/queries/today";
-import { WaitingList } from "@/components/today/waiting-list";
-import { Stagger } from "@/components/today/stagger";
-import { IconCalendar, IconCake, IconMoney, IconRefresh, IconArrowRight } from "@/components/icons";
-import { formatPhoneClient } from "@/lib/phone-client";
+import { getToday } from "@/server/queries/today";
+import { getMyAlerts } from "@/server/queries/alerts";
+import { DailySummary } from "@/components/today/daily-summary";
+import { AniversarioBloco, AvisosBloco, CombinadosBloco, DiaNaCasaBloco, EquipeBloco, EsperandoBloco, ParaVoceAgora, RetomarBloco } from "@/components/today/hoje-resumo";
+import { LiveRefresh } from "@/components/shell/live";
+import { PushOptIn } from "@/components/shell/push-optin";
+import { ComandaProvider } from "@/components/caixa/comanda-provider";
+import { dailySummaryText } from "@/server/reports/summary-text";
+import { getSummaryWhatsapp } from "@/server/domain/summary-whatsapp";
+import { summaryMode } from "@/lib/daily-summary";
+import { summaryLinkHref } from "@/lib/report-links";
+import { env, vapidConfig } from "@/server/env";
+import { AcompanhandoBloco } from "@/components/today/following";
+import { followingOf } from "@/server/domain/follow";
+import { getTeamNow } from "@/server/queries/team-now";
+import { listScheduled } from "@/server/queries/scheduled-list";
+import { getComandaCatalog } from "@/server/queries/comanda-catalog";
+import { dayTableVisits } from "@/lib/day-visit";
+import { dayVisitsOf } from "@/server/queries/day-visit";
+import { getAgendaMode } from "@/server/domain/agenda/mode";
+import { getCaixaMode } from "@/server/domain/caixa/mode";
+import { todayBahia } from "@/lib/agenda";
+import { SectionTabs } from "@/components/shell/section-tabs";
+import { hojeTabs } from "@/lib/section-tabs";
+import { greeting } from "@/components/today/hoje-topo";
+import { DayTable } from "@/components/today/day-table";
 
 export const metadata = { title: "Hoje" };
 
-function greeting() {
-  const h = Number(new Date().toLocaleString("pt-BR", { hour: "2-digit", hour12: false, timeZone: "America/Bahia" }));
-  return h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite";
+
+/** Só para conferir a tela em outra hora (prints, e2e): `?agora=2026-10-13T20:00-03:00`, e só com as ferramentas de desenvolvimento ligadas. */
+function pageNow(agora: unknown): Date {
+  if (!env().DEV_TOOLS || typeof agora !== "string") return new Date();
+  const t = Date.parse(agora);
+  return Number.isNaN(t) ? new Date() : new Date(t);
 }
 
 export default async function HojePage({ searchParams }: PageProps<"/">) {
   const user = await requireUser();
-  const t = await getToday(user);
   const sp = await searchParams;
-  const late = t.late;
-  const date = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long", timeZone: "America/Bahia" });
-  const fmt = seconds;
-  const next = t.waiting[0];
-  return (
-    <main className="px-5 lg:px-8 pt-6 lg:pt-9 pb-12 max-w-[1240px]">
-      {sp.aviso === "sem-permissao" && <p className="mb-5 text-[13px] bg-gold-soft text-gold-ink rounded-[10px] px-3 py-2">Só a gestão tem acesso às configurações.</p>}
-      <p className="text-[13px] text-muted first-letter:uppercase">{date}</p>
-      <h1 className="font-serif text-[40px] lg:text-[48px] leading-none font-light mt-1">{greeting()}, {user.name.split(" ")[0]}.</h1>
-      <Stagger className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-8" itemClassNames={["col-span-2", "", ""]}>
-        <div className={`h-full rounded-[18px] p-5 lg:p-6 flex flex-wrap items-end justify-between gap-x-4 gap-y-4 ${late ? "bg-alert-soft border border-alert/40" : "bg-ink text-paper"}`}>
-          <div>
-            <p className={`text-[13px] ${late ? "text-alert" : "text-paper/70"}`}>Esperando resposta agora</p>
-            <p className={`font-serif text-[64px] leading-none font-light mt-2 tabular ${late ? "text-alert" : ""}`}>{t.waiting.length}</p>
-            <p className={`text-[12.5px] mt-2 ${late ? "text-alert" : "text-paper/60"}`}>{late ? `${late} além do prazo` : t.waiting.length ? "todos dentro do prazo" : "ninguém esperando"}</p>
-          </div>
-          {next && (
-            <Link href={`/funil?lead=${next.id}`} className={`h-11 px-4 rounded-[12px] inline-flex items-center gap-2 text-[14px] font-semibold shrink-0 transition-transform active:scale-[0.98] ${late ? "bg-alert text-white" : "bg-gold text-ink"}`}>
-              Atender próximo <IconArrowRight size={16} />
-            </Link>
-          )}
-        </div>
-        <div className="h-full rounded-[16px] border border-line bg-paper p-4 lg:p-5">
-          <p className="text-[12.5px] text-graphite">Tempo médio de resposta</p>
-          <p className={`font-serif text-[34px] leading-none font-light mt-2 tabular ${t.resp.n && t.resp.avg > t.resp.goal ? "text-alert" : "text-ink"}`}>{t.resp.n ? fmt(t.resp.avg) : "—"}</p>
-          <p className="text-[12px] text-muted mt-2">{t.resp.n ? `${t.resp.within} de ${t.resp.n} dentro da meta de ${fmt(t.resp.goal)}` : `meta: ${fmt(t.resp.goal)}`}</p>
-        </div>
-        <div className="h-full rounded-[16px] border border-line bg-paper p-4 lg:p-5">
-          <p className="text-[12.5px] text-graphite">Hoje</p>
-          <p className="font-serif text-[34px] leading-none font-light mt-2 tabular">{t.counts.novos} <span className="text-[15px] text-graphite font-sans">novos</span></p>
-          <p className="text-[12px] text-muted mt-2">{t.scheduled.length} agendado{t.scheduled.length === 1 ? "" : "s"} · {t.counts.abertos} em andamento</p>
-        </div>
-      </Stagger>
-      <div className="grid lg:grid-cols-[1.35fr_1fr] gap-5 mt-6">
-        <section className="rounded-[18px] border border-line bg-paper">
-          <header className="flex items-center justify-between px-5 pt-4 pb-3">
-            <h2 className="font-serif text-[22px] font-light">Esperando resposta</h2>
-            <Link href="/funil" className="text-[13px] text-gold-ink hover:underline">Abrir funil</Link>
-          </header>
-          <WaitingList items={t.waiting} />
-        </section>
-        <div className="flex flex-col gap-5">
-          <Block title="Agenda de hoje" icon={<IconCalendar size={16} />} items={t.scheduled} empty="Nenhum agendamento hoje."
-            render={(i) => new Date(i.at!).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Bahia" })} />
-          <Block title="Follow-ups" icon={<IconRefresh size={16} />} items={t.followups} empty="Ninguém em follow-up." render={(i) => i.stageName} />
-          <Block title="Cobranças e recontatos" icon={<IconMoney size={16} />} items={t.dues} empty="Nada para hoje." render={(i) => i.extra ?? ""} />
-          <Block title="Aniversários da semana" icon={<IconCake size={16} />} items={t.birthdays} empty="Nenhum aniversário nos próximos 7 dias." render={(i) => i.extra ?? ""} />
-        </div>
+  const now = pageNow(sp.agora);
+  const notice = sp.aviso === "sem-permissao"
+    && <p role="status" className="mb-5 text-sm bg-gold-soft text-gold-ink rounded-[var(--radius-control)] px-3 py-2">Você não tem acesso a essa tela. Se precisar, peça para a gestão liberar no seu perfil.</p>;
+  const date = now.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long", timeZone: "America/Bahia" });
+  const hello = <h1 className="font-display text-[40px] lg:text-[48px] leading-none font-light">{greeting(now)}, {user.name.split(" ")[0]}.</h1>;
+  if (!can(user.perms, "atendimento.ver")) {
+    return (
+      <main className="mx-auto w-full max-w-[1480px] px-5 lg:px-8 pt-6 lg:pt-9 pb-12">
+        {notice}
+        <CashClosedNotice user={user} className="mb-5" />
+        {hello}
+        <p className="mt-2 text-sm text-muted first-letter:uppercase">{date}.</p>
+        <p className="mt-6 text-graphite max-w-[60ch]">Seu acesso não inclui as Conversas. Use o menu para abrir o que o seu perfil libera.</p>
+      </main>
+    );
+  }
+  const gestor = can(user.perms, "relatorios.equipe");
+  const today = todayBahia(now);
+  const [t, summary, team, prog, rawVisits, agendaMode, caixaMode, alerts, comandaCatalog] = await Promise.all([
+    getToday(user, now), gestor ? dailySummaryText(user, now) : Promise.resolve(null), getTeamNow(now), listScheduled(user, { range: "hoje", now }),
+    dayVisitsOf(today, { withValues: can(user.perms, "valores.ver") }), getAgendaMode(), getCaixaMode(), getMyAlerts(user), getComandaCatalog(user),
+  ]);
+  const following = can(user.perms, "conversa.acompanhar") ? await followingOf(user.id) : null;
+  // A tabela do dia (Hoje v3): sem CLIENTE PADRÃO, sem espera às 00:00 e sem cancelado de outro dia.
+  const visits = dayTableVisits(rawVisits, today);
+  const caixaOn = caixaMode === "crm";
+  // "Avisos para você": os do sino no nome da pessoa, ainda não lidos.
+  const myAlerts = alerts.filter((a) => a.forMe && !a.read);
+  const mode = summaryMode(now);
+  const canConfig = can(user.perms, "config.sistema");
+  const summaryHour = summary && canConfig ? (await getSummaryWhatsapp()).hora : undefined;
+  const summaryBlock = summary && (
+    <DailySummary text={summary.text} highlight={mode.highlight} title={mode.title} receiveHref={canConfig ? "/config/resumo-whatsapp" : undefined} receiveHour={summaryHour}
+      links={summary.links.flatMap((l) => { const href = summaryLinkHref(l.href); return href ? [{ label: l.label, href }] : []; })} />
+  );
+  const vapid = vapidConfig();
+  const nowMs = now.getTime();
+  const tabs = <SectionTabs label="Hoje" tabs={hojeTabs(user.perms)} current={sp.vista === "recepcao" ? "recepcao" : "resumo"} className="mt-5" />;
+  // Recepção: o dia inteiro na tabela (a mesma do "Ver o dia todo" do Resumo).
+  if (sp.vista === "recepcao") {
+    const recepcao = (
+      <main className="mx-auto w-full max-w-[1480px] px-5 lg:px-8 pt-6 lg:pt-9 pb-12">
+        {notice}
+        <CashClosedNotice user={user} className="mb-5" />
+        {hello}
+        <p className="mt-2 text-sm text-muted"><span className="inline-block first-letter:uppercase">{date}.</span> Todo mundo que vem hoje, na ordem de chegada.</p>
+        <LiveRefresh scopes={["team", "agenda", "caixa"]} />
+        {tabs}
+        <div className="mt-5"><DayTable visits={visits} nowMs={nowMs} caixaOn={caixaOn} canMark={can(user.perms, "agenda.marcar")} agendaMode={agendaMode} /></div>
+      </main>
+    );
+    return comandaCatalog ? <ComandaProvider catalog={comandaCatalog}>{recepcao}</ComandaProvider> : recepcao;
+  }
+  const page = (
+    <main className="mx-auto w-full max-w-[1480px] px-5 lg:px-8 pt-6 lg:pt-9 pb-12">
+      {notice}
+      <CashClosedNotice user={user} className="mb-5" />
+      {hello}
+      <p className="mt-2 text-sm text-muted"><span className="inline-block first-letter:uppercase">{date}.</span> Aqui fica o resumo do que é seu e da Casa. Toque num bloco para ver tudo.</p>
+      {tabs}
+      <LiveRefresh scopes={["queue", "team", "agenda", "caixa"]} />
+      {vapid && <PushOptIn publicKey={vapid.publicKey} />}
+      {/* O resumo da gestão fica sempre no topo: recolhido até as 19h, aberto e em destaque depois. */}
+      {summaryBlock && <div className="mt-6">{summaryBlock}</div>}
+      {/* Hoje v3 (protótipo aprovado pelo dono em 17/10): a faixa do que é seu agora e os blocos compactos; cada bloco abre o painel grande. */}
+      <div className={summaryBlock ? "mt-4" : "mt-6"}>
+        <ParaVoceAgora waitingMine={t.waitingMine} waiting={t.waiting} tasks={t.tasks} alerts={myAlerts} />
+      </div>
+      <div data-testid="resumo-blocos" className="mt-4 grid items-start gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <CombinadosBloco tasks={t.tasks} unassigned={t.unassigned} dues={t.dues} attendance={t.attendance} programadas={prog} nowMs={nowMs} />
+        <AvisosBloco alerts={myAlerts} nowMs={nowMs} />
+        <AniversarioBloco items={t.birthdays} />
+        <DiaNaCasaBloco visits={visits} nowMs={nowMs} caixaOn={caixaOn} canMark={can(user.perms, "agenda.marcar")} agendaMode={agendaMode} />
+        <EsperandoBloco waiting={t.waiting} late={t.late} resp={t.resp} />
+        <RetomarBloco followups={t.followups} stale={t.stale} />
+        {following && <AcompanhandoBloco items={following} />}
+        <EquipeBloco team={team} now={now} />
       </div>
     </main>
   );
-}
-
-function Block({ title, icon, items, empty, render }: { title: string; icon: React.ReactNode; items: TodayItem[]; empty: string; render: (i: TodayItem) => string }) {
-  return (
-    <section className="rounded-[18px] border border-line bg-paper px-5 py-4">
-      <h2 className="flex items-center gap-2 text-[14px] font-semibold"><span className="text-gold">{icon}</span>{title}<span className="text-muted font-normal tabular">{items.length || ""}</span></h2>
-      {items.length === 0 ? <p className="text-[13px] text-muted mt-2">{empty}</p> : (
-        <ul className="mt-2 divide-y divide-line/70">
-          {items.slice(0, 6).map((i) => (
-            <li key={i.id + (i.extra ?? "")}>
-              <Link href={`/funil?lead=${i.id}`} className="flex items-center justify-between gap-3 py-2 text-[13.5px] hover:text-gold-ink transition-colors">
-                <span className="truncate">{i.name ?? formatPhoneClient(i.phone)}</span><span className="text-muted text-[12.5px] shrink-0">{render(i)}</span>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
+  return comandaCatalog ? <ComandaProvider catalog={comandaCatalog}>{page}</ComandaProvider> : page;
 }

@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
-import { automations, users } from "../db/schema";
-import { saveAutomation, restoreAutomation, setMember, addListItem } from "./config";
+import { automations, lists, users } from "../db/schema";
+import { saveAutomation, restoreAutomation, toggleAutomation, addListItem, setKeywordBoost } from "./config";
 import { previewCandidates } from "../rules/preview";
 import { recordInbound } from "./deals";
 import { resetDb } from "../../../test/db";
@@ -26,6 +26,21 @@ describe("configurações", () => {
     expect(cur.version).toBe(4);
   });
 
+  it("ligar (ou salvar ligada) regra que envia exige a confirmação de envio real no servidor; regra só de alerta liga sem ela", async () => {
+    const envia = { name: "Preço", enabled: true, trigger: { type: "cliente_escreveu" as const, words: ["valor"] }, conditions: [], actions: [{ type: "enviar_mensagem" as const, message: "Oi, {nome}! Já te mando." }] };
+    await expect(saveAutomation(null, envia, gestor)).rejects.toThrow("Confirme o envio real para ligar.");
+    const id = await saveAutomation(null, { ...envia, enabled: false }, gestor); // desligada: sem confirmação
+    await expect(toggleAutomation(id, true, gestor)).rejects.toThrow("Confirme o envio real para ligar.");
+    expect((await db.select().from(automations).where(eq(automations.id, id)))[0].enabled).toBe(false);
+    await toggleAutomation(id, true, gestor, { confirmouEnvio: true });
+    expect((await db.select().from(automations).where(eq(automations.id, id)))[0].enabled).toBe(true);
+    await expect(saveAutomation(id, { ...envia, actions: [{ type: "enviar_mensagem", message: "Texto novo, {nome}" }] }, gestor)).rejects.toThrow("Confirme o envio real para ligar.");
+    await saveAutomation(id, { ...envia, actions: [{ type: "enviar_mensagem", message: "Texto novo, {nome}" }] }, gestor, { confirmouEnvio: true });
+    const alerta = await saveAutomation(null, { ...envia, actions: [{ type: "alertar_gestao", message: "{nome} perguntou" }] }, gestor);
+    await toggleAutomation(alerta, false, gestor);
+    await expect(toggleAutomation(alerta, true, gestor)).resolves.toBeUndefined();
+  });
+
   it("automação inválida é recusada", async () => {
     await expect(saveAutomation(null, { name: "x", enabled: true, trigger: { type: "sem_resposta_minutos", minutes: 0 }, conditions: [], actions: [] } as never, gestor)).rejects.toThrow();
   });
@@ -37,11 +52,13 @@ describe("configurações", () => {
     expect(r.count).toBe(1);
   });
 
-  it("não deixa o CRM ficar sem gestão", async () => {
-    await expect(setMember(gestor, { active: false }, gestor)).rejects.toThrow(/próprio/);
-    const [{ id: outro }] = await db.insert(users).values({ name: "Ana", email: "a@c.com", role: "gestor", passwordHash: "x" }).returning();
-    await setMember(outro, { role: "atendente" }, gestor);
-    await expect(setMember(gestor, { role: "atendente" }, outro)).rejects.toThrow(/pelo menos uma/);
+  it("palavra-chave: exige ao menos uma frase, guarda uma por linha e liga/desliga 'subir na Fila'", async () => {
+    await expect(addListItem("keyword", "Mega hair", "  ", gestor)).rejects.toThrow("Escreva ao menos uma palavra ou frase.");
+    await addListItem("keyword", "Mega hair", "mega hair\n\n aplique ", gestor);
+    const [k] = await db.select().from(lists).where(eq(lists.label, "Mega hair"));
+    expect(k.body).toBe("mega hair\naplique");
+    await setKeywordBoost(k.id, true, gestor);
+    expect((await db.select().from(lists).where(eq(lists.id, k.id)))[0].meta).toEqual({ boost: true });
   });
 
   it("resposta pronta exige texto e normaliza o atalho", async () => {

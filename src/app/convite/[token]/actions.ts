@@ -1,7 +1,11 @@
 "use server";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { acceptInvite } from "@/server/auth/users";
+import { acceptInvite, inviteLanding } from "@/server/auth/users";
 import { createSession } from "@/server/auth/session";
+import { allow } from "@/server/auth/rate-limit";
+import { clientIp } from "@/server/auth/client-ip";
+import { userErrorMessage } from "@/server/user-error";
 
 export type InviteState = { error?: string };
 
@@ -9,11 +13,15 @@ export async function acceptInviteAction(token: string, _: InviteState, form: Fo
   const password = String(form.get("password") ?? "");
   const confirm = String(form.get("confirm") ?? "");
   if (password !== confirm) return { error: "As senhas não são iguais." };
+  // Mesmo limitador do login: quem chuta tokens de convite esbarra em 10 tentativas por IP a cada 10 minutos.
+  if (!allow(`convite:${clientIp(await headers())}`, 10)) return { error: "Muitas tentativas. Espere alguns minutos e tente de novo." };
+  let target = "/";
   try {
     const user = await acceptInvite(token, password);
     await createSession(user.id);
+    target = await inviteLanding(user.id);
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "Não foi possível aceitar o convite." };
+    return { error: userErrorMessage(e, "convite", "Não foi possível aceitar o convite.") };
   }
-  redirect("/");
+  redirect(target);
 }

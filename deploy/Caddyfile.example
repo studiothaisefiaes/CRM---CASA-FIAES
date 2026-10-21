@@ -1,0 +1,11 @@
+# /etc/caddy/Caddyfile — troque o domínio. O Caddy emite e renova o TLS sozinho.
+# Com este proxy na frente, TRUSTED_PROXY_HOPS=1 no .env (o IP do cliente vem do x-forwarded-for).
+crm.exemplo.com.br {
+	encode gzip
+	header -Server
+
+	reverse_proxy localhost:3000 {
+		# necessário para o tempo real (SSE) chegar sem ficar preso em buffer
+		flush_interval -1
+	}
+}

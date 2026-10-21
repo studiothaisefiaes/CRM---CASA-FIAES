@@ -1,0 +1,2672 @@
+{
+ "36ba276e": {
+  "colunas": [
+   "Profissional",
+   "Tipo Contratação",
+   "Cargo",
+   "Banco",
+   "Agência",
+   "Conta",
+   "Faturado",
+   "Rateio Serviços",
+   "Rateio Produtos",
+   "Rateio Outros",
+   "Caixinha",
+   "Descontos",
+   "A pagar",
+   "Valor Casa"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 18
+ },
+ "9bec623d": {
+  "colunas": [
+   "Data de Nascimento",
+   "Nome",
+   "E-mail",
+   "Telefone",
+   "Celular"
+  ],
+  "arquivos": 2,
+  "maxLinhas": 146
+ },
+ "376d2bf7": {
+  "colunas": [
+   "Tipo",
+   "Total"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "0d25e619": {
+  "colunas": [
+   "Produto",
+   "Quantidade",
+   "Valor Médio",
+   "Faturamento"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "29a5bda8": {
+  "colunas": [
+   "Clientes",
+   "Celular"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "862b213d": {
+  "colunas": [
+   "Cliente",
+   "Telefone",
+   "Celular",
+   "E-mail",
+   "Sexo",
+   "Data Nascimento",
+   "Como Conheceu",
+   "Data Cadastro",
+   "Responsável",
+   "Possui Foto"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 48
+ },
+ "ac23e6c3": {
+  "colunas": [
+   "Data",
+   "Cliente",
+   "Valor",
+   "Responsável",
+   "Obs"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 21
+ },
+ "25fe8670": {
+  "colunas": [
+   "Cliente",
+   "Telefone",
+   "E-mail",
+   "Data de Nascimento",
+   "Endereço",
+   "Número",
+   "Cidade",
+   "Estado",
+   "Bairro",
+   "CEP"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "9256ab78": {
+  "colunas": [
+   "Cliente",
+   "Telefone",
+   "Nº Comandas com Serviços",
+   "Nº Comandas com Produtos",
+   "Nº Total Comandas",
+   "Tipo de consumo"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "48e7c27c": {
+  "colunas": [
+   "Bairro",
+   "Total"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "b3e10fc4": {
+  "colunas": [
+   "Cliente",
+   "Telefone",
+   "Celular",
+   "E-mail",
+   "Primeira Visita",
+   "Valor Faturado",
+   "Como Conheceu"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "61fa10d5": {
+  "colunas": [
+   "Clientes",
+   "E-mail"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "1f54ffc6": {
+  "colunas": [
+   "Como Conheceu",
+   "Nome",
+   "Celular",
+   "Telefone",
+   "E-mail",
+   "Data Cadastro",
+   "Última Visita"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "dc841e71": {
+  "colunas": [
+   "Cliente",
+   "Código",
+   "Aniversário",
+   "Telefone",
+   "Celular",
+   "E-mail",
+   "Sexo",
+   "Como Conheceu",
+   "CPF",
+   "CEP",
+   "Endereço",
+   "Número",
+   "Estado",
+   "Cidade",
+   "Complemento",
+   "Bairro",
+   "Profissão",
+   "Cadastrado",
+   "Obs",
+   "RG"
+  ],
+  "arquivos": 2,
+  "maxLinhas": 6308
+ },
+ "56e6c35f": {
+  "colunas": [
+   "Cliente",
+   "E-mail",
+   "Telefone",
+   "Celular",
+   "Serviço",
+   "Última Visita",
+   "Retorno Sugerido",
+   "Sugestão em Dias",
+   "Dias Atrasado"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "386e3bab": {
+  "colunas": [
+   "Nome",
+   "Faturamento",
+   "Qtd. de Itens",
+   "Qtd. de Comandas",
+   "Ticket Médio"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 14
+ },
+ "cc4d6e76": {
+  "colunas": [
+   "Profissional",
+   "Assistente",
+   "Comissão (R$)",
+   "N° de Comandas"
+  ],
+  "arquivos": 2,
+  "maxLinhas": 0
+ },
+ "e1e97c79": {
+  "colunas": [
+   "Data",
+   "Nome do Cliente",
+   "Caixinha"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "e637232f": {
+  "colunas": [
+   "Serviço",
+   "Categoria",
+   "Quantidade",
+   "Valor Médio",
+   "Faturamento"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 2
+ },
+ "8ea83a39": {
+  "colunas": [
+   "Profissional",
+   "Quantidade",
+   "Faturamento"
+  ],
+  "arquivos": 2,
+  "maxLinhas": 0
+ },
+ "d9ed6210": {
+  "colunas": [
+   "Profissional",
+   "Data",
+   "Item Descontado",
+   "Obs",
+   "Tipo de Valor",
+   "Produto",
+   "Quantidade",
+   "Marca",
+   "Valor Descontado",
+   "Comanda N°",
+   "Responsável pela saída"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "c7c3ccd2": {
+  "colunas": [
+   "Cliente",
+   "E-mail",
+   "Telefone",
+   "Celular",
+   "Total Visitas",
+   "Data Visitas",
+   "Total em Serviços"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "0649aabe": {
+  "colunas": [
+   "Data Pagamento",
+   "Título",
+   "Valor",
+   "Tipo Pagamento",
+   "Nome",
+   "CPF",
+   "Banco",
+   "Agência",
+   "Conta"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "83b6a63a": {
+  "colunas": [
+   "Data",
+   "Item Descontado",
+   "Categoria",
+   "Valor Descontado",
+   "Comanda"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 18
+ },
+ "5d0fefc2": {
+  "colunas": [
+   "Cliente",
+   "Celular",
+   "E-mail",
+   "Última Visita",
+   "Total Consumido",
+   "Profissionais",
+   "Número de Visitas"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 136
+ },
+ "bffbf711": {
+  "colunas": [
+   "Data",
+   "Número",
+   "Profissional",
+   "Item",
+   "Valor",
+   "Com. Item",
+   "Com. Cadastrada"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "6f695f67": {
+  "colunas": [
+   "Profissional",
+   "Data Comanda",
+   "Dia da Semana",
+   "Número Comanda",
+   "Serviço",
+   "Categoria",
+   "Cliente",
+   "CPF",
+   "Telefone",
+   "Celular",
+   "Qtd.",
+   "Valor",
+   "Desconto",
+   "Total",
+   "Pacote"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 246
+ },
+ "5d3b6c5d": {
+  "colunas": [
+   "Serviço",
+   "Categoria",
+   "Faturamento (R$)",
+   "Quantidade"
+  ],
+  "arquivos": 2,
+  "maxLinhas": 31
+ },
+ "f7b4435f": {
+  "colunas": [
+   "Serviço",
+   "Descrição",
+   "Categoria",
+   "Valor"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "4c20d186": {
+  "colunas": [
+   "Categoria",
+   "Total",
+   "Atendimentos",
+   "Serviços",
+   "Ticket Médio",
+   "Rateio",
+   "% Rateio"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 9
+ },
+ "56cf76ed": {
+  "colunas": [
+   "Data",
+   "Nº Comanda",
+   "Cliente",
+   "Tipo Item",
+   "Item",
+   "Profissional",
+   "Valor Cadastrado",
+   "Valor Cobrado",
+   "Quantidade",
+   "Desconto (%)",
+   "Total Cobrado",
+   "Total Desconto",
+   "Responsável",
+   "Data Cadastro"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 193
+ },
+ "36c3ff89": {
+  "colunas": [
+   "Marca",
+   "Total",
+   "Qtd."
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "e53bed6f": {
+  "colunas": [
+   "Data",
+   "Cliente",
+   "Serviços Reservados",
+   "Total Reservas",
+   "Serviços Vendidos",
+   "Total Vendido"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 224
+ },
+ "7737c39e": {
+  "colunas": [
+   "Nome",
+   "Celular",
+   "Telefone",
+   "E-mail"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 3791
+ },
+ "b5e47425": {
+  "colunas": [
+   "Número",
+   "Data Comanda",
+   "Cliente",
+   "Responsável Criação",
+   "Responsável Atualização",
+   "Data Cadastro",
+   "Data Atualização"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "9c940dbc": {
+  "colunas": [
+   "Como nos conheceu?",
+   "Quantidade de Clientes",
+   "Percentual"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 6
+ },
+ "c87358ae": {
+  "colunas": [
+   "Profissional",
+   "Data Venda",
+   "Comanda",
+   "Cliente",
+   "Produto",
+   "Código Interno",
+   "Custo",
+   "Marca",
+   "Categoria",
+   "Valor",
+   "Quantidade"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 21
+ },
+ "1c84aa08": {
+  "colunas": [
+   "Produto",
+   "Marca",
+   "Categoria",
+   "Linha",
+   "Quantidade",
+   "Total Faturado",
+   "Custo Total",
+   "Lucratividade"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 15
+ },
+ "fb87dcc1": {
+  "colunas": [
+   "Produto",
+   "Marca",
+   "Preço de Venda (R$)",
+   "Venda para profissional (R$)",
+   "Uso Interno (R$)",
+   "Custo (R$)"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "84726108": {
+  "colunas": [
+   "Data",
+   "Produto",
+   "Codigo interno",
+   "Quantidade",
+   "Validade",
+   "Custo",
+   "Motivo",
+   "Responsável"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "a11266b7": {
+  "colunas": [
+   "Produto",
+   "Código Interno",
+   "Categoria",
+   "Marca",
+   "Linha",
+   "Qtd. Medida",
+   "Valor Venda",
+   "Custo",
+   "Estoque",
+   "Estoque Absoluto",
+   "Medida",
+   "Custo Total"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "b2da8a31": {
+  "colunas": [
+   "Produto",
+   "Marca",
+   "Estoque Atual",
+   "Medida",
+   "Estoque Mínimo (unidades)",
+   "Reposição Mínima (unidades)",
+   "Consumo -30 Dias",
+   "Reposição Sugerida"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 130
+ },
+ "5ee5c958": {
+  "colunas": [
+   "Produto",
+   "Valor",
+   "Custo",
+   "Comissão (%)",
+   "Margem (%)",
+   "Lucro"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 135
+ },
+ "c306bec9": {
+  "colunas": [
+   "Produto",
+   "Custo Cadastrado",
+   "Valor",
+   "Categoria",
+   "Marca",
+   "Custo Médio Ponderado",
+   "Custo Médio",
+   "Estoque Atual",
+   "Custo Total"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 338
+ },
+ "f18900ac": {
+  "colunas": [
+   "Data Cadastro Reserva",
+   "Data Reserva",
+   "Hora",
+   "Cliente",
+   "Celular",
+   "Data Cadastro Cliente",
+   "E-mail",
+   "Profissional",
+   "Serviço",
+   "Origem",
+   "Status",
+   "Observação",
+   "Data Comanda",
+   "Número",
+   "Quem Cadastrou"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 309
+ },
+ "e8aa4978": {
+  "colunas": [
+   "Data",
+   "Cliente",
+   "Telefone",
+   "Profissional",
+   "Serviço",
+   "Valor total",
+   "Obs",
+   "Responsável Cancelamento",
+   "Cancelamento",
+   "Responsavel",
+   "Data Cadastro"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 78
+ },
+ "e51ff131": {
+  "colunas": [
+   "Data Reserva",
+   "Hora",
+   "Cliente",
+   "Serviço",
+   "Valor"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 259
+ },
+ "54b78936": {
+  "colunas": [
+   "Tipo de Agendamento",
+   "Total"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 2
+ },
+ "4cad067e": {
+  "colunas": [
+   "Cliente",
+   "E-mail",
+   "Telefone",
+   "Celular",
+   "Última Visita"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 380
+ },
+ "9e34ba62": {
+  "colunas": [
+   "Cliente",
+   "E-mail",
+   "Telefone",
+   "Celular"
+  ],
+  "arquivos": 3,
+  "maxLinhas": 0
+ },
+ "568fb508": {
+  "colunas": [
+   "Data",
+   "Dia da semana",
+   "Cliente",
+   "Telefone",
+   "Serviço",
+   "Status",
+   "Horário"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "6ae59aff": {
+  "colunas": [
+   "Pacote",
+   "Faturamento (R$)",
+   "Quantidade"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 4
+ },
+ "0c96c703": {
+  "colunas": [
+   "Data",
+   "Comanda",
+   "Nome",
+   "E-mail",
+   "Celular",
+   "Profissional",
+   "Item",
+   "Quantidade",
+   "Valor",
+   "Desconto (%)",
+   "Total"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 4
+ },
+ "40ca3312": {
+  "colunas": [
+   "Data",
+   "Número",
+   "Cliente",
+   "Item",
+   "Qtd.",
+   "Profissional",
+   "Valor com Desconto",
+   "Do Pacote",
+   "Data Venda",
+   "Número Venda",
+   "Unidade Venda",
+   "Profissional Venda"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 12
+ },
+ "5a9cbde8": {
+  "colunas": [
+   "Data",
+   "Comanda",
+   "Nome",
+   "Pacote",
+   "Quantidade",
+   "Valor"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "cc2801c9": {
+  "colunas": [
+   "Data",
+   "Nome",
+   "Profissão",
+   "Idade",
+   "Endereço",
+   "Telefone",
+   "Celular",
+   "E-mail",
+   "Profissional"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "e9f10c6e": {
+  "colunas": [
+   "Cliente",
+   "Pacote",
+   "Serviço",
+   "Total",
+   "Utilizados",
+   "Validade",
+   "Compra",
+   "Valor de venda",
+   "Valor unitário",
+   "Valor pendente"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "f2f49151": {
+  "colunas": [
+   "Tipo de lançamento",
+   "Data de pagamento",
+   "Data de competência",
+   "Descrição",
+   "Valor",
+   "Categoria",
+   "Recebido de/Pago a",
+   "Pago",
+   "Detalhes",
+   "Conta",
+   "Número documento",
+   "Forma pagamento"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 270
+ },
+ "ca5e2f62": {
+  "colunas": [
+   "Data",
+   "Competência",
+   "Descrição",
+   "Categoria",
+   "Valor",
+   "Centro de Custo",
+   "Cliente/Fornecedor",
+   "Observações"
+  ],
+  "arquivos": 2,
+  "maxLinhas": 270
+ },
+ "e7894755": {
+  "colunas": [
+   "Cliente",
+   "Pacote",
+   "Serviço",
+   "Total",
+   "Utilizados",
+   "Valor de venda",
+   "Validade",
+   "Compra"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 33
+ },
+ "10599ac5": {
+  "colunas": [
+   "Data",
+   "Número",
+   "Cliente",
+   "Item",
+   "Qtd.",
+   "Valor com Desconto",
+   "Do Pacote"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 1
+ },
+ "5647abd8": {
+  "colunas": [
+   "Data",
+   "Título",
+   "Valor",
+   "Profissional",
+   "Data Cadastro",
+   "Resp. Cadastro",
+   "Ultima Alteração",
+   "Resp. Ultima Alter.",
+   "Status"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 8
+ },
+ "026a2eb4": {
+  "colunas": [
+   "ID",
+   "Nome",
+   "Email",
+   "Telefone",
+   "Celular",
+   "Endereço",
+   "Cidade",
+   "Estado",
+   "Bairro",
+   "Status"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "3646fb19": {
+  "colunas": [
+   "Item",
+   "Valor",
+   "Desconto",
+   "Quantidade",
+   "Status",
+   "Responsável Cadastro",
+   "Responsável UA",
+   "Data Cadastro",
+   "Data UA"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "55b9d10c": {
+  "colunas": [
+   "Forma de pagamento",
+   "Faturamento"
+  ],
+  "arquivos": 2,
+  "maxLinhas": 9
+ },
+ "c8f00d91": {
+  "colunas": [
+   "Ultima Movimentação",
+   "Cliente",
+   "Código Cliente",
+   "Celular",
+   "E-mail",
+   "Crédito ou Dívida (R$)"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "30e656b2": {
+  "colunas": [
+   "Tags",
+   "Total"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "ae14ff16": {
+  "colunas": [
+   "Cliente",
+   "Celular",
+   "E-mail",
+   "Nº Comandas",
+   "Faturamento",
+   "Ticket Médio"
+  ],
+  "arquivos": 3,
+  "maxLinhas": 136
+ },
+ "90e4501f": {
+  "colunas": [
+   "Data da Comanda",
+   "Nº da Comanda",
+   "Item",
+   "Valor",
+   "Quantidade"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 3
+ },
+ "0e30824e": {
+  "colunas": [
+   "Data",
+   "Faturado",
+   "Número de comandas",
+   "Média Faturado"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "999d7e8a": {
+  "colunas": [
+   "Data",
+   "Número",
+   "Forma(s) Pag. Comanda",
+   "Item",
+   "Valor",
+   "Cliente",
+   "CPF",
+   "RG",
+   "CEP",
+   "Endereço",
+   "Número",
+   "Bairro",
+   "Cidade",
+   "Estado",
+   "E-mail"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 128
+ },
+ "8d25b52d": {
+  "colunas": [
+   "Data",
+   "Número",
+   "Código",
+   "Valor",
+   "Desconto",
+   "Cliente que Adquiriu"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "dd6ad838": {
+  "colunas": [
+   "Data",
+   "Faturado",
+   "Número de comandas",
+   "Média Faturado",
+   "Dia da semana"
+  ],
+  "arquivos": 5,
+  "maxLinhas": 3
+ },
+ "b79cef09": {
+  "colunas": [
+   "Data",
+   "Número",
+   "Situação"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 147
+ },
+ "78717dcb": {
+  "colunas": [
+   "Data",
+   "Número",
+   "Cliente",
+   "Motivo",
+   "Responsável",
+   "Data Exclusão"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 3
+ },
+ "5575de10": {
+  "colunas": [
+   "E-mail",
+   "Abertura",
+   "Fechamento",
+   "Qtd. Comandas",
+   "Total Entradas",
+   "Diferença no Fechamento"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 14
+ },
+ "fb0490d0": {
+  "colunas": [
+   "Cliente",
+   "E-mail",
+   "Telefone",
+   "Celular",
+   "Sexo",
+   "Última Visita"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 369
+ },
+ "80a4c150": {
+  "colunas": [
+   "Item",
+   "Quantidade venda",
+   "Quantidade uso",
+   "Total"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 50
+ },
+ "f0431917": {
+  "colunas": [
+   "Data",
+   "Número",
+   "Item",
+   "Deletado em",
+   "Responsável"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 96
+ },
+ "c0dea54f": {
+  "colunas": [
+   "Categoria",
+   "Valor"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "eea8b3fc": {
+  "colunas": [
+   "Data",
+   "Comanda",
+   "Forma Pag.",
+   "Valor",
+   "Taxa Cartão",
+   "Taxa Com Antecipação"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 207
+ },
+ "4d0dadf5": {
+  "colunas": [
+   "Dia da semana",
+   "Faturado",
+   "Número de comandas",
+   "Média Faturado"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 5
+ },
+ "65eb1535": {
+  "colunas": [
+   "Comandas com serviços",
+   "Comandas com produtos",
+   "Comandas com serviços e produtos",
+   "Comandas com pacotes",
+   "Comandas",
+   "Percentual com serviços",
+   "Percentual com produtos",
+   "Percentual com serviços e produtos",
+   "Percentual com pacotes"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 1
+ },
+ "3c9055ab": {
+  "colunas": [
+   "Titulo",
+   "Forma de Pagamento",
+   "Data Cadastro",
+   "Ultima Atualização",
+   "Responsavel",
+   "Responsavel UA"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 247
+ },
+ "88631db7": {
+  "colunas": [
+   "Data",
+   "Nº Comanda",
+   "Nome Cliente",
+   "Valor"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "4c9ce320": {
+  "colunas": [
+   "Nome",
+   "Telefone",
+   "Celular",
+   "E-mail",
+   "Responsável",
+   "Data de Cadastro"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 237
+ },
+ "f566f4bf": {
+  "colunas": [
+   "Data Cadastro",
+   "Nota (1-5)",
+   "Avaliação",
+   "Cliente",
+   "Celular",
+   "E-mail",
+   "Data Comanda",
+   "N° Comanda",
+   "Profissionais"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "a42a323d": {
+  "colunas": [
+   "Data",
+   "Cliente",
+   "E-mail",
+   "Telefone",
+   "Celular",
+   "Total Visitas",
+   "Data Visitas",
+   "Total em Serviços"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "4cc2d3b0": {
+  "colunas": [
+   "Nome",
+   "E-mail",
+   "Telefone",
+   "Celular",
+   "Responsável Exclusão",
+   "Data Exclusão"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 3
+ },
+ "4cf4643c": {
+  "colunas": [
+   "Cliente",
+   "E-mail",
+   "Telefone",
+   "Celular",
+   "Dias desde a última visita",
+   "Última Visita"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "75ba7de9": {
+  "colunas": [
+   "Titulo",
+   "Desconto",
+   "Descrição",
+   "Data Início",
+   "Data Fim",
+   "Semana"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "cc013749": {
+  "colunas": [
+   "Nome",
+   "Celular",
+   "Telefone",
+   "Cidade",
+   "Estado",
+   "E-mail",
+   "Data Cadastro"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 56
+ },
+ "6c0ab0d1": {
+  "colunas": [
+   "Cliente",
+   "Celular",
+   "E-mail",
+   "Data de Cadastro",
+   "Responsável",
+   "Pontos"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "4e1de251": {
+  "colunas": [
+   "Cliente",
+   "Celular",
+   "E-mail",
+   "Ultima Pontuação",
+   "Pontos Gerados",
+   "Saldo Atual"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "9897d129": {
+  "colunas": [
+   "Cliente",
+   "Telefone",
+   "E-mail",
+   "Data de Nascimento",
+   "Endereço",
+   "Número",
+   "Cidade",
+   "Estado",
+   "Bairro",
+   "CEP",
+   "CPF",
+   "Responsável",
+   "Visita"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 96
+ },
+ "0b4f0953": {
+  "colunas": [
+   "Cliente",
+   "Campo",
+   "Slug",
+   "Valor",
+   "Data Cadastro"
+  ],
+  "arquivos": 2,
+  "maxLinhas": 0
+ },
+ "522e78d2": {
+  "colunas": [
+   "Cliente",
+   "Data",
+   "Comanda",
+   "Campo",
+   "Slug",
+   "Valor",
+   "Data Cadastro"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "5cacd6e2": {
+  "colunas": [
+   "Nome do Profissional",
+   "Caixinha"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "85fbddc5": {
+  "colunas": [
+   "Cliente",
+   "Data",
+   "Comanda N°",
+   "Serviço",
+   "Valor R$",
+   "Custo",
+   "Quantidade"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 242
+ },
+ "1b77f624": {
+  "colunas": [
+   "Nome",
+   "Apelido",
+   "Cargo",
+   "Aniversário",
+   "E-mail",
+   "Telefone",
+   "Celular"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 1
+ },
+ "8ffa26d4": {
+  "colunas": [
+   "Comanda",
+   "Data",
+   "Item",
+   "Cliente",
+   "Profissional",
+   "Valor"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 267
+ },
+ "831f0aa5": {
+  "colunas": [
+   "Profissional",
+   "Cargo",
+   "Carga Diária",
+   "Dias Úteis",
+   "Total Disponível",
+   "Total Agendado",
+   "Taxa de Ocupação (%)"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "2ca9923b": {
+  "colunas": [
+   "Profissional",
+   "Data",
+   "Item Descontado",
+   "Produto",
+   "Tipo Saída",
+   "Valor Descontado",
+   "Comanda N°"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "ce4f09b9": {
+  "colunas": [
+   "Cliente",
+   "Data Cadastro",
+   "E-mail",
+   "Telefone",
+   "Celular",
+   "Última Visita",
+   "Total Consumido",
+   "Número de Visitas"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "0e3feff0": {
+  "colunas": [
+   "Data",
+   "Número Comanda",
+   "Profissional",
+   "Serviço",
+   "Categoria",
+   "Faturado",
+   "Qtd.",
+   "Comissão (%)",
+   "Custo Serviço",
+   "Custo Produtos",
+   "Desconto Produto Comissão",
+   "Custo Comissão",
+   "Lucro",
+   "Lucratividade (%)"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 246
+ },
+ "1638a715": {
+  "colunas": [
+   "Produto",
+   "Categoria",
+   "Custo",
+   "Média de Valor",
+   "Comissão",
+   "Saídas",
+   "Média de Lucro",
+   "Total"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 17
+ },
+ "60a4e928": {
+  "colunas": [
+   "Categoria",
+   "Custo",
+   "Custo (%)"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 13
+ },
+ "f80459ea": {
+  "colunas": [
+   "Produto",
+   "Código de Barra",
+   "Origem",
+   "NCM",
+   "CFOP",
+   "CEST",
+   "Código ICMS",
+   "ICMS Valor",
+   "Código PIS",
+   "PIS Valor",
+   "Código COFINS",
+   "COFINS Valor"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 135
+ },
+ "49a2d2bb": {
+  "colunas": [
+   "Categoria",
+   "Custo Total",
+   "Faturado",
+   "Comissão Total",
+   "Margem Lucro",
+   "Lucro"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 3
+ },
+ "247b884a": {
+  "colunas": [
+   "Produto",
+   "Marca",
+   "Linha",
+   "Categoria",
+   "Faturamento",
+   "Total Vendido",
+   "Percentual"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 15
+ },
+ "65800d14": {
+  "colunas": [
+   "Data",
+   "Comanda",
+   "Serviço",
+   "Produto",
+   "Marca",
+   "Quantidade",
+   "Custo",
+   "Uso Interno"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "9db4f036": {
+  "colunas": [
+   "Produto",
+   "Categoria",
+   "Custo",
+   "Valor",
+   "Custo Médio Ponderado",
+   "Medida",
+   "Qtd. Estoque",
+   "Qtd. Estoque Absoluto",
+   "Marca",
+   "Linha",
+   "NCM",
+   "Cód. Barras",
+   "Cód. Interno",
+   "Local de estoque",
+   "Custo Total",
+   "Preço Venda Total"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 337
+ },
+ "e7da5691": {
+  "colunas": [
+   "Data Reserva",
+   "Hora",
+   "Cliente",
+   "Telefone",
+   "Serviço",
+   "Online/Interno",
+   "Status",
+   "Data Comanda",
+   "Número"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "7afa0ac7": {
+  "colunas": [
+   "Data",
+   "Horário",
+   "Comanda",
+   "Prof. Reserva",
+   "Prof. Comanda"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 14
+ },
+ "902551df": {
+  "colunas": [
+   "Profissional",
+   "Quantidade"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 9
+ },
+ "f68efd92": {
+  "colunas": [
+   "Profissional",
+   "Dias Trabalhados",
+   "Total Reservas",
+   "Média Por Dia"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 18
+ },
+ "1903eedc": {
+  "colunas": [
+   "Data Cadastro",
+   "Data Reserva",
+   "Hora",
+   "Cliente",
+   "Profissional",
+   "Serviço",
+   "Status",
+   "Quem Cadastrou"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 306
+ },
+ "971994cb": {
+  "colunas": [
+   "Data",
+   "Horario",
+   "Cliente",
+   "Serviço",
+   "Profissional",
+   "Valor"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "9c5dad0e": {
+  "colunas": [
+   "Data",
+   "Reservas"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "61a7a9b6": {
+  "colunas": [
+   "Data inicial",
+   "Data final",
+   "Hora inicial",
+   "Hora final",
+   "Profissional",
+   "Titulo",
+   "obs",
+   "Serviço",
+   "Periodo da semana"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 70
+ },
+ "507021c8": {
+  "colunas": [
+   "Data",
+   "Comanda",
+   "Nome",
+   "CPF",
+   "E-mail",
+   "Celular",
+   "Profissional",
+   "Total"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 3
+ },
+ "e98b5a6c": {
+  "colunas": [
+   "Pacote",
+   "Descrição",
+   "Comissão",
+   "Valor",
+   "Desconto",
+   "Vender Online"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 7
+ },
+ "3a373d8f": {
+  "colunas": [
+   "Profissional",
+   "Cargo",
+   "Faturamento Total",
+   "Faturamento Profissional",
+   "Faturamento Salão"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 15
+ },
+ "f06dac67": {
+  "colunas": [
+   "Profissional",
+   "Data Comanda",
+   "Número Comanda",
+   "Cliente",
+   "Item",
+   "Valor",
+   "Quantidade",
+   "Tipo"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 267
+ },
+ "1877878b": {
+  "colunas": [
+   "Data",
+   "Número",
+   "Cliente",
+   "Código Vale Presente",
+   "Valor"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "a18379d0": {
+  "colunas": [
+   "Data",
+   "Número",
+   "Cliente",
+   "Obs"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 9
+ },
+ "83666552": {
+  "colunas": [
+   "Data",
+   "Comanda",
+   "Valor Itens",
+   "Valor Formas Pagamento",
+   "Diferença"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 19
+ },
+ "5669d79a": {
+  "colunas": [
+   "Tipo de venda",
+   "Quantidade",
+   "Total",
+   "Percentual"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 3
+ },
+ "44d320a4": {
+  "colunas": [
+   "Data",
+   "Número",
+   "Cliente",
+   "Promoção",
+   "Item",
+   "Qtd.",
+   "Valor Tabela",
+   "Valor"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "63d414a7": {
+  "colunas": [
+   "Data",
+   "Comanda",
+   "Item",
+   "Tipo",
+   "Categoria",
+   "Profissional",
+   "Assistente 1",
+   "Assistente 2",
+   "Comissão (%)",
+   "Cliente",
+   "Email",
+   "Telefone",
+   "Celular",
+   "Valor",
+   "Desconto",
+   "Qtd.",
+   "Custo",
+   "Comissão",
+   "Líquido",
+   "UA"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 271
+ },
+ "d1e9f12d": {
+  "colunas": [
+   "Data Comanda",
+   "Comanda",
+   "Cliente",
+   "CPF",
+   "Valor",
+   "Forma de Pagamento",
+   "Detalhe",
+   "Data Pagamento",
+   "Caixa",
+   "Abertura"
+  ],
+  "arquivos": 2,
+  "maxLinhas": 241
+ },
+ "2b4a413e": {
+  "colunas": [
+   "Bandeira",
+   "Valor faturado",
+   "Valor"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 7
+ },
+ "fb8e34ba": {
+  "colunas": [
+   "Nome",
+   "Telefone",
+   "Celular",
+   "Email",
+   "Segunda",
+   "Terça",
+   "Quarta",
+   "Quinta",
+   "Sexta",
+   "Sábado",
+   "Domingo",
+   "Total"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 154
+ },
+ "ef9246e2": {
+  "colunas": [
+   "Data",
+   "Motivo",
+   "Valor",
+   "Tipo Movimentação",
+   "Responsável",
+   "Caixa",
+   "Lançou no Financeiro"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "34146929": {
+  "colunas": [
+   "Data",
+   "Cliente",
+   "Validade",
+   "Valor",
+   "Código"
+  ],
+  "arquivos": 2,
+  "maxLinhas": 0
+ },
+ "478189cc": {
+  "colunas": [
+   "Total",
+   "Gênero"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 3
+ },
+ "33967693": {
+  "colunas": [
+   "Nota (1-5)",
+   "Total"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "e5d22277": {
+  "colunas": [
+   "Clientes",
+   "CPF"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "ff149101": {
+  "colunas": [
+   "Data",
+   "Comanda",
+   "Cliente",
+   "Valor",
+   "Responsável",
+   "Total Pago",
+   "Créditos e Dívidas",
+   "Obs. Comanda"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 124
+ },
+ "7c99eae4": {
+  "colunas": [
+   "Cargo",
+   "Total",
+   "Atendimentos",
+   "Serviços",
+   "Ticket Médio",
+   "Rateio"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 5
+ },
+ "48c49b38": {
+  "colunas": [
+   "Profissional",
+   "Quantidade",
+   "Faturamento",
+   "Ticket Médio",
+   "Comissão"
+  ],
+  "arquivos": 2,
+  "maxLinhas": 2
+ },
+ "fbf8d8d4": {
+  "colunas": [
+   "Serviço",
+   "Comissão",
+   "Comissão Assistente",
+   "Tempo"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "eda93287": {
+  "colunas": [
+   "Profissional",
+   "Número de Avaliações",
+   "Média das Avaliações"
+  ],
+  "arquivos": 2,
+  "maxLinhas": 0
+ },
+ "2b708240": {
+  "colunas": [
+   "Data Pagamento",
+   "Profissional",
+   "Cargo",
+   "Data Início",
+   "Data Fim",
+   "Valor",
+   "Data Cadastro",
+   "Responsável"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "4762e3f9": {
+  "colunas": [
+   "Profissional",
+   "Número de Comandas",
+   "Quantidade",
+   "Faturamento",
+   "Ticket Médio"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 5
+ },
+ "83e1b1e5": {
+  "colunas": [
+   "Data",
+   "Dia da Semana",
+   "Valor Líquido"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 3
+ },
+ "cdc646d8": {
+  "colunas": [
+   "ID",
+   "Nome",
+   "Cargo",
+   "CPF",
+   "Apelido",
+   "Especialidade",
+   "Contratação",
+   "Grupo de acesso",
+   "Data Cadastro"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 18
+ },
+ "1d3cb979": {
+  "colunas": [
+   "Data",
+   "Cliente",
+   "Serviço",
+   "Valor"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "a9c0e7d0": {
+  "colunas": [
+   "Categoria",
+   "Faturado",
+   "Qtd.",
+   "Custo Serviço",
+   "Custo Produtos",
+   "Custo Comissão",
+   "Lucro",
+   "Lucratividade (%)"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 9
+ },
+ "e838a894": {
+  "colunas": [
+   "Categoria",
+   "Total",
+   "Qtd."
+  ],
+  "arquivos": 1,
+  "maxLinhas": 3
+ },
+ "858bbd29": {
+  "colunas": [
+   "Marca",
+   "Custo Total"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "2ab62616": {
+  "colunas": [
+   "Categoria",
+   "Custo Total"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 14
+ },
+ "ebf204a9": {
+  "colunas": [
+   "Data",
+   "Produto",
+   "Código Interno",
+   "Marca",
+   "Categoria",
+   "Quantidade",
+   "Validade",
+   "Custo",
+   "Motivo"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "7c09079a": {
+  "colunas": [
+   "Profissional",
+   "Valor",
+   "Cargo"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "2e24b54c": {
+  "colunas": [
+   "Data",
+   "Comanda",
+   "Serviço",
+   "Valor Serviço",
+   "Produto",
+   "Quantidade",
+   "Gasto com produtos",
+   "Custo de compra"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "36cb1942": {
+  "colunas": [
+   "Motivo",
+   "Item da comanda",
+   "Produto",
+   "Responsável Cadastro",
+   "Responsável Exclusão",
+   "Quantidade",
+   "Situacao",
+   "Tipo Saída",
+   "Nº da Comanda",
+   "Data da Comanda",
+   "Comanda está Deletada",
+   "Item está Deletado"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 4
+ },
+ "fbd442b2": {
+  "colunas": [
+   "Data",
+   "Cliente",
+   "Telefone",
+   "Profissional",
+   "Serviço",
+   "Obs",
+   "Responsavel",
+   "Responsavel última atualização",
+   "Data Cadastro",
+   "Última atualização"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 28
+ },
+ "29b2260c": {
+  "colunas": [
+   "codigo_interno",
+   "produto",
+   "codigo_barras",
+   "valor"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "0d541ef1": {
+  "colunas": [
+   "Data mais recente",
+   "Nome",
+   "Celular",
+   "E-mail"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 171
+ },
+ "541268c4": {
+  "colunas": [
+   "Data",
+   "Comanda",
+   "Valor Nota",
+   "Valor Comanda",
+   "Diferença"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "3d19e75c": {
+  "colunas": [
+   "Data Comanda",
+   "Número",
+   "Cliente",
+   "Itens",
+   "Valor",
+   "Valor Líquido",
+   "Data Aprovação"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "d3aa5ffc": {
+  "colunas": [
+   "Data Pagamento",
+   "Número",
+   "Data Comanda",
+   "Cliente",
+   "Data Vencimento",
+   "Número Cheque",
+   "Valor"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "0827fc05": {
+  "colunas": [
+   "Empresa",
+   "CNPJ",
+   "Valor Total"
+  ],
+  "arquivos": 2,
+  "maxLinhas": 0
+ },
+ "8478cd7a": {
+  "colunas": [
+   "Data",
+   "Comanda",
+   "Total",
+   "Itens",
+   "Pagamento",
+   "Link PDF",
+   "Link XML",
+   "Serie",
+   "Número",
+   "Data Emissão",
+   "Mensagem"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 128
+ },
+ "86029fa1": {
+  "colunas": [
+   "Data",
+   "Valor Estabelecimento",
+   "Valor Cota-Parte",
+   "Número RPS",
+   "Número NFS-E",
+   "Comanda",
+   "Forma de Pagamento",
+   "Status",
+   "Descrição",
+   "Detalhes"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "88bc57e7": {
+  "colunas": [
+   "Como Conheceu",
+   "Faturado Serviços",
+   "Faturado Produtos",
+   "Faturamento Total",
+   "Total Clientes",
+   "Ticket Médio"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 16
+ },
+ "67ab6863": {
+  "colunas": [
+   "Cliente",
+   "E-mail",
+   "Telefone",
+   "Celular",
+   "Serviço",
+   "Categoria",
+   "Última Visita",
+   "Retorno Sugerido",
+   "Sugestão em Dias",
+   "Dias Atrasado"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "22d37c87": {
+  "colunas": [
+   "Profissional",
+   "Cargo",
+   "Quantidade",
+   "Faturamento"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "9e673d7d": {
+  "colunas": [
+   "Cargo",
+   "Valor R$",
+   "Custo"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 5
+ },
+ "f736c64b": {
+  "colunas": [
+   "Fornecedor",
+   "Nota fiscal",
+   "Valor Total",
+   "Data Pedido",
+   "Número Pedido",
+   "Item",
+   "Quantidade",
+   "Valor Pago"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "90f0bb43": {
+  "colunas": [
+   "Profissional",
+   "Cargo",
+   "Preferencial",
+   "Sem Preferencia",
+   "Percentual Preferencial"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 17
+ },
+ "296b7b0e": {
+  "colunas": [
+   "Nome",
+   "Tipo",
+   "Código de Barras",
+   "Código Interno",
+   "Custo",
+   "Comissão",
+   "Categoria",
+   "Marca",
+   "Linha",
+   "Por Unidade",
+   "Estoque Atual",
+   "Medida",
+   "Valor",
+   "Data Cadastro"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "0d9e9347": {
+  "colunas": [
+   "Data",
+   "Produto",
+   "Cód. Barras",
+   "Marca",
+   "Categoria",
+   "Linha",
+   "Quantidade",
+   "Custo",
+   "Motivo",
+   "Profissional",
+   "Valor"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 24
+ },
+ "a328342d": {
+  "colunas": [
+   "Código Interno",
+   "Produto",
+   "Custo",
+   "Valor",
+   "Estoque",
+   "Medida",
+   "Custo Total",
+   "Valor Total"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 4
+ },
+ "46c10a5d": {
+  "colunas": [
+   "Data Comanda",
+   "Número",
+   "Produto",
+   "Quantidade",
+   "Valor",
+   "Valor Original",
+   "Comissão",
+   "Comissão Valor"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "89318958": {
+  "colunas": [
+   "Profissional",
+   "Apelido",
+   "Cargo",
+   "Comissão Total"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "4b6cbc4f": {
+  "colunas": [
+   "Status",
+   "Total"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 7
+ },
+ "7d4a75d6": {
+  "colunas": [
+   "Data",
+   "Produto",
+   "Categoria",
+   "Marca",
+   "Linha",
+   "Código Interno",
+   "Código de Barras",
+   "Qtd.",
+   "Custo Médio",
+   "Tipo Saída",
+   "Custo Saída"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 24
+ },
+ "b631f29f": {
+  "colunas": [
+   "Data Competência",
+   "Data Vencimento",
+   "Data Pagamento",
+   "Descrição",
+   "Tipo Pagamento",
+   "Informação",
+   "Categoria",
+   "Conta Bancária",
+   "Nº Comanda",
+   "Valor Bruto Total",
+   "Valor Líquido Total",
+   "ID da Venda"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 228
+ },
+ "ac142f7c": {
+  "colunas": [
+   "Data Competência",
+   "Fornecedor",
+   "Observações",
+   "Forma de Pagamento",
+   "Data Vencimento",
+   "Valor",
+   "Valor Pago",
+   "Conta Bancária",
+   "Data Pagamento",
+   "Categoria",
+   "Parcela",
+   "Descrição",
+   "Nota Fiscal"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "ac9b889a": {
+  "colunas": [
+   "Competência",
+   "Pagamento",
+   "Cobrança",
+   "Título",
+   "Conta Bancária",
+   "Categoria",
+   "Fornecedor/Cliente",
+   "Centro de Custos",
+   "Valor",
+   "Observações"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 2
+ },
+ "cd09f8e7": {
+  "colunas": [
+   "Produto",
+   "Categoria",
+   "Marca",
+   "Quantidade",
+   "Valor Venda",
+   "Comissão",
+   "Custo",
+   "Lucro",
+   "Lucratividade"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "eeeeed1d": {
+  "colunas": [
+   "Data",
+   "Empresa",
+   "Tipo Nota",
+   "Status",
+   "Comanda",
+   "Total",
+   "Itens",
+   "Pagamento",
+   "Link PDF",
+   "Link XML",
+   "Serie",
+   "Número",
+   "Data Emissão",
+   "Mensagem"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 138
+ },
+ "1040dba8": {
+  "colunas": [
+   "Profissional",
+   "Estoque",
+   "Data Venda",
+   "Comanda",
+   "Produto",
+   "Marca",
+   "Valor",
+   "Quantidade"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 21
+ },
+ "73d1b3b4": {
+  "colunas": [
+   "Categoria",
+   "Qtd Serviços",
+   "Qtd Comandas",
+   "Faturamento",
+   "Ticket Médio",
+   "Percentual"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 1
+ },
+ "e5b22c06": {
+  "colunas": [
+   "Data",
+   "Comanda",
+   "Item",
+   "Tipo",
+   "Categoria",
+   "Profissional",
+   "Assistente 1",
+   "Assistente 2",
+   "Comissão (%)",
+   "Cliente",
+   "Valor",
+   "Desconto",
+   "Qtd.",
+   "Custo",
+   "Comissão",
+   "Líquido",
+   "UA"
+  ],
+  "arquivos": 2,
+  "maxLinhas": 271
+ },
+ "638c6750": {
+  "colunas": [
+   "Data",
+   "Comanda",
+   "Valor Nota",
+   "Valor Comanda"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 3
+ },
+ "895bad02": {
+  "colunas": [
+   "Data",
+   "Comanda",
+   "Total Nota Profissionais",
+   "Total Nota Salão",
+   "Valor Comanda"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 152
+ },
+ "b507142e": {
+  "colunas": [
+   "Serviço",
+   "Categoria",
+   "Custo Serviço",
+   "Custo Produtos Composição",
+   "Valor"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "f136bdb3": {
+  "colunas": [
+   "Data",
+   "Número Comanda",
+   "Cliente",
+   "Item",
+   "Valor"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "fb28b669": {
+  "colunas": [
+   "Data",
+   "Comanda",
+   "Total",
+   "Cliente",
+   "E-mail",
+   "CPF",
+   "Celular",
+   "Estado",
+   "Cidade"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "d339dbba": {
+  "colunas": [
+   "Data Competência",
+   "Forma de Pagamento",
+   "Informação",
+   "Valor",
+   "Valor Líquido",
+   "Conta Bancária",
+   "Data Pagamento",
+   "Descrição"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 234
+ },
+ "fec3819b": {
+  "colunas": [
+   "Data Comanda",
+   "N° da Comanda",
+   "Serviço ou Produto",
+   "Cliente",
+   "Valor Cobrado",
+   "Forma de Pagamento",
+   "Taxa de Cartão",
+   "Taxa Adm.",
+   "Custo de Serviço",
+   "Custo de Produto",
+   "Total",
+   "Assistente 1",
+   "Assistente 2",
+   "Data Pagamento"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 25
+ },
+ "9aafd898": {
+  "colunas": [
+   "Profissional",
+   "Cargo",
+   "Banco",
+   "Agência",
+   "Conta",
+   "Total Cartão",
+   "Total Outros"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 18
+ },
+ "b7376899": {
+  "colunas": [
+   "Data Comanda",
+   "N° da Comanda",
+   "Serviço ou Produto",
+   "Cliente",
+   "Valor Cobrado",
+   "Comissão (%)",
+   "Total"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "502cca9a": {
+  "colunas": [
+   "Profissional",
+   "Cargo",
+   "Banco",
+   "Agência",
+   "Conta",
+   "Total Cartão",
+   "Total Dinheiro",
+   "Total Outros"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 18
+ },
+ "68b6a870": {
+  "colunas": [
+   "Data Comanda",
+   "Data Pagamento",
+   "N° da Comanda",
+   "Serviço ou Produto",
+   "Cliente",
+   "Forma de Pagamento",
+   "Split",
+   "Valor faturado",
+   "Total líquido"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 25
+ },
+ "47d57e7d": {
+  "colunas": [
+   "Profissional",
+   "Cargo",
+   "Faturado",
+   "Rateio Serviços",
+   "Rateio Produtos",
+   "Rateio Outros",
+   "Caixinha",
+   "Gasto Produtos",
+   "Taxa Cartao",
+   "Taxa Adm",
+   "Desconto Assistente",
+   "Outros Descontos",
+   "A pagar",
+   "Valor Casa"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 18
+ },
+ "3f9f04aa": {
+  "colunas": [
+   "Data Comanda",
+   "N° da Comanda",
+   "Título",
+   "Cliente",
+   "Valor Cobrado",
+   "Forma de Pagamento",
+   "Comissão",
+   "Data Pagamento Manual",
+   "Data Pagamento Futuro",
+   "Split",
+   "Recibo ID",
+   "Venda ID"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 25
+ },
+ "5855fb02": {
+  "colunas": [
+   "Protocolo",
+   "Data de Solicitação",
+   "Responsável",
+   "Período Início",
+   "Período Fim",
+   "Status",
+   "Recalc. Profissionais",
+   "Recalc. Assistentes",
+   "Ajustar Estoque",
+   "Apenas Pacotes"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ },
+ "64e8cd2a": {
+  "colunas": [
+   "Data Comanda",
+   "N° da Comanda",
+   "Item",
+   "Profissional",
+   "Forma Pagamento",
+   "Data Comissão",
+   "Data Pagamento",
+   "Split"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 633
+ },
+ "2903b510": {
+  "colunas": [
+   "Produto",
+   "Marca",
+   "Estoque Anterior",
+   "Entradas",
+   "Saídas Venda",
+   "Saídas Consumo",
+   "Estoque Atual"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 338
+ },
+ "074bb68c": {
+  "colunas": [
+   "Tipo de Agendamento",
+   "Quantidade"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 2
+ },
+ "e30391f0": {
+  "colunas": [
+   "Profissional",
+   "Cargo",
+   "Preferencial",
+   "Primeira Vez",
+   "Indicação",
+   "Sêm Preferência",
+   "Noiva",
+   "Não Informado"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 17
+ },
+ "8821aba2": {
+  "colunas": [
+   "Nome",
+   "Categoria",
+   "Marca",
+   "Valor",
+   "Custo Cadastro",
+   "Custo Insumos",
+   "Lucratividade"
+  ],
+  "arquivos": 1,
+  "maxLinhas": 0
+ }
+}

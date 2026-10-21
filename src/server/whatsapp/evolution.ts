@@ -1,8 +1,9 @@
-import { env } from "../env";
+import { env, type Env } from "../env";
+import { DemoProvider } from "./demo-provider";
 import { toWhatsappNumber } from "../domain/phone";
-import { ProviderError, type ConnState, type QrResult, type WhatsAppProvider } from "./provider";
+import { ProviderError, type ConnState, type QrResult, type QuotedMessage, type WhatsAppProvider } from "./provider";
 
-export const WEBHOOK_EVENTS = ["QRCODE_UPDATED", "MESSAGES_UPSERT", "MESSAGES_UPDATE", "MESSAGES_SET", "SEND_MESSAGE", "CONNECTION_UPDATE"] as const;
+export const WEBHOOK_EVENTS = ["QRCODE_UPDATED", "MESSAGES_UPSERT", "MESSAGES_UPDATE", "MESSAGES_SET", "SEND_MESSAGE", "CONNECTION_UPDATE", "CALL"] as const;
 
 export class EvolutionProvider implements WhatsAppProvider {
   constructor(private baseUrl: string, private apiKey: string, private webhookUrl: string, private webhookSecret: string) {}
@@ -12,7 +13,7 @@ export class EvolutionProvider implements WhatsAppProvider {
     try {
       res = await fetch(`${this.baseUrl}${path}`, {
         method, headers: { apikey: this.apiKey, "content-type": "application/json" },
-        body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(15_000), cache: "no-store",
+        body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(path.includes("/message/send") ? 60_000 : 15_000), cache: "no-store",
       });
     } catch {
       throw new ProviderError("O serviço do WhatsApp (Evolution) não respondeu. Ele está ligado?");
@@ -61,11 +62,50 @@ export class EvolutionProvider implements WhatsAppProvider {
     return s === "open" ? "conectado" : s === "connecting" ? "aguardando_qr" : "desconectado";
   }
 
-  async sendText(instanceName: string, toE164: string, text: string) {
+  /** Citação completa (chave + conteúdo): sem `message`, a Evolution procura no próprio banco e a citação some para mensagens do histórico. */
+  private quotedPayload(toE164: string, q?: QuotedMessage) {
+    if (!q) return {};
+    return { quoted: { key: { id: q.externalId, remoteJid: `${toWhatsappNumber(toE164)}@s.whatsapp.net`, fromMe: q.fromMe }, message: { conversation: q.text } } };
+  }
+
+  async sendText(instanceName: string, toE164: string, text: string, quoted?: QuotedMessage) {
     const r = await this.req<{ key?: { id?: string } }>("POST", `/message/sendText/${encodeURIComponent(instanceName)}`, {
       number: toWhatsappNumber(toE164), text, delay: 0, linkPreview: true,
+      ...this.quotedPayload(toE164, quoted),
     });
     return { externalId: r?.key?.id ?? null };
+  }
+
+  async sendMedia(instanceName: string, toE164: string, file: { name: string; mime: string; data: Buffer; mediatype: "image" | "video" | "document" }, caption: string | null, quoted?: QuotedMessage) {
+    const r = await this.req<{ key?: { id?: string } }>("POST", `/message/sendMedia/${encodeURIComponent(instanceName)}`, {
+      number: toWhatsappNumber(toE164), mediatype: file.mediatype, mimetype: file.mime, media: file.data.toString("base64"), fileName: file.name,
+      // Sem legenda, o campo não vai: legenda "" faria o eco do WhatsApp não casar com a mensagem pendente.
+      ...(caption ? { caption } : {}),
+      ...this.quotedPayload(toE164, quoted),
+    });
+    return { externalId: r?.key?.id ?? null };
+  }
+
+  async sendAudio(instanceName: string, toE164: string, data: Buffer, quoted?: QuotedMessage) {
+    const r = await this.req<{ key?: { id?: string } }>("POST", `/message/sendWhatsAppAudio/${encodeURIComponent(instanceName)}`, {
+      number: toWhatsappNumber(toE164), audio: data.toString("base64"),
+      ...this.quotedPayload(toE164, quoted),
+    });
+    return { externalId: r?.key?.id ?? null };
+  }
+
+  async sendPoll(instanceName: string, toE164: string, name: string, options: string[]) {
+    const r = await this.req<{ key?: { id?: string } }>("POST", `/message/sendPoll/${encodeURIComponent(instanceName)}`, {
+      number: toWhatsappNumber(toE164), name, selectableCount: 1, values: options,
+    });
+    return { externalId: r?.key?.id ?? null };
+  }
+
+  async markRead(instanceName: string, toE164: string, externalIds: string[]) {
+    const remoteJid = `${toWhatsappNumber(toE164)}@s.whatsapp.net`;
+    await this.req("POST", `/chat/markMessageAsRead/${encodeURIComponent(instanceName)}`, {
+      readMessages: externalIds.map((id) => ({ remoteJid, fromMe: false, id })),
+    });
   }
 
   async downloadMedia(instanceName: string, node: { key: Record<string, unknown>; message: Record<string, unknown> }) {
@@ -80,15 +120,67 @@ export class EvolutionProvider implements WhatsAppProvider {
     return r?.profilePictureUrl || null;
   }
 
+  /**
+   * Apagar para todos (17/10). Evolution API v2: DELETE /chat/deleteMessageForEveryone/{instance} com { id, remoteJid, fromMe }.
+   * Só mensagens enviadas por este número (fromMe); o WhatsApp recusa as antigas demais.
+   */
+  async deleteForEveryone(instanceName: string, toE164: string, externalId: string) {
+    await this.req("DELETE", `/chat/deleteMessageForEveryone/${encodeURIComponent(instanceName)}`,
+      { id: externalId, remoteJid: await this.jidOf(instanceName, toE164, externalId), fromMe: true });
+  }
+
+  /**
+   * O endereço (remoteJid) que o WhatsApp guardou para a mensagem. Montar pelo número erra quando o WhatsApp registra o contato sem o 9
+   * (557190000009 em vez de 5571990000009): o pedido de apagar "dava certo" no CRM e a mensagem ficava no celular da cliente (20/10).
+   * Sem resposta da busca, usa o número como antes.
+   */
+  private async jidOf(instanceName: string, toE164: string, externalId: string): Promise<string> {
+    const fallback = `${toWhatsappNumber(toE164)}@s.whatsapp.net`;
+    try {
+      const r = await this.req<{ messages?: { records?: { key?: { remoteJid?: string } }[] } } | { key?: { remoteJid?: string } }[]>(
+        "POST", `/chat/findMessages/${encodeURIComponent(instanceName)}`, { where: { key: { id: externalId } } });
+      const rec = Array.isArray(r) ? r[0] : r?.messages?.records?.[0];
+      const jid = rec?.key?.remoteJid;
+      return typeof jid === "string" && jid.includes("@") ? jid : fallback;
+    } catch { return fallback; }
+  }
+
+  async sendReaction(instanceName: string, toE164: string, target: { externalId: string; fromMe: boolean }, emoji: string) {
+    await this.req("POST", `/message/sendReaction/${encodeURIComponent(instanceName)}`,
+      { key: { id: target.externalId, remoteJid: await this.jidOf(instanceName, toE164, target.externalId), fromMe: target.fromMe }, reaction: emoji });
+  }
+
+  async editText(instanceName: string, toE164: string, externalId: string, text: string) {
+    const number = toWhatsappNumber(toE164);
+    await this.req("POST", `/chat/updateMessage/${encodeURIComponent(instanceName)}`,
+      { number, key: { id: externalId, remoteJid: await this.jidOf(instanceName, toE164, externalId), fromMe: true }, text });
+  }
+
+  async sendLocation(instanceName: string, toE164: string, loc: { name: string; address: string; latitude: number; longitude: number }) {
+    const r = await this.req<{ key?: { id?: string } }>("POST", `/message/sendLocation/${encodeURIComponent(instanceName)}`,
+      { number: toWhatsappNumber(toE164), name: loc.name, address: loc.address, latitude: loc.latitude, longitude: loc.longitude });
+    return { externalId: r?.key?.id ?? null };
+  }
+
+  async sendContact(instanceName: string, toE164: string, c: { fullName: string; phoneE164: string }) {
+    const r = await this.req<{ key?: { id?: string } }>("POST", `/message/sendContact/${encodeURIComponent(instanceName)}`,
+      { number: toWhatsappNumber(toE164), contact: [{ fullName: c.fullName, wuid: toWhatsappNumber(c.phoneE164), phoneNumber: c.phoneE164 }] });
+    return { externalId: r?.key?.id ?? null };
+  }
+
   async logout(instanceName: string) { await this.req("DELETE", `/instance/logout/${encodeURIComponent(instanceName)}`); }
   async remove(instanceName: string) { await this.req("DELETE", `/instance/delete/${encodeURIComponent(instanceName)}`); }
 }
 
 let provider: WhatsAppProvider | null = null;
+/** A Evolution de verdade ou, na demonstração (DEMO=true), o WhatsApp de mentira, que não sai pela rede. */
+export function providerFor(e: Env): WhatsAppProvider {
+  if (e.DEMO) return new DemoProvider();
+  return new EvolutionProvider(e.EVOLUTION_URL, e.EVOLUTION_API_KEY, `${e.WEBHOOK_PUBLIC_URL}/api/webhooks/evolution`, e.WEBHOOK_SECRET);
+}
 export function whatsapp(): WhatsAppProvider {
   if (provider) return provider;
-  const e = env();
-  provider = new EvolutionProvider(e.EVOLUTION_URL, e.EVOLUTION_API_KEY, `${e.WEBHOOK_PUBLIC_URL}/api/webhooks/evolution`, e.WEBHOOK_SECRET);
+  provider = providerFor(env());
   return provider;
 }
 /** Só para testes. */

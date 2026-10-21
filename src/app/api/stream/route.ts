@@ -1,6 +1,9 @@
 import type { NextRequest } from "next/server";
 import { findSessionUser } from "@/server/auth/sessions-store";
 import { subscribe } from "@/server/realtime";
+import { viewerEvent } from "@/lib/live-scope";
+import { beatForToken } from "@/server/domain/presence";
+import { PRESENCE_BEAT_MS } from "@/server/domain/distribution";
 
 export const maxDuration = 3600;
 
@@ -15,10 +18,16 @@ export async function GET(req: NextRequest) {
     start(controller) {
       let closed = false;
       const send = (s: string) => { if (!closed) try { controller.enqueue(enc.encode(s)); } catch { closed = true; } };
-      const unsubscribe = subscribe((payload) => send(`data: ${payload}\n\n`));
+      const unsubscribe = subscribe((payload) => { const out = viewerEvent(payload, user.perms); if (out) send(`data: ${out}\n\n`); });
       send(`retry: 3000\ndata: {"type":"conectado"}\n\n`);
       const heartbeat = setInterval(() => send(`: ping\n\n`), 25_000);
-      cleanup = () => { if (closed) return; closed = true; clearInterval(heartbeat); unsubscribe(); try { controller.close(); } catch {} };
+      // Presença (distribuição): o CRM aberto conta como sinal; ao conectar e a cada minuto. Falha aqui nunca derruba o stream.
+      // A cada batida confere a sessão: depois de "Sair", a aba que ficou aberta para de ligar a pessoa e o stream fecha.
+      const token = req.cookies.get("cf_session")?.value;
+      const presence = () => { beatForToken(token).then((ok) => { if (!ok) cleanup(); }).catch((e) => console.error("[presença]", e)); };
+      presence();
+      const presenceTimer = setInterval(presence, PRESENCE_BEAT_MS);
+      cleanup = () => { if (closed) return; closed = true; clearInterval(heartbeat); clearInterval(presenceTimer); unsubscribe(); try { controller.close(); } catch {} };
       req.signal.addEventListener("abort", cleanup);
     },
     cancel() { cleanup(); },

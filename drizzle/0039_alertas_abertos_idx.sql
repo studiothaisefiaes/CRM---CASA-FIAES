@@ -1,0 +1,1 @@
+CREATE INDEX "alerts_deal_aberto_idx" ON "alerts" USING btree ("deal_id") WHERE resolved_at is null;

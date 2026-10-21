@@ -43,8 +43,13 @@ next-env.d.ts
 .env
 !.env.example
 /.next-e2e/
+# ambiente de demonstração (scripts/demo.sh): build, PIDs e logs
+/.next-demo/
+/.demo/
 /test-results/
+/e2e/.auth/
 /playwright-report/
 
 # mídia baixada do WhatsApp
 /data/
+/.next-perf/

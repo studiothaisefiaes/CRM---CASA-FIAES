@@ -1,0 +1,1 @@
+ALTER TABLE "contacts" ADD COLUMN "is_team" boolean DEFAULT false NOT NULL;

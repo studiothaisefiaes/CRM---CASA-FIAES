@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Agenda · lista ao lado</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f4f2ee}
+a{color:#7a5524}a:hover{color:#121212}
+.row{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:12px;width:100%;padding:10px 12px;border-radius:14px;min-height:60px}
+.row:hover{background:#f4f2ee}
+.row:focus-visible{outline:3px solid #b8863f;outline-offset:1px}
+.col{position:relative;height:504px;background-image:repeating-linear-gradient(to bottom,#fdfdfc 0,#fdfdfc 27px,#ece9e3 27px,#ece9e3 28px);border-left:1px solid #e4e1db}
+.chip{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;white-space:nowrap}
+</style>
+</helmet>
+<div style="font-family: Inter, ui-sans-serif, system-ui, sans-serif; color: #121212; box-sizing: border-box; max-width: 1440px; margin: 0 auto; padding: 28px 32px 48px; display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start;">
+
+  <aside style="flex: 1 1 280px; max-width: 340px; background: #fdfdfc; border-radius: 18px; padding: 14px; display: flex; flex-direction: column; gap: 4px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 8px 10px;">
+      <h1 style="margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.02em;">Agenda</h1>
+      <span style="font-size: 13px; color: #6f6a62;">Qui 15/10</span>
+    </div>
+    <label for="busca" style="font-size: 12px; color: #6f6a62; padding: 0 8px;">Procurar profissional</label>
+    <input id="busca" placeholder="Nome" style="height: 44px; margin: 4px 0 8px; padding: 0 14px; border-radius: 12px; border: 1px solid #d3cfc7; background: #f4f2ee; font: 400 15px Inter, sans-serif;">
+    <sc-for list="{{rows}}" as="r" hint-placeholder-count="7">
+      <button class="row" onClick="{{r.pick}}" aria-pressed="{{r.on}}" style="{{r.bg}}">
+        <div style="{{r.avatar}}">{{r.ini}}</div>
+        <div style="display: flex; flex-direction: column; min-width: 0; flex: 1;">
+          <span style="font-size: 15px; font-weight: 600;">{{r.nome}}</span>
+          <span style="font-size: 12px; color: #6f6a62; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{r.agora}}</span>
+        </div>
+        <span style="{{r.countStyle}}">{{r.qtd}}</span>
+      </button>
+    </sc-for>
+    <p style="margin: 10px 8px 0; font-size: 12px; color: #6f6a62; line-height: 1.45;">Toque em mais de uma para ver lado a lado (até 4). "Casa Fiaes" mostra todas.</p>
+  </aside>
+
+  <section style="flex: 999 1 640px; min-width: 0; background: #fdfdfc; border-radius: 18px; padding: 18px 18px 22px; display: flex; flex-direction: column; gap: 14px; overflow-x: auto;">
+    <div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; align-items: center;">
+      <div style="display: flex; flex-direction: column; gap: 2px;">
+        <h2 style="margin: 0; font-size: 20px; font-weight: 600;">{{titulo}}</h2>
+        <span style="font-size: 13px; color: #5c5c5c;">Quinta, 15 de outubro · agora 09:40</span>
+      </div>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <button aria-label="Dia anterior" style="height: 44px; width: 44px; border-radius: 12px; border: 1px solid #d3cfc7; background: #fdfdfc; font-size: 18px;">‹</button>
+        <button style="height: 44px; padding: 0 16px; border-radius: 12px; border: 1px solid #d3cfc7; background: #fdfdfc; font: 500 14px Inter, sans-serif;">Hoje</button>
+        <button aria-label="Próximo dia" style="height: 44px; width: 44px; border-radius: 12px; border: 1px solid #d3cfc7; background: #fdfdfc; font-size: 18px;">›</button>
+        <button style="height: 44px; padding: 0 18px; border-radius: 12px; border: 0; background: #121212; color: #fdfdfc; font: 600 14px Inter, sans-serif;">+ Marcar horário</button>
+      </div>
+    </div>
+    <div style="{{gridStyle}}">
+      <div></div>
+      <sc-for list="{{cols}}" as="col" hint-placeholder-count="3">
+        <div style="display: flex; align-items: center; gap: 8px; padding: 0 8px 10px;">
+          <div style="{{col.mini}}">{{col.ini}}</div>
+          <span style="font-size: 14px; font-weight: 600;">{{col.nome}}</span>
+          <span style="font-size: 12px; color: #6f6a62;">{{col.qtd}}</span>
+        </div>
+      </sc-for>
+      <div style="position: relative; height: 504px;">
+        <sc-for list="{{hours}}" as="h" hint-placeholder-count="9">
+          <span style="{{h.style}}">{{h.label}}</span>
+        </sc-for>
+      </div>
+      <sc-for list="{{cols}}" as="col" hint-placeholder-count="3">
+        <div class="col">
+          <div style="{{nowStyle}}" aria-hidden="true"></div>
+          <sc-for list="{{col.blocks}}" as="b" hint-placeholder-count="3">
+            <div style="{{b.style}}">
+              <div style="display: flex; justify-content: space-between; gap: 6px; align-items: center;">
+                <span style="font-size: 12px; font-weight: 600;">{{b.hora}}</span>
+                <span class="chip" style="{{b.chipStyle}}">{{b.status}}</span>
+              </div>
+              <span style="font-size: 13px; font-weight: 600;">{{b.cliente}}</span>
+              <span style="font-size: 12px; color: #5c5c5c;">{{b.servico}}</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { sel: ['casa'] }; }
+  renderVals() {
+    const ROW = 28, START = 540;
+    const hm = (m) => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+    const ST = { confirmado: ['Confirmado', 'background:#e5f0e9;color:#2f6b4f'], agendado: ['Agendado', 'background:#ebe8e2;color:#2a2a29'], chegou: ['Chegou', 'background:#f3e9d8;color:#7a5524'], atendendo: ['Em atendimento', 'background:#121212;color:#fdfdfc'] };
+    const PROS = [
+      { id: 'ana', nome: 'Ana', cor: '#9a6b2f', tint: '#f6eddf', agora: 'Atendendo Júlia até 10:30', ag: [[540, 90, 'Júlia', 'Manutenção Método Fiaes', 'atendendo'], [660, 60, 'Renata', 'Corte Feminino', 'agendado'], [840, 120, 'Patrícia', 'Coloração', 'confirmado'], [990, 60, 'Lívia', 'Finalização Método Fiaes', 'agendado']] },
+      { id: 'bruna', nome: 'Bruna', cor: '#2f6b6b', tint: '#e6f0ef', agora: 'Camila chegou para 09:30', ag: [[570, 60, 'Camila', 'Escova', 'chegou'], [630, 90, 'Beatriz', 'Cabelo Método Fiaes 1', 'confirmado'], [780, 60, 'Sofia', 'Corte Feminino', 'agendado'], [900, 120, 'Marina', 'Luzes e Mechas', 'agendado']] },
+      { id: 'carla', nome: 'Carla', cor: '#8a4560', tint: '#f5e7ec', agora: 'Livre até 10:00', ag: [[600, 60, 'Joana', 'Esmaltação em Gel', 'agendado'], [690, 60, 'Paula', 'Manicure e Pedicure', 'confirmado'], [840, 60, 'Teresa', 'Esmaltação', 'agendado'], [900, 90, 'Vera', 'Alongamento em Gel', 'confirmado']] },
+      { id: 'duda', nome: 'Duda', cor: '#4a5a7a', tint: '#e8ebf2', agora: 'Livre até 10:00', ag: [[600, 60, 'Aline', 'Avaliação tricológica', 'confirmado'], [810, 60, 'Flávia', 'Laserterapia', 'agendado'], [960, 60, 'Gisele', 'Tratamento', 'agendado']] },
+      { id: 'elis', nome: 'Elis', cor: '#5f6f2a', tint: '#eef1e2', agora: 'Livre o dia todo', ag: [[960, 90, 'Mirela', 'Cabelo Método Fiaes 2', 'agendado']] },
+      { id: 'fabi', nome: 'Fabi', cor: '#8a5a3a', tint: '#f3e8de', agora: 'Folga hoje', folga: true, ag: [] },
+    ];
+    const sel = this.state.sel;
+    const toggle = (id) => {
+      if (id === 'casa') return this.setState({ sel: ['casa'] });
+      let s = sel.filter((x) => x !== 'casa');
+      s = s.includes(id) ? s.filter((x) => x !== id) : s.concat(id).slice(-4);
+      this.setState({ sel: s.length ? s : ['casa'] });
+    };
+    const avatar = (p, size, fs) => 'width:' + size + 'px;height:' + size + 'px;border-radius:999px;display:grid;place-items:center;flex:none;font-weight:600;font-size:' + fs + 'px;background:' + p.tint + ';color:' + p.cor + ';box-shadow:0 0 0 2px #fdfdfc,0 0 0 4px ' + p.cor;
+    const total = PROS.reduce((n, p) => n + p.ag.length, 0);
+    const rows = [{ id: 'casa', nome: 'Casa Fiaes', ini: 'CF', agora: '5 trabalhando · 1 de folga', qtd: String(total), avatar: 'width:44px;height:44px;border-radius:13px;display:grid;place-items:center;flex:none;background:#121212;color:#b8863f;font-weight:700;font-size:15px' }]
+      .concat(PROS.map((p) => ({ id: p.id, nome: p.nome, ini: p.nome.slice(0, 2).toUpperCase(), agora: p.agora, qtd: p.folga ? 'folga' : String(p.ag.length), avatar: avatar(p, 44, 15) })))
+      .map((r) => ({ ...r, on: sel.includes(r.id), pick: () => toggle(r.id), bg: sel.includes(r.id) ? 'background:#f3e9d8' : '',
+        countStyle: 'font-size:13px;font-weight:600;min-width:28px;text-align:center;padding:4px 8px;border-radius:999px;' + (sel.includes(r.id) ? 'background:#121212;color:#fdfdfc' : 'background:#ebe8e2;color:#2a2a29') }));
+    const shown = sel.includes('casa') ? PROS.filter((p) => !p.folga) : PROS.filter((p) => sel.includes(p.id));
+    const cols = shown.map((p) => ({ nome: p.nome, ini: p.nome.slice(0, 2).toUpperCase(), qtd: p.folga ? 'folga' : p.ag.length + ' horários', mini: avatar(p, 30, 11),
+      blocks: p.ag.map(([m, d, cliente, servico, st]) => ({ hora: hm(m) + '–' + hm(m + d), cliente, servico, status: ST[st][0], chipStyle: ST[st][1],
+        style: 'position:absolute;left:6px;right:6px;top:' + ((m - START) / 30 * ROW + 2) + 'px;height:' + (d / 30 * ROW - 4) + 'px;box-sizing:border-box;border-radius:10px;padding:6px 8px;overflow:hidden;display:flex;flex-direction:column;gap:2px;background:' + p.tint + ';box-shadow:inset 0 0 0 1px ' + p.cor + '33' })) }));
+    const hours = [];
+    for (let m = START; m <= 1080; m += 60) hours.push({ label: hm(m), style: 'position:absolute;right:10px;top:' + ((m - START) / 30 * ROW - 7) + 'px;font-size:12px;color:#6f6a62' });
+    const titulo = sel.includes('casa') ? 'Casa Fiaes · todas que trabalham hoje' : shown.map((p) => p.nome).join(', ');
+    return { rows, cols, hours, titulo,
+      gridStyle: 'display:grid;grid-template-columns:56px repeat(' + cols.length + ', minmax(160px, 1fr));min-width:' + (56 + cols.length * 160) + 'px',
+      nowStyle: 'position:absolute;left:0;right:0;top:' + ((580 - START) / 30 * ROW) + 'px;height:2px;background:#b8863f;z-index:2' };
+  }
+}
+</script>
+</body>
+</html>

@@ -10,7 +10,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const sp = await searchParams;
   const voltar = typeof sp.voltar === "string" ? sp.voltar : undefined;
   return (
-    <AuthShell title="Entrar" subtitle="Atendimento e funil da Casa Fiaes">
+    <AuthShell title="Entrar" subtitle="Atendimento e vendas da Casa Fiaes">
       <LoginForm voltar={voltar} />
     </AuthShell>
   );

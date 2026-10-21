@@ -1,7 +1,8 @@
 import { Client } from "pg";
+import { createEventLog } from "./realtime-log";
 
 type Listener = (payload: string) => void;
-type State = { listeners: Set<Listener>; client: Client | null; connecting: boolean };
+type State = { listeners: Set<Listener>; client: Client | null; connecting: boolean; log?: ReturnType<typeof createEventLog> };
 
 // Um único LISTEN por processo; as abas abertas recebem os avisos em memória.
 const g = globalThis as unknown as { __crmRealtime?: State };
@@ -32,4 +33,14 @@ export function subscribe(fn: Listener) {
   state.listeners.add(fn);
   void connect();
   return () => { state.listeners.delete(fn); };
+}
+
+/** Registro dos últimos avisos deste processo (long-polling). O primeiro uso assina o LISTEN e mantém assinado. */
+export function eventLog() {
+  if (!state.log) {
+    const log = createEventLog();
+    state.log = log;
+    subscribe((payload) => log.push(payload));
+  }
+  return state.log;
 }
