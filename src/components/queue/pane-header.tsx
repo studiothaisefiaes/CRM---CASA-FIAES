@@ -188,7 +188,7 @@ export function PaneHeader({ item, d, name, answered, back, actions, viewer, wa,
         </div>
         <SlaChip since={since} slaMinutes={sla} alert={alert} hidden={answered} />
         {onInfo && d && (
-          <button type="button" onClick={onInfo} className="xl:hidden inline-flex h-9 items-center gap-1.5 rounded-full border border-line-strong px-3 text-sm font-medium text-ink hover:bg-paper-2 pointer-coarse:min-h-11" aria-label="Ver dados da cliente">
+          <button type="button" onClick={onInfo} className="2xl:hidden inline-flex h-9 items-center gap-1.5 rounded-full border border-line-strong px-3 text-sm font-medium text-ink hover:bg-paper-2 pointer-coarse:min-h-11" aria-label="Ver dados da cliente">
             <span aria-hidden className="grid size-4 place-items-center rounded-full border border-current text-xs font-bold leading-none">i</span>Cliente
           </button>
         )}

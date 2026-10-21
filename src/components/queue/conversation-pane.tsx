@@ -97,7 +97,7 @@ export function ConversationPane({ dealId, initial, initialTab = "conversa", bac
   const [viewer, setViewer] = useState<Viewer | null>(() => peekConversation(dealId)?.viewer ?? null);
   const [error, setError] = useState<string | null>(null);
   const [side, setSide] = useState<SideTab>("agora");
-  /** Abaixo de 1280 px o painel da cliente abre por "ⓘ Cliente" (tela cheia no celular). */
+  /** Abaixo de 1536 px o painel da cliente abre por "ⓘ Cliente" (tela cheia no celular). 21/10 (dono): em notebook/Windows com zoom a conversa ficava espremida entre a lista e o painel; a conversa tem que ser a maior parte da tela. */
   const [info, setInfo] = useState(initialTab === "dados");
   const desktop = useDesktop();
   const [answered, setAnswered] = useState(false);
@@ -219,11 +219,11 @@ export function ConversationPane({ dealId, initial, initialTab = "conversa", bac
     <>
       {del.dialog}
       {mtools.dialog}
-      <div role="region" aria-label={name ? `Conversa com ${name}` : "Conversa"} className="min-h-0 h-full flex flex-col xl:col-span-2 xl:grid xl:grid-cols-subgrid xl:grid-rows-[auto_minmax(0,1fr)]">
-        <header className="shrink-0 border-b border-line xl:col-start-1 xl:row-start-1 min-w-0">
+      <div role="region" aria-label={name ? `Conversa com ${name}` : "Conversa"} className="min-h-0 h-full flex flex-col 2xl:col-span-2 2xl:grid 2xl:grid-cols-subgrid 2xl:grid-rows-[auto_minmax(0,1fr)]">
+        <header className="shrink-0 border-b border-line 2xl:col-start-1 2xl:row-start-1 min-w-0">
           <PaneHeader item={initial} d={detail} name={name} answered={answered} back={back} actions={actions} viewer={viewer} wa={wa} onClose={closeLead} onInfo={() => setInfo(true)} />
         </header>
-        <section aria-label="Conversa" className="min-h-0 min-w-0 flex-col flex-1 flex xl:col-start-1 xl:row-start-2">
+        <section aria-label="Conversa" className="min-h-0 min-w-0 flex-col flex-1 flex 2xl:col-start-1 2xl:row-start-2">
           {/* Espiar sem assumir (pesquisa 20/10): a gestão lê sem tirar o "não lida" da dona (isPeek no servidor). */}
           {detail && viewer && can(viewer.perms, "alertas.escalada") && detail.deal.ownerId && detail.deal.ownerId !== viewer.id && (
             <p className="shrink-0 border-b border-line bg-paper-2/60 px-4 py-1.5 text-xs text-graphite" data-testid="espiando">
@@ -271,12 +271,12 @@ export function ConversationPane({ dealId, initial, initialTab = "conversa", bac
             canShareReplies={detail?.canShareReplies} libraryEnabled={detail?.canLibrary} tools={detail?.tools} onRepliesChanged={() => { void load(); }} signature={viewer?.signature ?? null}
             onProgram={(text) => actions.openResume({ text })} me={viewer?.id ?? null} />
         </section>
-        <section aria-label="Dados do cliente" className="hidden min-h-0 overflow-y-auto scroll-thin px-4 py-3 xl:block xl:col-start-2 xl:row-start-1 xl:row-span-2 xl:border-l border-line bg-paper-2/40">
+        <section aria-label="Dados do cliente" className="hidden min-h-0 overflow-y-auto scroll-thin px-4 py-3 2xl:block 2xl:col-start-2 2xl:row-start-1 2xl:row-span-2 2xl:border-l border-line bg-paper-2/40">
           {detail ? <ClientPane d={detail} viewer={viewer} actions={actions} tab={side} onTab={setSide} /> : <SideSkeleton />}
         </section>
       </div>
       {detail && (
-        <Sheet open={info} onClose={() => setInfo(false)} title={name || "Cliente"} side={desktop ? "right" : "bottom"} className="xl:hidden">
+        <Sheet open={info} onClose={() => setInfo(false)} title={name || "Cliente"} side={desktop ? "right" : "bottom"} className="2xl:hidden">
           <ClientPane d={detail} viewer={viewer} actions={actions} tab={side} onTab={setSide} />
         </Sheet>
       )}
@@ -295,7 +295,7 @@ export function ConversationPaneRoute({ serverLead, serverItem }: { serverLead: 
     return (
       <>
         <section aria-label="Conversa" className="hidden lg:grid place-items-center bg-paper-2/50"><Empty title="Escolha uma conversa">Use as setas para percorrer a fila e Enter para abrir. A conversa e os dados da cliente aparecem aqui.</Empty></section>
-        <aside aria-label="Dados do cliente" className="hidden xl:grid place-items-center border-l border-line bg-paper-2/30 px-6 text-center text-sm text-muted">Os dados da cliente aparecem aqui.</aside>
+        <aside aria-label="Dados do cliente" className="hidden 2xl:grid place-items-center border-l border-line bg-paper-2/30 px-6 text-center text-sm text-muted">Os dados da cliente aparecem aqui.</aside>
       </>
     );
   }

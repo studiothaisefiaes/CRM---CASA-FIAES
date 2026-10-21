@@ -56,7 +56,7 @@ export default async function AtendimentoPage({ searchParams }: PageProps<"/aten
       </div>} />
       <QueueRestore hasParams={Object.keys(sp).length > 0} />
       <LiveRefresh scopes={["queue", "team"]} />
-      <div className="flex-1 min-h-0 grid grid-cols-1 grid-rows-[minmax(0,1fr)] lg:grid-cols-[360px_minmax(0,1fr)] xl:grid-cols-[360px_minmax(0,1fr)_300px]">
+      <div className="flex-1 min-h-0 grid grid-cols-1 grid-rows-[minmax(0,1fr)] lg:grid-cols-[300px_minmax(0,1fr)] 2xl:grid-cols-[340px_minmax(0,1fr)_320px]">
         <QueueColumn queue={queue} query={query} params={params} onlyOwnLabel={!can(user.perms, "atendimento.todas")} selectedId={leadId} bulk={bulk} team={team} options={{ ...options, tags: tagList }} programadas={programadas} progress={dayProgress} />
         <ConversationPaneRoute serverLead={leadId} serverItem={serverItem} />
       </div>

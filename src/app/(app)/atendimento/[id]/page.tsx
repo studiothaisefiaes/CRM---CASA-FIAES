@@ -40,7 +40,7 @@ export default async function ConversaPage({ params, searchParams }: PageProps<"
     // O número ao lado de "Programadas", igual ao da Fila (Plano 5): só com a lista na tela, onde a barra aparece.
     withList ? countScheduled(user) : Promise.resolve(undefined), withList ? getDayProgressLine() : Promise.resolve(null)]);
   if (!item) notFound();
-  const cols = withList ? "lg:grid-cols-[360px_minmax(0,1fr)] xl:grid-cols-[360px_minmax(0,1fr)_300px]" : "xl:grid-cols-[minmax(0,1fr)_300px]";
+  const cols = withList ? "lg:grid-cols-[300px_minmax(0,1fr)] 2xl:grid-cols-[340px_minmax(0,1fr)_320px]" : "2xl:grid-cols-[minmax(0,1fr)_320px]";
   return (
     <main className="h-dvh overflow-hidden flex flex-col">
       <h1 className={withList ? "sr-only lg:hidden" : "sr-only"}>Conversa</h1>{/* com a lista na tela (≥ lg) o h1 é o "Conversas" da barra */}
