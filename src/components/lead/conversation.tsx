@@ -355,12 +355,12 @@ export const Bubble = memo(function Bubble({ m, day, who = null, onReply, onDele
         </div>
         {onReply && m.id !== "optimistic" && m.externalId && m.status !== "pending" && m.status !== "failed" && !m.deleted && (
           <IconButton label="Responder" onClick={() => onReply(m)}
-            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-70 transition-opacity"><IconReply size={16} /></IconButton>
+            className="opacity-40 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-70 transition-opacity"><IconReply size={16} /></IconButton>
         )}
-        {/* 20/10 (Cati): só no "…" ela não achava; fica à vista ao lado do Responder, como no WhatsApp. */}
+        {/* 20/10 (Cati): só no "…" ela não achava; 21/10 (dono): nem passando o mouse achou, então as setas ficam sempre à vista (clarinhas). */}
         {canForward && (
           <IconButton label="Encaminhar" onClick={() => tools!.forward!(m)}
-            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-70 transition-opacity"><IconForward size={16} /></IconButton>
+            className="opacity-40 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-70 transition-opacity"><IconForward size={16} /></IconButton>
         )}
         {menuItems.length > 0 && (
           <Menu label="Mais ações da mensagem" align={out ? "right" : "left"} items={menuItems}
