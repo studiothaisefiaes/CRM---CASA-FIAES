@@ -34,10 +34,10 @@ describe("Manual da Casa para a IA (seções de skill)", () => {
   });
 });
 
-describe("Manual v3: teto 24.000 e seções Cenários e Objeções", () => {
-  it("salva cenários e objeções e aceita até 24.000 caracteres", async () => {
-    expect(AI_MANUAL_MAX).toBe(24_000);
-    const r = await saveAiManual({ ...emptyManual(), cenarios: "Transição → explicar.", objecoes: "Tá caro → perguntar o investimento.", casa: "x".repeat(23_900) }, g);
+describe("Manual v3: teto 60.000 e seções Cenários e Objeções", () => {
+  it("salva cenários e objeções e aceita até 60.000 caracteres", async () => {
+    expect(AI_MANUAL_MAX).toBe(60_000);
+    const r = await saveAiManual({ ...emptyManual(), cenarios: "Transição → explicar.", objecoes: "Tá caro → perguntar o investimento.", casa: "x".repeat(59_900) }, g);
     expect(r.secoes).toMatchObject({ cenarios: "Transição → explicar.", objecoes: "Tá caro → perguntar o investimento." });
     expect((await getAiManual()).secoes.objecoes).toBe("Tá caro → perguntar o investimento.");
   });

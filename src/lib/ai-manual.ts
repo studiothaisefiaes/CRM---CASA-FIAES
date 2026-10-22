@@ -19,8 +19,8 @@ export type ManualSections = Record<ManualKey, string>;
 export const MANUAL_KEYS = MANUAL_SECTIONS.map((s) => s.key) as ManualKey[];
 export const emptyManual = (): ManualSections => Object.fromEntries(MANUAL_KEYS.map((k) => [k, ""])) as ManualSections;
 
-/** Teto do manual inteiro (soma das seções): perto de 7.000 tokens (fica no cache), para cada sugestão continuar barata. */
-export const AI_MANUAL_MAX = 24_000;
+/** Teto do manual inteiro (soma das seções): perto de 17.000 tokens (fica no cache). 21/10: 24.000 → 60.000 (pedido do dono, para caber a entrevista da Thaíse). */
+export const AI_MANUAL_MAX = 60_000;
 export const MISSING = "[a Casa precisa preencher]";
 /** Português fica perto de 3,5 caracteres por token: só para mostrar o tamanho na tela. */
 export const approxTokens = (text: string) => Math.round(text.length / 3.5);
