@@ -51,6 +51,14 @@ describe("possíveis duplicadas", () => {
     expect(r).toHaveLength(2);
   });
 
+  it("'pessoa a mais' só com o mesmo sobrenome: primeiro nome parecido sozinho não é sinal (22/10, 21.742 pares falsos)", async () => {
+    const mae = await mk({ name: "Rosa Lima Teste", phoneE164: "+5571966008101" });
+    await mk({ name: "Maria Souza Teste", phoneE164: "pessoa:22222222-2222-4222-8222-222222222222", sharesPhoneWith: mae.id, phoneRelation: "filha" });
+    await mk({ name: "Mariana Costa Silva", phoneE164: "+5571966008102" });
+    await mk({ name: "Maria", phoneE164: "+5571966008103" });
+    expect(await listDuplicateSuspects()).toEqual([]);
+  });
+
   it("contactId limita aos pares daquele cadastro", async () => {
     const a = await mk({ name: "Rita Souza Fictícia", phoneE164: "+5571966001001", cpf: "11144477735" });
     await mk({ name: "Rita Souza Fictícia", phoneE164: "+5571955001001", cpf: "11144477735" });

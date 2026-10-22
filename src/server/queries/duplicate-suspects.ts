@@ -1,9 +1,9 @@
-import { and, asc, ilike, ne, or } from "drizzle-orm";
+import { and, asc, ilike, ne, or, sql } from "drizzle-orm";
 import { db } from "../db";
 import { contacts } from "../db/schema";
 import { isPersonPhone } from "@/lib/phone-client";
 import { phoneHint } from "@/lib/merge-view";
-import { samePerson } from "@/lib/same-person";
+import { nameTokens } from "@/lib/same-person";
 
 export type DuplicateSignal = "cpf" | "email" | "aniversario" | "final8" | "pessoa_a_mais" | "codigo_avec";
 export type DuplicateSuspect = { aId: string; bId: string; aName: string | null; bName: string | null; aHint: string; bHint: string; signals: DuplicateSignal[] };
@@ -17,14 +17,16 @@ const hidden = (p: string) => p.startsWith("lid:") || isPersonPhone(p);
 /**
  * Possíveis duplicadas para a tela de unir (Fase C, item 25a). Três fontes, juntas por par:
  * - mesmo nome (sem acento e maiúsculas, 2+ palavras, sem `pessoa:` nem `lid:`) com pelo menos um sinal: CPF, e-mail, aniversário ou final do telefone;
- * - "pessoa a mais" cujo nome é o de outro cadastro com número próprio;
+ * - "pessoa a mais" cujo nome é o de outro cadastro com número próprio (mesmo primeiro nome e mesmo último sobrenome);
  * - código do Avec repetido.
  * Só sugere: quem decide é a pessoa, na tela. Não devolve CPF nem telefone.
  */
 export async function listDuplicateSuspects(opts: { contactId?: string } = {}): Promise<DuplicateSuspect[]> {
   const rows = await db.select({
     id: contacts.id, name: contacts.name, phone: contacts.phoneE164, email: contacts.email, cpf: contacts.cpf,
-    d: contacts.birthDay, m: contacts.birthMonth, y: contacts.birthYear, kind: contacts.kind, imp: contacts.importedFields, holder: contacts.sharesPhoneWith,
+    d: contacts.birthDay, m: contacts.birthMonth, y: contacts.birthYear, kind: contacts.kind, holder: contacts.sharesPhoneWith,
+    // Só o código do Avec, não a ficha importada inteira de cada contato.
+    avec: sql<string | null>`${contacts.importedFields}->'avec'->>'codigo'`,
   }).from(contacts).where(ne(contacts.kind, "spam"));
   type R = (typeof rows)[number];
 
@@ -56,15 +58,23 @@ export async function listDuplicateSuspects(opts: { contactId?: string } = {}): 
     if (da.length >= 8 && da.slice(-8) === db8.slice(-8)) add(a, b, "final8");
   }
 
-  // 2) "Pessoa a mais" que também tem contato próprio.
-  const own = rows.filter((r) => !hidden(r.phone) && r.name);
-  for (const p of rows.filter((r) => isPersonPhone(r.phone) && r.name)) {
-    for (const o of own) if (o.id !== p.holder && samePerson(p.name, o.name)) add(p, o, "pessoa_a_mais");
+  // 2) "Pessoa a mais" que também tem contato próprio: mesmo primeiro nome e mesmo último sobrenome.
+  // Antes era o primeiro nome parecido (samePerson) contra a base inteira: cada "Maria" com metade dos contatos, 21.742 pares e
+  // 51 s de processador a cada abertura de Clientes, com o CRM inteiro travado nesse tempo (22/10, tela da Cati).
+  const nameKey = (n: string | null) => { const t = nameTokens(n); return t.length >= 2 ? `${t[0]} ${t[t.length - 1]}` : null; };
+  const ownByName = new Map<string, R[]>();
+  for (const r of rows) {
+    const k = !hidden(r.phone) ? nameKey(r.name) : null;
+    if (k) (ownByName.get(k) ?? ownByName.set(k, []).get(k)!).push(r);
+  }
+  for (const p of rows) {
+    const k = isPersonPhone(p.phone) ? nameKey(p.name) : null;
+    for (const o of (k && ownByName.get(k)) || []) if (o.id !== p.holder) add(p, o, "pessoa_a_mais");
   }
 
   // 3) Código do Avec repetido.
   const byCode = new Map<string, R[]>();
-  for (const r of rows) { const c = r.imp?.avec?.codigo?.trim(); if (c) (byCode.get(c) ?? byCode.set(c, []).get(c)!).push(r); }
+  for (const r of rows) { const c = r.avec?.trim(); if (c) (byCode.get(c) ?? byCode.set(c, []).get(c)!).push(r); }
   for (const g of byCode.values()) for (let i = 0; i < g.length; i++) for (let j = i + 1; j < g.length; j++) add(g[i], g[j], "codigo_avec");
 
   return [...found.values()].map((f) => ({ aId: f.a.id, bId: f.b.id, aName: f.a.name, bName: f.b.name, aHint: phoneHint(f.a.phone), bHint: phoneHint(f.b.phone), signals: [...f.signals] }))
