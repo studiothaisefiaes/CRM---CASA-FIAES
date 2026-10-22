@@ -442,6 +442,11 @@ export async function getQueue(user: Who, opts: QueueOptions = {}): Promise<Queu
   const openResume = sql`exists (select 1 from tasks rt where rt.deal_id = ${deals.id} and rt.done_at is null and rt.kind in ('proxima_acao', 'retorno')
     and (rt.due_at >= ${now.toISOString()}::timestamptz or rt.due_at >= greatest(coalesce(${deals.lastInboundAt}, '-infinity'::timestamptz), coalesce(${deals.lastOutboundAt}, '-infinity'::timestamptz))))`;
   const resolvedResumeConds = [...archivedConds, openResume];
+  // Equipe com mensagem nova (22/10: o áudio da Thaíse às 10:01 só foi visto às 10:36, na aba Equipe; o aviso verde do topo passou batido):
+  // enquanto ninguém abre, entra também no topo de Todas e Não lidas, com a etiqueta Equipe. Lida, volta a morar só na aba Equipe.
+  const teamInMain = (!opts.view || opts.view === "todos") && !opts.foco && !opts.filtro && (!opts.aba || opts.aba === "nao-lidas")
+    && !opts.etapa && !opts.dono && !opts.fonte && !isUuid(opts.setor) && !(dias >= 1 && dias <= 365);
+  const teamUnread = teamInMain ? lightRows([...teamConds, sql`${UNREAD} > 0`, ...(opts.q?.trim() ? [qCond(opts.q)] : [])]) : Promise.resolve([] as Light[]);
   const resolvedResume = opts.foco === "retomar" ? lightRows([...resolvedResumeConds, ...(opts.q?.trim() ? [qCond(opts.q)] : [])]) : Promise.resolve([] as Light[]);
   const resolvedResumeCount = countOf(resolvedResumeConds);
   const [rows, [reengageCount], reengageRows, [archivedCount], archivedRows, teamCount, notClientCount, listRows, supplierCount] = await Promise.all([
@@ -515,9 +520,9 @@ export async function getQueue(user: Who, opts: QueueOptions = {}): Promise<Queu
     reclamacoes: count((e) => !!info.get(e.r.id)?.kinds.has("reclamacao")),
     eventos: count((e) => !!info.get(e.r.id)?.kinds.has("evento")),
     retomar: inView((e) => e.forRetomar) + (!opts.view || opts.view === "todos" ? (await resolvedResumeCount).n : 0),
-    naoLidas: inView((e) => e.r.unread > 0),
+    naoLidas: inView((e) => e.r.unread > 0) + (await teamUnread).length,
     /** Aba Todas: abertas + resolvidas (literalmente todas). Com uma visão ligada ("Minhas"…), só as dela. */
-    todasTotal: opts.view && opts.view !== "todos" ? inView(() => true) : count((e) => !e.r.resolved) + (archivedCount?.n ?? 0),
+    todasTotal: opts.view && opts.view !== "todos" ? inView(() => true) : count((e) => !e.r.resolved) + (archivedCount?.n ?? 0) + (await teamUnread).length,
     equipeNaoLidas: teamCount.unread,
     views: {
       ...(Object.fromEntries((Object.keys(viewTest) as (keyof typeof viewTest)[]).map((v) => [v, count(viewTest[v])])) as Record<keyof typeof viewTest, number>),
@@ -571,7 +576,9 @@ export async function getQueue(user: Who, opts: QueueOptions = {}): Promise<Queu
     reengajar: () => 0,
     arquivadas: () => 0,
   };
-  const picked: { r: Light; section: QueueSectionKey; badges: string[] }[] = listView
+  const teamRows = (await teamUnread).map((r) => ({ r, section: "aguardando" as const, badges: [] as string[] })).sort((a, b) => time(b.r.lastAt) - time(a.r.lastAt));
+  const teamIds = new Set(teamRows.map((t) => t.r.id));
+  const ranked: { r: Light; section: QueueSectionKey; badges: string[] }[] = listView
     ? unreadFirst(listRows.map((r) => ({ r, section: "aguardando-cliente" as const, badges: [] as string[] })).sort((a, b) => time(b.r.lastAt) - time(a.r.lastAt)), time)
     : archivedView
     ? archivedRows.map((r) => ({ r, section: "arquivadas" as const, badges: [] as string[] })).sort((a, b) => time(b.r.lastAt) - time(a.r.lastAt))
@@ -588,6 +595,7 @@ export async function getQueue(user: Who, opts: QueueOptions = {}): Promise<Queu
     : todasTab
     ? unreadFirst([...SECTION_ORDER.flatMap((key) => wanted.filter((e) => e.section === key)), ...(await resolvedExtra).map((r) => ({ r, section: "arquivadas" as const, badges: [] as string[] }))], time)
     : unreadFirst(SECTION_ORDER.flatMap((key) => wanted.filter((e) => e.section === key).sort((a, b) => Number(!!info.get(b.r.id)?.boost) - Number(!!info.get(a.r.id)?.boost) || order[key](a, b))), time);
+  const picked = teamRows.length ? [...teamRows, ...ranked] : ranked;
   const total = picked.length;
   const shown = picked.slice(0, limit);
   const ids = shown.map((p) => p.r.id);
@@ -600,14 +608,15 @@ export async function getQueue(user: Who, opts: QueueOptions = {}): Promise<Queu
     const r = p.r;
     const e = byId.get(r.id);
     const by = transfers.get(r.id);
+    const team = teamIds.has(r.id);
     const item: QueueItem = {
       dealId: r.id, contactId: r.contactId, contactKind: r.contactKind, name: r.name?.trim() || r.phone, phone: r.phone, hasAvatar: d?.hasAvatar ?? false, avatarV: d?.avatarV ?? null,
       // Equipe e "Não é cliente" não têm prazo: a linha não conta espera nem atraso.
-      awaitingSince: p.section === "reengajar" || listView || !r.awaitingReplySince ? null : new Date(r.awaitingReplySince).toISOString(), slaMinutes: listView ? null : r.slaMinutes,
+      awaitingSince: p.section === "reengajar" || listView || team || !r.awaitingReplySince ? null : new Date(r.awaitingReplySince).toISOString(), slaMinutes: listView || team ? null : r.slaMinutes,
       lastMessage: d?.lastMessage ?? null, lastKind: d?.lastKind ?? null, lastDurationSec: d?.lastDurationSec ?? null, lastTranscript: d?.lastTranscript ?? null, lastDirection: r.lastDirection, lastAt: r.lastAt ? new Date(r.lastAt).toISOString() : null,
       // Equipe e "Não é cliente" estão fora do funil: a etiqueta da linha diz isso, não a etapa.
-      stageKey: r.stageKey, stageName: opts.view === "equipe" ? "Equipe" : opts.view === "fornecedores" ? "Fornecedor" : opts.view === "nao-cliente" ? "Spam" : r.stageName, stageKind: r.stageKind,
-      stageColor: listView ? "#5c5c5c" : r.stageColor, sourceLabel: d?.sourceLabel ?? "",
+      stageKey: r.stageKey, stageName: opts.view === "equipe" || team ? "Equipe" : opts.view === "fornecedores" ? "Fornecedor" : opts.view === "nao-cliente" ? "Spam" : r.stageName, stageKind: r.stageKind,
+      stageColor: listView || team ? "#5c5c5c" : r.stageColor, sourceLabel: d?.sourceLabel ?? "",
       ownerName: r.ownerName, ownerShort: r.ownerShort, lastAuthorName: d?.lastAuthorName ?? null, lastSentVia: d?.lastSentVia ?? null, repliedByName: repliedBy(r),
       ...(r.taskDueAt && d?.taskTitle && p.section !== "reengajar" ? { nextAction: { title: d.taskTitle, dueAt: new Date(r.taskDueAt).toISOString() } } : {}),
       badges: p.badges,

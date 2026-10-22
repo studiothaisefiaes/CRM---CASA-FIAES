@@ -726,6 +726,28 @@ describe("Não lidas (Atendimento no desenho aprovado)", () => {
     expect(all(await getQueue(asUser(gestora), { now: NOW, view: "arquivadas" })).sort()).toEqual([enc.id, velha.id].sort());
   });
 
+  it("Equipe com mensagem nova entra no topo de Todas e Não lidas, sem prazo e com a etiqueta Equipe; lida, sai (22/10, áudio da Thaíse)", async () => {
+    const { gestora, lead } = await setup();
+    const cliente = await lead({ awaitingReplySince: ago(1), last: { direction: "in", at: ago(1) } });
+    const equipe = await lead({ awaitingReplySince: ago(30), last: { direction: "in", at: ago(30), kind: "audio" } });
+    const equipeLida = await lead({ seenAt: ago(5), last: { direction: "in", at: ago(40) } });
+    await db.update(contacts).set({ kind: "equipe" }).where(eq(contacts.id, equipe.contactId));
+    await db.update(contacts).set({ kind: "equipe" }).where(eq(contacts.id, equipeLida.contactId));
+    let q = await getQueue(asUser(gestora), { now: NOW });
+    expect(all(q)).toEqual([equipe.id, cliente.id]);
+    const item = q.sections.flatMap((s) => s.items).find((i) => i.dealId === equipe.id)!;
+    expect([item.stageName, item.awaitingSince, item.slaMinutes, item.unread]).toEqual(["Equipe", null, null, 1]);
+    expect(q.counts.naoLidas).toBe(2);
+    expect(all(await getQueue(asUser(gestora), { now: NOW, aba: "nao-lidas" }))).toEqual([equipe.id, cliente.id]);
+    // Fora de Todas/Não lidas (outra visão, foco ou filtro), a Equipe continua só na aba própria.
+    expect(all(await getQueue(asUser(gestora), { now: NOW, view: "meus" }))).toEqual([]);
+    expect(all(await getQueue(asUser(gestora), { now: NOW, foco: "aguardando" }))).toEqual([cliente.id]);
+    await db.update(deals).set({ seenAt: ago(0) }).where(eq(deals.id, equipe.id));
+    q = await getQueue(asUser(gestora), { now: NOW });
+    expect(all(q)).toEqual([cliente.id]);
+    expect(q.counts.equipeNaoLidas).toBe(0);
+  });
+
   it("Dona (painel Filtros): a gestão filtra pela dona sem precisar de link de relatório; a atendente não filtra pelas outras", async () => {
     const { ana, bia, gestora, lead } = await setup();
     const daAna = await lead({ ownerId: ana.id, awaitingReplySince: ago(1) });
