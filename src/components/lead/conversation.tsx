@@ -150,7 +150,20 @@ export const bubblePropsEqual = (a: BubbleProps, b: BubbleProps) => a.day === b.
 
 const NOTE_FROM: Record<NonNullable<Msg["note"]>, string> = { crm: "", chatguru: " · veio do ChatGuru", menu: " · menu de boas-vindas" };
 /** @Nome em negrito dentro da nota. */
-const withMentions = (text: string) => text.split(/(@[\p{L}][\p{L}0-9]*)/u).map((part, i) => (part.startsWith("@") ? <b key={i} className="font-semibold">{part}</b> : part));
+const withMentions = (text: string) => text.split(/(@[\p{L}][\p{L}0-9]*)/u).map((part, i) => (part.startsWith("@") ? <b key={i} className="font-semibold">{part}</b> : <Fragment key={i}>{withLinks(part)}</Fragment>));
+
+// Endereço no texto (http(s):// ou www.); a pontuação colada no fim ("veja www.x.com.") fica de fora do link.
+const URL_RE = /((?:https?:\/\/|www\.)[^\s<>"']+)/gi;
+/** Links clicáveis no balão (22/10, vídeo da Cati: o reel do Instagram que a cliente mandou não abria). Só http/https, em aba nova. */
+export function withLinks(text: string) {
+  return text.split(URL_RE).map((part, i) => {
+    if (i % 2 === 0) return part;
+    const url = part.replace(/[.,;:!?)\]}]+$/, "");
+    const rest = part.slice(url.length);
+    const href = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+    return <Fragment key={i}><a href={href} target="_blank" rel="noopener noreferrer" className="break-all text-gold-ink underline decoration-gold/60 underline-offset-2 hover:decoration-gold">{url}</a>{rest}</Fragment>;
+  });
+}
 
 /** Nota interna: amarela, no meio, com "só a equipe vê". Sem botão Responder e sem tique de envio. */
 function NoteBubble({ m, day, animateIn }: { m: Msg; day: string | null; animateIn: boolean }) {
@@ -312,15 +325,15 @@ export const Bubble = memo(function Bubble({ m, day, who = null, onReply, onDele
           ) : (
           <span className="contents">
             {m.hasMedia && m.kind !== "text" ? (
-              <><Media m={m} />{text && m.kind !== "document" && <span className="block whitespace-pre-wrap break-words">{text}</span>}{m.kind === "audio" && !m.purgedAt && <Transcript m={m} />}</>
+              <><Media m={m} />{text && m.kind !== "document" && <span className="block whitespace-pre-wrap break-words">{withLinks(text)}</span>}{m.kind === "audio" && !m.purgedAt && <Transcript m={m} />}</>
             ) : m.importedAt && m.kind !== "text" ? (
-              <span className="text-graphite italic">{KIND_LABEL[m.kind] ?? "Mídia"} (mídia não importada){text ? <span className="block not-italic text-ink whitespace-pre-wrap break-words">{text}</span> : null}</span>
+              <span className="text-graphite italic">{KIND_LABEL[m.kind] ?? "Mídia"} (mídia não importada){text ? <span className="block not-italic text-ink whitespace-pre-wrap break-words">{withLinks(text)}</span> : null}</span>
             ) : m.kind === "audio" ? (
               <span className="inline-flex items-center gap-2 text-graphite"><IconMic size={15} /> Áudio</span>
             ) : m.kind !== "text" && !m.body ? (
               <span className="text-graphite italic">{KIND_LABEL[m.kind] ?? "Mensagem"}</span>
             ) : (
-              <>{m.kind !== "text" && <span className="text-graphite italic">{KIND_LABEL[m.kind]}: </span>}<span className="whitespace-pre-wrap break-words">{text}</span></>
+              <>{m.kind !== "text" && <span className="text-graphite italic">{KIND_LABEL[m.kind]}: </span>}<span className="whitespace-pre-wrap break-words">{withLinks(text ?? "")}</span></>
             )}
           </span>
           )}

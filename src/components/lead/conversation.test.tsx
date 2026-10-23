@@ -444,3 +444,20 @@ describe("Reagir e Editar (Task 12)", () => {
     expect(forward).toHaveBeenCalledWith(expect.objectContaining({ id: "foto" }));
   });
 });
+
+describe("links no balão (22/10, reel do Instagram da cliente não abria)", () => {
+  it("http(s) e www. viram link em aba nova; a pontuação do fim fica fora; texto sem link continua texto", () => {
+    render(<Conversation messages={[
+      msg({ id: "a", body: "Mando como referência https://www.instagram.com/reel/DTWC_vLkaKQ/?igsh=x1 olha" }),
+      msg({ id: "b", body: "veja www.casafiaes.com.br.", externalId: "EXT2" }),
+      msg({ id: "c", body: "javascript:alert(1) sem link", externalId: "EXT3" }),
+    ]} />);
+    const links = screen.getAllByRole("link");
+    expect(links.map((l) => [l.textContent, l.getAttribute("href"), l.getAttribute("target")])).toEqual([
+      ["https://www.instagram.com/reel/DTWC_vLkaKQ/?igsh=x1", "https://www.instagram.com/reel/DTWC_vLkaKQ/?igsh=x1", "_blank"],
+      ["www.casafiaes.com.br", "https://www.casafiaes.com.br", "_blank"],
+    ]);
+    expect(links[0].getAttribute("rel")).toContain("noopener");
+    expect(screen.getByText(/javascript:alert\(1\) sem link/)).toBeTruthy();
+  });
+});
