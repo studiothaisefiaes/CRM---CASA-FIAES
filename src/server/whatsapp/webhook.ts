@@ -506,29 +506,38 @@ async function claimPendingSend(jid: string, externalId: string, content: { kind
     returning m.id` : sql`
     update messages m set external_id = ${externalId}, status = case when m.status in ('pending','failed') then 'sent' else m.status end,
       error = case when m.status = 'failed' then null else m.error end
-    where m.id = (select m2.id from messages m2 join contacts c on c.id = m2.contact_id
+    from (select m2.id, m2.status as old_status from messages m2 join contacts c on c.id = m2.contact_id
       where c.phone_e164 = ${phone} and m2.direction = 'out' and m2.external_id is null
         and m2.body is not distinct from ${content.body}
         and ((m2.status in ('pending','sent') and m2.created_at > now() - interval '5 minutes')
           -- envio automático marcado "incerto" (a Evolution não respondeu) cujo eco chegou depois: a mensagem tinha saído
           or (m2.status = 'failed' and m2.error = ${UNCERTAIN_SEND_MESSAGE} and m2.created_at > now() - interval '15 minutes'
               and (${channelId}::uuid is null or m2.channel_id = ${channelId}::uuid)))
-      order by case m2.status when 'pending' then 0 when 'sent' then 1 else 2 end, m2.created_at desc limit 1)
-    returning m.id`);
-  const claimed = r.rows[0] as { id: string } | undefined;
-  if (claimed && !media) await promoteUncertainSend(claimed.id, externalId, channelId);
+      order by case m2.status when 'pending' then 0 when 'sent' then 1 else 2 end, m2.created_at desc limit 1) o
+    where m.id = o.id
+    returning m.id, o.old_status`);
+  const claimed = r.rows[0] as { id: string; old_status?: string } | undefined;
+  // Só o eco de um envio dado como "incerto" precisa de efeito aqui; o pendente é confirmado por quem enviou.
+  if (claimed && !media && claimed.old_status === "failed") await promoteUncertainSend(claimed.id, externalId, channelId);
   return r.rows.length > 0;
 }
 
 /**
- * Eco de um envio automático que a fila deu como "incerto": o item do outbox passa a `sent`, o alerta da gestão é resolvido e
- * o envio é registrado como automático (não conta como resposta humana: sem evento `resposta`, `firstResponseAt` nem `awaitingReplySince`).
- * Se a linha não pertence a um item falho da fila, não faz nada.
+ * Eco de um envio que deu "incerto" (a Evolution não respondeu) e tinha saído.
+ * Da fila (automático): o item do outbox passa a `sent`, o alerta da gestão é resolvido e o envio é registrado como automático
+ * (não conta como resposta humana: sem evento `resposta`, `firstResponseAt` nem `awaitingReplySince`).
+ * Manual (sem item na fila, revisão 23/10): registra como a resposta de quem enviou (sai da espera, avisos, etapa), como o envio que dá certo.
  */
 async function promoteUncertainSend(messageId: string, externalId: string, channelId: string | null) {
   const [item] = await db.update(outbox).set({ status: "sent", sentAt: new Date(), error: null })
     .where(and(sql`${outbox.options}->>'messageId' = ${messageId}`, eq(outbox.status, "failed"))).returning({ id: outbox.id, dealId: outbox.dealId });
-  if (!item) return;
+  if (!item) {
+    const [m] = await db.select({ dealId: messages.dealId, userId: messages.sentByUserId, body: messages.body }).from(messages).where(eq(messages.id, messageId));
+    if (!m?.dealId || !m.userId) return;
+    await recordOutbound({ dealId: m.dealId, channelId, externalId, body: m.body ?? undefined, userId: m.userId, status: "sent", claimMessageId: messageId })
+      .catch((e) => console.error("[eco] não registrou o envio manual incerto", e instanceof Error ? e.message : e));
+    return;
+  }
   const now = new Date();
   await db.update(alerts).set({ resolvedAt: now, readAt: sql`coalesce(${alerts.readAt}, ${now.toISOString()}::timestamptz)` })
     .where(and(eq(alerts.dedupeKey, `auto:${item.id}`), isNull(alerts.resolvedAt)));

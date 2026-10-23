@@ -50,9 +50,9 @@ const teamForTransfer = () => db.select({ id: users.id, name: users.name, availa
   .from(users).where(and(eq(users.active, true), canReceiveConversation())).orderBy(asc(users.name));
 
 /** Setores para o "Passar para…": só os ativos e só com a função Setores ligada (desligada, a seção some). */
-export async function teamsForPass(): Promise<{ id: string; name: string; livres: number }[]> {
+export async function teamsForPass(now = new Date()): Promise<{ id: string; name: string; livres: number }[]> {
   if (!(await funcaoLigada("setores"))) return [];
-  const since = new Date(Date.now() - PRESENCE_TIMEOUT_MIN * 60_000);
+  const since = new Date(now.getTime() - PRESENCE_TIMEOUT_MIN * 60_000);
   const rows = await listTeams();
   return Promise.all(rows.filter((t) => t.active).map(async (t) => {
     const ids = t.members.map((m) => m.id);

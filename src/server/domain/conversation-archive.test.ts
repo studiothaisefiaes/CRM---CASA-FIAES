@@ -16,6 +16,8 @@ const inbound = async (phone: string, body: string, at = new Date()) => {
   return r.dealId;
 };
 const names = async (view?: "arquivadas") => (await getQueue(gest, { view })).sections.flatMap((s) => s.items.map((i) => i.dealId));
+/** As seções abertas da Fila. Desde 20/10 a aba Todas também lista as resolvidas, numa seção própria ("arquivadas"). */
+const openNames = async () => (await getQueue(gest, {})).sections.filter((s) => s.key !== "arquivadas").flatMap((s) => s.items.map((i) => i.dealId));
 
 beforeEach(async () => {
   await resetDb();
@@ -33,7 +35,7 @@ describe("arquivar conversa", () => {
     expect(d.awaitingReplySince).toBeNull();
     expect(d.archivedAt).toBeNull();
     expect((await db.select().from(alerts).where(eq(alerts.dealId, id)))[0].resolvedAt).not.toBeNull();
-    expect(await names()).not.toContain(id);
+    expect(await openNames()).not.toContain(id);
     expect(await names("arquivadas")).toEqual([id]);
     const q = await getQueue(gest, {});
     expect(q.counts.views.arquivadas).toBe(1);
@@ -47,7 +49,7 @@ describe("arquivar conversa", () => {
     const [d] = await db.select().from(deals).where(eq(deals.id, id));
     expect(d.conversationArchivedAt).toBeNull();
     expect(d.awaitingReplySince).not.toBeNull();
-    expect(await names()).toContain(id);
+    expect(await openNames()).toContain(id);
     expect(await names("arquivadas")).toEqual([]);
   });
 
@@ -63,6 +65,6 @@ describe("arquivar conversa", () => {
     const id = await inbound("71998700004", "ok", new Date(Date.now() - 10 * MIN));
     await archiveConversation(id, gest.id);
     await unarchiveConversation(id, gest.id);
-    expect(await names()).toContain(id);
+    expect(await openNames()).toContain(id);
   });
 });

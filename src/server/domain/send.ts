@@ -14,7 +14,8 @@ import { emit, logEvent } from "./events";
 import { env } from "../env";
 
 export class SendError extends Error {}
-export const UNCERTAIN_SEND_MESSAGE = "Envio incerto: a Evolution não respondeu. Confira no WhatsApp antes de reenviar.";
+import { UNCERTAIN_SEND_MESSAGE } from "@/lib/send-status";
+export { UNCERTAIN_SEND_MESSAGE };
 /** O provider não respondeu (timeout, rede, resposta ilegível): a mensagem PODE ter saído. Nunca reenviar sozinho. */
 export class UncertainSendError extends SendError {
   constructor() { super(UNCERTAIN_SEND_MESSAGE); }
@@ -98,10 +99,18 @@ export async function sendFromCrm(dealId: string, text: string, userId: string, 
   try {
     ({ externalId } = await whatsapp().sendText(channel.instanceName, row.phone, body, quote ?? undefined));
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "erro desconhecido";
-    await db.update(messages).set({ status: "failed", error: msg.slice(0, 300) }).where(eq(messages.id, pending.id));
-    await emit("mensagem_falhou", { dealId });
-    throw new SendError(`Não foi possível enviar: ${msg}`);
+    // Timeout/rede: pode ter saído. O aviso pede para conferir no WhatsApp antes de reenviar (a cliente recebia duas vezes).
+    const uncertain = !isNotSent(e);
+    const msg = uncertain ? UNCERTAIN_SEND_MESSAGE : e instanceof Error ? e.message : "erro desconhecido";
+    // Só vira "falhou" se ainda estiver pendente: se o eco do WhatsApp chegou antes, a mensagem foi entregue.
+    const failed = await db.update(messages).set({ status: "failed", error: msg.slice(0, 300) })
+      .where(and(eq(messages.id, pending.id), eq(messages.status, "pending"))).returning({ id: messages.id });
+    const echoed = failed.length === 0 ? await claimedByEcho(pending.id) : null;
+    if (!echoed) {
+      await emit("mensagem_falhou", { dealId });
+      throw uncertain ? new UncertainSendError() : new SendError(`Não foi possível enviar: ${msg}`);
+    }
+    externalId = echoed.externalId;
   }
   const res = await confirmSent(pending.id, { dealId, channelId: channel.id, externalId, body, userId });
   // Respondeu: agora sim a cliente vê o visto azul (abrir sem responder só manda visto quando é a dona).

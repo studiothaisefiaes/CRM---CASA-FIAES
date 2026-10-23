@@ -11,6 +11,7 @@ import { firstName, outVia, speakerOf } from "@/lib/authorship";
 import { Menu } from "@/components/ui/menu";
 import { stripSignature } from "@/lib/signature";
 import { REACTION_CHOICES } from "@/lib/message-tools-state";
+import { isUncertainSend } from "@/lib/send-status";
 import { TRANSCRIPT_MAX_SECONDS, formatDuration, type TranscriptStatus } from "@/lib/audio";
 
 export type Msg = { id: string; externalId?: string | null; direction: "in" | "out"; kind: string; body: string | null; status: string; createdAt: string; sender: string | null; fromPhone: boolean;
@@ -342,7 +343,9 @@ export const Bubble = memo(function Bubble({ m, day, who = null, onReply, onDele
             {m.edited && "editada · "}
             {out && outVia(m)}
             {new Date(m.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-            {out && !m.importedAt && STATUS[m.status] && <span className={`ml-0.5 ${STATUS[m.status][1]}`} aria-label={`Status: ${m.status}`}>{STATUS[m.status][0]}</span>}
+            {out && !m.importedAt && (isUncertainSend(m)
+              ? <span className="ml-0.5 text-alert font-semibold" aria-label="Status: incerto">envio incerto</span>
+              : STATUS[m.status] && <span className={`ml-0.5 ${STATUS[m.status][1]}`} aria-label={`Status: ${m.status}`}>{STATUS[m.status][0]}</span>)}
           </span>
           {(m.reactions?.cliente || m.reactions?.casa) && (
             <span className={`mt-1 flex gap-1 ${out ? "justify-end" : "justify-start"}`}>
@@ -364,7 +367,8 @@ export const Bubble = memo(function Bubble({ m, day, who = null, onReply, onDele
               <button type="button" aria-label="Fechar" onClick={() => setBar(false)} className="h-10 rounded-full px-2.5 text-sm text-muted hover:text-ink">Fechar</button>
             </span>
           )}
-          {out && m.status === "failed" && <span className="block text-xs text-alert mt-1">Não chegou na cliente. Copie o texto e envie de novo.</span>}
+          {out && m.status === "failed" && <span className="block text-xs text-alert mt-1">{isUncertainSend(m)
+            ? "Pode ter chegado. Confira no WhatsApp antes de enviar de novo." : "Não chegou na cliente. Copie o texto e envie de novo."}</span>}
         </div>
         {onReply && m.id !== "optimistic" && m.externalId && m.status !== "pending" && m.status !== "failed" && !m.deleted && (
           <IconButton label="Responder" onClick={() => onReply(m)}

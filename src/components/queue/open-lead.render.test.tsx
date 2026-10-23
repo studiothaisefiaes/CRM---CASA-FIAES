@@ -14,6 +14,7 @@ vi.mock("./queue-selection", () => ({}));
 vi.mock("./conversation-opening", () => ({}));
 vi.mock("./conversation-cache", () => ({}));
 vi.mock("./use-conversation-cache-live", () => ({}));
+vi.mock("./people-found", () => ({}));
 import { useCloseLead, useOpenLead } from "./open-lead";
 import { BackToQueue } from "./queue-route";
 

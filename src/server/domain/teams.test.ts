@@ -104,11 +104,11 @@ describe("setores", () => {
   it("a seção Setores do Passar para… lista os ativos e some com a função desligada", async () => {
     await saveTeam({ id: await teamId("Recepção"), name: "Recepção", memberIds: [sara.id] }, uid);
     await saveTeam({ id: await teamId("Serviços gerais"), name: "Serviços gerais", active: false, memberIds: [] }, uid);
-    const on = await teamsForPass();
+    const on = await teamsForPass(NOW);
     expect(on.map((t) => t.name)).toEqual(["Recepção", "Método Fiaes®"]);
     expect(on[0].livres).toBe(1); // Sara: Disponível e com sinal
     await saveFuncao("setores", { on: false }, uid);
-    expect(await teamsForPass()).toEqual([]);
+    expect(await teamsForPass(NOW)).toEqual([]);
   });
 
   it("conversa que já tinha dona e vai para setor sem ninguém livre: sem dona, evento, auditoria, oferta fechada e espera reatribuída", async () => {

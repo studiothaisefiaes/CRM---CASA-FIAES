@@ -432,7 +432,10 @@ export async function runRules(now = new Date()) {
     if (!trigger.success || !conds.success || !acts.success) { summary.errors.push(`${auto.name}: configuração inválida`); continue; }
     // Gatilho por acontecimento (palavra, contato novo, ligação perdida, mídia, etiqueta) roda na hora em que acontece, nunca aqui.
     if (isEventTrigger(trigger.data)) continue;
-    let cands = await candidatesFor(trigger.data, now, hours);
+    // Uma automação cuja busca quebra vai para o resumo; as outras (e as varreduras do worker depois) seguem.
+    let cands: Candidate[];
+    try { cands = await candidatesFor(trigger.data, now, hours); }
+    catch (e) { summary.errors.push(`${auto.name}: ${e instanceof Error ? e.message : e}`); continue; }
     for (const cond of conds.data) if (cond.type === "etapa_em") cands = cands.filter((c) => cond.stages.includes(c.stageKey));
     const others = conds.data.filter((x) => x.type !== "etapa_em");
     for (const c of cands) {

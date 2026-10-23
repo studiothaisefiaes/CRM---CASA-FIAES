@@ -7,12 +7,14 @@ import { AnimatePresence, motion } from "motion/react";
 import { resumeAlertsAction } from "@/app/(app)/quiet/actions";
 import { ResumeAlertsDialog } from "@/components/shell/resume-alerts-dialog";
 import { quietUntilLabel } from "@/lib/late";
+import { relTime } from "@/lib/format";
 import { EASE, T } from "@/lib/motion";
 import type { ShellBanners } from "@/server/queries/banners";
 
 const enter = { initial: { opacity: 0, y: -8 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0, y: -8 }, transition: { duration: T.base, ease: EASE } } as const;
 
-/** Faixas no topo do app: WhatsApp caído (o lead não chega) e modo quieto (avisos pausados de propósito). Canal removido não entra. */
+/** Faixas no topo do app: worker parado (nada automático sai), WhatsApp caído (o lead não chega) e modo quieto (avisos pausados de
+ *  propósito). Canal removido não entra. */
 export function ShellBannersView({ banners, perms }: { banners: ShellBanners; perms: readonly string[] }) {
   const gestor = can(perms, "config.sistema");
   const [error, setError] = useState<string | null>(null);
@@ -33,6 +35,14 @@ export function ShellBannersView({ banners, perms }: { banners: ShellBanners; pe
   return (
     <div className="flex flex-col">
       <AnimatePresence initial={false}>
+        {banners.workerStoppedSince && (
+          <motion.div key="worker" {...enter} role="alert" data-testid="banner-worker"
+            className="bg-alert-soft text-alert border-b border-alert/30 px-5 lg:px-8 py-2.5 text-sm flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="font-semibold">As automações do CRM pararam ({relTime(banners.workerStoppedSince)}).</span>
+            <span>Avisos de mensagem, prazos e envios programados não estão saindo; as conversas continuam chegando.</span>
+            <span>Avise a gestão.</span>
+          </motion.div>
+        )}
         {down.length > 0 && (
           <motion.div key="conexao" {...enter} role="alert" data-testid="banner-conexao"
             className="bg-alert-soft text-alert border-b border-alert/30 px-5 lg:px-8 py-2.5 text-sm flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -48,7 +58,7 @@ export function ShellBannersView({ banners, perms }: { banners: ShellBanners; pe
         {quiet.map((q) => (
           <motion.div key={q.id} {...enter} role="status" data-testid="banner-quieto"
             className="bg-gold-soft text-gold-ink border-b border-gold/30 px-5 lg:px-8 py-2.5 text-sm flex flex-wrap items-center gap-x-3 gap-y-1">
-            <span>Número recém-conectado: avisos pausados {quietUntilLabel(new Date(q.until))}</span>
+            <span>Número recém-conectado: prazos e avisos de espera pausados {quietUntilLabel(new Date(q.until))}; mensagem nova continua avisando.</span>
             {banners.quiet.length > 1 && <span className="text-xs">({q.name})</span>}
             {gestor && (
               <button type="button" disabled={pending} onClick={() => setConfirmId(q.id)}

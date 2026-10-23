@@ -75,7 +75,7 @@ describe("lacunas da auditoria", () => {
     if (!("dealId" in r)) throw new Error();
     setWhatsappProvider({ createInstance: async () => {}, connect: async () => ({ status: "conectado" }), state: async () => "conectado", logout: async () => {}, remove: async () => {},
       sendText: async () => { throw new Error("timeout"); } });
-    await expect(sendFromCrm(r.dealId, "Olá", ana.id)).rejects.toThrow(/Não foi possível enviar/);
+    await expect(sendFromCrm(r.dealId, "Olá", ana.id)).rejects.toThrow(/Confira no WhatsApp antes de reenviar/); // timeout: pode ter saído
     setWhatsappProvider(null);
     const out = (await db.select().from(messages)).find((m) => m.direction === "out")!;
     expect(out.status).toBe("failed");

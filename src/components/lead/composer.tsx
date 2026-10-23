@@ -25,6 +25,7 @@ import { EASE, T } from "@/lib/motion";
 import { useLive } from "@/components/shell/live";
 import { NEW_WHILE_TYPING, typingText } from "@/lib/collision";
 import { useTeamTyping } from "./use-team-typing";
+import { UNCERTAIN_SEND_MESSAGE } from "@/lib/send-status";
 
 type Reply = { id: string; label: string; body: string | null; folder?: string | null; attachment?: { name: string; kind: string } | null; /** Resposta pessoal de quem vê (selo "Minha"). */ mine?: boolean };
 export type QuoteTarget = { id: string; text: string };
@@ -224,7 +225,8 @@ export function Composer({ dealId, firstName, quickReplies, onOptimistic, onSent
     // Áudio vai sem legenda (o WhatsApp não aceita); o texto digitado fica no campo.
     const body = att?.kind === "audio" ? "" : text.trim(); const quote = replyTo ?? null;
     const done = (r: { ok: true; data?: { waitedSeconds: number | null } } | { ok: false; error: string }, restore: () => void) => {
-      if (!r.ok) { restore(); toast(r.error, "error"); return; }
+      // Envio incerto (pode ter saído): o texto não volta para o campo, senão a atendente reenvia e a cliente recebe duas vezes.
+      if (!r.ok) { if (r.error !== UNCERTAIN_SEND_MESSAGE) restore(); toast(r.error, "error"); return; }
       const w = r.data?.waitedSeconds;
       if (w != null) toast(`Respondido em ${w < 60 ? `${w} s` : `${Math.floor(w / 60)} min`}${slaSeconds && w <= slaSeconds ? " ✓ dentro da meta" : ""}`, "ok");
       onSent?.();

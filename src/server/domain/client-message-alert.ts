@@ -8,6 +8,8 @@ import { emit } from "./events";
 export const CLIENT_MESSAGE_ALERT = "mensagem_cliente";
 /** Mensagem mais velha que isso (reprocessamento, histórico) não acorda ninguém: só fica como não lida. */
 export const CLIENT_MESSAGE_FRESH_MS = 6 * 3_600_000;
+/** Em modo quieto, só avisa a mensagem de até 30 min: a recém-escrita; as que chegam atrasadas ao reconectar, não. */
+export const QUIET_FRESH_MS = 30 * 60_000;
 /** Intervalo mínimo entre dois pushes do aviso "escreveu" da mesma conversa. */
 export const CLIENT_MESSAGE_PUSH_GAP_MS = 5 * 60_000;
 
@@ -22,15 +24,19 @@ const preview = (kind: string, body: string | null | undefined) => {
  * o aviso "Fulana escreveu" da conversa e o celular recebe o push. Antes, só o prazo da etapa avisava, e só nas etapas da automação:
  * cliente em Agendado escreveu e a Casa só soube pelo ChatGuru. Um aviso aberto por conversa (mensagens seguidas renovam o mesmo).
  * Vai para a dona; sem dona, para a gestão (a regra dos avisos de espera). Sem `wait_key`: não conta como atrasado.
- * Fica de fora: reação (não é mensagem), mensagem velha (reprocessada) e canal em modo quieto (histórico importando).
+ * Fica de fora: reação (não é mensagem), mensagem velha (reprocessada) e, com o canal em modo quieto, a de mais de 30 min (atrasada da reconexão).
  */
 export async function noticeClientMessage(input: { dealId: string; messageId: string; kind: string; body: string | null | undefined; at: Date; now?: Date }): Promise<boolean> {
   const now = input.now ?? new Date();
   if (input.kind === "reaction" || now.getTime() - input.at.getTime() > CLIENT_MESSAGE_FRESH_MS) return false;
-  const [d] = await db.select({ ownerId: deals.ownerId, name: contacts.name, phone: contacts.phoneE164, quiet: sql<boolean>`(${channels.quietUntil} is not null and ${channels.quietUntil} > ${now.toISOString()}::timestamptz)` })
+  const [d] = await db.select({ ownerId: deals.ownerId, lastOutboundAt: deals.lastOutboundAt, name: contacts.name, phone: contacts.phoneE164, quiet: sql<boolean>`(${channels.quietUntil} is not null and ${channels.quietUntil} > ${now.toISOString()}::timestamptz)` })
     .from(deals).innerJoin(contacts, eq(contacts.id, deals.contactId)).leftJoin(channels, eq(channels.id, deals.channelId))
     .where(eq(deals.id, input.dealId));
-  if (!d || d.quiet) return false;
+  // Modo quieto (número recém-pareado): a cliente escrevendo agora avisa; só as atrasadas da reconexão ficam caladas (23/10: calar
+  // tudo deixou a recepção 48 h sem "escreveu" depois do QR de 21/10).
+  if (!d || (d.quiet && now.getTime() - input.at.getTime() > QUIET_FRESH_MS)) return false;
+  // A Casa já respondeu depois dela (mensagem que chegou atrasada, resposta pelo celular): não é espera, como no awaitingReplySince.
+  if (d.lastOutboundAt && d.lastOutboundAt >= input.at) return false;
   const message = alertText.clientMessage(clientLabel(d.name, d.phone), preview(input.kind, input.body));
   const target = { userId: d.ownerId, audience: d.ownerId ? "responsavel" : "gestao" };
   // Upsert numa instrução só, travado pelo índice único parcial (um aberto por conversa): o webhook processa em paralelo e o

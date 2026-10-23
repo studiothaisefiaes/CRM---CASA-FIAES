@@ -86,7 +86,9 @@ async function main() {
   await beat().catch((e) => console.error("[batida do worker]", e));
 
   await boss.work(QUEUES.rules, { batchSize: 1 }, async () => {
-    const t = Date.now(); const s = await runRules();
+    const t = Date.now();
+    // Nada aqui derruba as varreduras de baixo nem a batida: cada uma tem o seu catch.
+    const s = await runRules().catch((e) => { console.error("[regras]", e); return { fired: 0, alerts: 0, moved: 0, errors: [] as string[] }; });
     if (s.fired || s.errors.length) console.log(`[regras] ${s.fired} disparos, ${s.alerts} alertas, ${s.moved} movidos (${Date.now() - t} ms)`, s.errors);
     // Espera vencida: Aguardando/Orçamento com a cliente esperando volta para Em conversa; Agendado sai da espera.
     const o = await sweepOverdueWaits().catch((e) => { console.error("[espera vencida]", e); return { moved: 0, cleared: 0 }; });
