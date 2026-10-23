@@ -17,6 +17,7 @@ import { UserFacingError } from "./errors";
 import { cancelAttemptTaskTx, startAttemptsTx, stopAttemptsTx, type AttemptStart } from "./attempts";
 import { isAttemptKind, isWaitingKind } from "../../lib/attempts";
 import { mergedTargetFor, mergedTargetForLid } from "./merge-contacts";
+import { hasOpenTaskByOriginTx, POS_ATENDIMENTO_META } from "./tasks";
 
 export const CLOSED_KINDS = ["fechado", "perdido"] as const;
 
@@ -172,6 +173,8 @@ export type InboundResult = { skipped: "telefone_invalido" } | { ignored: true }
 
 /** Etapas em que a bola está com a cliente: se ela escreve de verdade, a conversa volta para Em conversa (spec 1C, etapas 2, 3 e 6). */
 export const BACK_TO_CONVERSATION_KINDS = ["followup", "proposta", "retorno"] as const;
+/** Atendida parada há tanto tempo: a mensagem da Casa é retomada (vai para Em conversa), não conversa do pós-atendimento. */
+export const ATTENDED_RESUME_GAP_MS = 12 * 3_600_000;
 
 /** Mensagem recebida do cliente: cria contato/lead se precisar, registra e põe o card "esperando resposta". */
 export async function recordInbound(input: InboundInput): Promise<InboundResult> {
@@ -429,6 +432,9 @@ export async function recordOutbound(input: OutboundInput) {
       )));
 
     if (stage?.kind === "lead") await moveToKindTx(tx, dealId, "atendimento", input.userId ?? null, "respondido", at);
+    // Atendida: a Casa retomou a conversa (pós-atendimento feito e conversa parada há 12 h ou mais): volta para Em conversa (Cati 23/10, Virna).
+    else if (stage?.kind === "atendido" && !deal.closedAt && at.getTime() - Math.max(deal.lastInboundAt?.getTime() ?? 0, deal.lastOutboundAt?.getTime() ?? 0) >= ATTENDED_RESUME_GAP_MS
+      && !(await hasOpenTaskByOriginTx(tx, dealId, POS_ATENDIMENTO_META.origem))) await moveToKindTx(tx, dealId, "atendimento", input.userId ?? null, "casa_retomou", at);
     // A confirmação padrão da Casa ("Confirmado agendamento … dia 17/10 … às 9h") marca Agendado sozinho e fecha o combinado de confirmar.
     await applyConfirmationTx(tx, dealId, input.body ?? null, at, authorId ?? deal.ownerId ?? null);
     return { dealId, messageId: msg.id, warned };

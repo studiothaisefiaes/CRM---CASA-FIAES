@@ -185,11 +185,14 @@ describe("gatilho do modo quieto", () => {
     expect(await quietOf(ch.id)).toBeNull();
   });
 
-  it("logout → QR lido → open com o mesmo número liga", async () => {
+  it("logout → QR lido → open com o mesmo número liga só 1 h (o histórico dele já está aqui; 21/10 ficou 48 h sem aviso nenhum)", async () => {
     const [ch] = await db.insert(channels).values({ name: "Rec", instanceName: "rec", status: "desconectado", phone: "+557199990404" }).returning();
     await ingestEvolution({ event: "qrcode.updated", instance: "rec", data: {}, date_time: "qr1" });
+    const before = Date.now();
     await open();
-    expect(await quietOf(ch.id)).not.toBeNull();
+    const ms = (await quietOf(ch.id))!.getTime() - before;
+    expect(ms).toBeGreaterThan(0.9 * 3_600_000);
+    expect(ms).toBeLessThan(1.1 * 3_600_000);
   });
 
   it("outro número lido no canal liga", async () => {

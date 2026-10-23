@@ -62,7 +62,7 @@ const asCampos = (p: Record<string, unknown>): (Campo | string)[] => (Array.isAr
 
 /** Por que a conversa mudou de etapa (motivos do funil do Lote 1C e os antigos). Motivo desconhecido: sem parêntese, nunca o código. */
 const MOTIVO: Record<string, string> = {
-  respondido: " (respondido)", cliente_respondeu: " (cliente respondeu)", cliente_esperando: " (a cliente está esperando resposta)",
+  respondido: " (respondido)", cliente_respondeu: " (cliente respondeu)", casa_retomou: " (a Casa retomou a conversa)", cliente_esperando: " (a cliente está esperando resposta)",
   aguardando_cliente: " (marcado como aguardando cliente)", orcamento_enviado: " (orçamento enviado)",
   compareceu: " (veio)", faltou: " (faltou: remarcar)", nao_respondeu: " (3 tentativas sem resposta)",
   atendida_3_dias: " (3 dias depois do atendimento)", conversa_encerrada: " (conversa resolvida)",

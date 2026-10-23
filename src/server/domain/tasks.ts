@@ -127,14 +127,19 @@ export const REMARCAR_META = { origem: "faltou" } as const;
 /** Marca da próxima ação que a Atendida cria (agradecer, pedir foto e avaliação). */
 export const POS_ATENDIMENTO_META = { origem: "pos_atendimento" } as const;
 
+const openByOrigin = (tx: Tx, dealId: string, origem: string) => tx.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.dealId, dealId), eq(tasks.kind, "proxima_acao"), isNull(tasks.doneAt),
+  sql`exists (select 1 from deal_events e where e.deal_id = ${tasks.dealId} and e.type = 'tarefa' and e.payload->>'acao' = 'criada'
+    and e.payload->>'tarefa' = ${tasks.id}::text and e.payload->>'origem' = ${origem})`));
+
 /** Cancela as tarefas abertas que nasceram com essa marca (`origem` no evento de criação), nunca pelo título. Quem já trocou a ação não é tocado. */
 export async function cancelOpenTasksByOriginTx(tx: Tx, dealId: string, origem: string, userId: string | null): Promise<number> {
-  const open = await tx.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.dealId, dealId), eq(tasks.kind, "proxima_acao"), isNull(tasks.doneAt),
-    sql`exists (select 1 from deal_events e where e.deal_id = ${tasks.dealId} and e.type = 'tarefa' and e.payload->>'acao' = 'criada'
-      and e.payload->>'tarefa' = ${tasks.id}::text and e.payload->>'origem' = ${origem})`));
+  const open = await openByOrigin(tx, dealId, origem);
   for (const t of open) await completeTaskTx(tx, t.id, userId, "cancelada");
   return open.length;
 }
+
+/** Tem tarefa aberta que nasceu com essa marca (ex.: o pós-atendimento ainda não foi feito). */
+export const hasOpenTaskByOriginTx = async (tx: Tx, dealId: string, origem: string): Promise<boolean> => (await openByOrigin(tx, dealId, origem)).length > 0;
 
 /** Cancela o "Remarcar" aberto que o Faltou criou. */
 export const cancelRemarcarTx = (tx: Tx, dealId: string, userId: string | null) => cancelOpenTasksByOriginTx(tx, dealId, REMARCAR_META.origem, userId);
