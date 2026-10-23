@@ -8,9 +8,9 @@ import { dueLabel } from "@/lib/next-action";
 import { conversationStatus, STATUS_LABEL, statusTone } from "@/lib/conversation-status";
 import type { PackageSituation } from "@/server/queries/avec";
 
-export type FichaTab = "resumo" | "horarios" | "pacotes" | "consultoria" | "pagamentos" | "conversas" | "notas";
+export type FichaTab = "resumo" | "horarios" | "comandas" | "pacotes" | "consultoria" | "pagamentos" | "conversas" | "notas";
 export const FICHA_TABS: { value: FichaTab; label: string }[] = [
-  { value: "resumo", label: "Resumo" }, { value: "horarios", label: "Horários" }, { value: "pacotes", label: "Pacotes" },
+  { value: "resumo", label: "Resumo" }, { value: "horarios", label: "Horários" }, { value: "comandas", label: "Comandas" }, { value: "pacotes", label: "Pacotes" },
   { value: "consultoria", label: "Consultoria" }, { value: "pagamentos", label: "Pagamentos" }, { value: "conversas", label: "Conversas" }, { value: "notas", label: "Notas" },
 ];
 /**

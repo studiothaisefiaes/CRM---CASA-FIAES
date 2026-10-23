@@ -8,7 +8,7 @@ const pros = [
   { id: "ana", name: "Ana", active: true }, { id: "bia", name: "Bia", active: true },
   { id: "sid", name: "Sidney", active: true, assistantOf: "ana" }, { id: "rob", name: "Roberta", active: true, assistantOf: "ana" }, { id: "old", name: "Inativa", active: false },
 ];
-const A = (professionalId: string, name: string, position: 1 | 2) => ({ professionalId, name, position });
+const A = (professionalId: string, name: string, position: number) => ({ professionalId, name, position });
 const item = (assistants: ReturnType<typeof A>[]) => ({ label: "Corte", professionalId: "ana", assistants });
 
 it("mostra as assistentes com 'Tirar'; tirar manda a lista sem ela", () => {
@@ -44,4 +44,10 @@ it("escolher no Select soma à lista; só leitura (sem caixa.assistente) não te
 it("sem assistente e sem poder pôr: não ocupa lugar", () => {
   const { container } = render(<AssistantsField item={item([])} professionals={pros} max={2} disabled onChange={() => {}} />);
   expect(container.innerHTML).toBe("");
+});
+
+it("sem limite prático (22/10): com 3 assistentes e max 20 o '+ Assistente' continua", () => {
+  render(<AssistantsField item={item([A("sid", "Sidney", 1), A("rob", "Roberta", 2), { professionalId: "bia", name: "Bia", position: 3 }])} professionals={[...pros, { id: "car", name: "Carla", active: true }]} max={20} onChange={() => {}} />);
+  expect(["Sidney", "Roberta", "Bia"].every((n) => screen.getByText(n))).toBe(true);
+  expect([...screen.getByLabelText("+ Assistente em Corte").querySelectorAll("option")].map((o) => o.textContent)).toEqual(["+ Assistente", "Carla"]);
 });

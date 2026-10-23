@@ -624,6 +624,13 @@
       "when": 1792670000000,
       "tag": "0091_ia_retomada",
       "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1792690000000,
+      "tag": "0092_assistentes_sem_limite",
+      "breakpoints": true
     }
   ]
 }

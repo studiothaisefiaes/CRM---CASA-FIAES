@@ -78,9 +78,11 @@ export const comandaDetailAction = async (id: string) => run("caixa.operar", (u)
 export const queueAction = async () => run("caixa.operar", async (u) => queueFor(await getCaixaQueue(), isBlindFor(await getCaixaRules(), u)), { revalidate: false });
 export const openComandaAction = async (appointmentId: string) => run("caixa.operar", (u) => openComandaForAppointment(uuid(appointmentId), actorOf(u)));
 /** "Nova comanda": nasce com o primeiro item, nunca vazia (QA r58, I-8). */
-export const openWalkInAction = async (input: { contactId?: string | null; clientName?: string | null; requestKey: string; item: z.input<typeof itemInput>; approval?: Approval }) =>
+/** A cliente escolhida na busca ou a cliente nova (nome + celular), como no Marcar (22/10). */
+const clientRef = z.union([z.object({ contactId: z.string().uuid() }), z.object({ name: z.string().trim().min(1).max(120), phone: z.string().min(8).max(20) })]);
+export const openWalkInAction = async (input: { contactId?: string | null; client?: z.input<typeof clientRef> | null; clientName?: string | null; requestKey: string; item: z.input<typeof itemInput>; approval?: Approval }) =>
   run("caixa.operar", async (u) => {
-    const p = z.object({ contactId: z.string().uuid().nullish(), clientName: z.string().max(120).nullish(), requestKey: z.string().uuid(), item: itemInput }).parse(input);
+    const p = z.object({ contactId: z.string().uuid().nullish(), client: clientRef.nullish(), clientName: z.string().max(120).nullish(), requestKey: z.string().uuid(), item: itemInput }).parse(input);
     return openWalkInComanda({ ...p, item: { ...p.item, approverId: await approverOf(u, input.approval) } }, actorOf(u));
   }, { fallback: "Escolha o primeiro item da comanda." });
 /** Usar o prêmio da fidelidade na comanda aberta (quem tem fidelidade.resgatar; o domínio confere a permissão e a função). `target`: um item que já está na comanda ou um serviço novo com a profissional. */
@@ -111,8 +113,8 @@ export const setCpfAction = async (comandaId: string, cpf: string | null) => run
 /** Reabrir a comanda fechada, com motivo: do dia, quem opera o caixa; de outro dia, o domínio pede caixa.gerir. */
 export const reopenComandaAction = async (comandaId: string, input: { reason: string }) =>
   run("caixa.operar", (u) => reopenComanda(uuid(comandaId), { reason: z.string().max(300).parse(input.reason) }, actorOf(u)));
-export const setClientAction = async (comandaId: string, input: { contactId?: string | null; clientName?: string | null }) =>
-  run("caixa.operar", (u) => setComandaClient(uuid(comandaId), z.object({ contactId: z.string().uuid().nullish(), clientName: z.string().max(120).nullish() }).parse(input), actorOf(u)));
+export const setClientAction = async (comandaId: string, input: { contactId?: string | null; client?: z.input<typeof clientRef> | null; clientName?: string | null }) =>
+  run("caixa.operar", (u) => setComandaClient(uuid(comandaId), z.object({ contactId: z.string().uuid().nullish(), client: clientRef.nullish(), clientName: z.string().max(120).nullish() }).parse(input), actorOf(u)));
 const paymentInput = z.object({
   method: z.enum(PAY_METHODS), valueCents: cents, installments: z.number().int().nullish(), brand: z.enum(CARD_BRANDS).nullish(),
   customMethodId: z.string().uuid().nullish(), note: z.string().max(200).nullish(),
@@ -215,7 +217,7 @@ export const saveCaixaSettingsAction = async (input: { mode: "avec" | "crm"; exi
 /** Configurações › Caixa › "O que o caixa usa": liga/desliga, limites e texto do recibo. */
 const recursosInput = z.object({
   ...(Object.fromEntries(RECURSO_KEYS.map((k) => [k, z.boolean()])) as Record<RecursoKey, z.ZodBoolean>),
-  assistentesMax: z.union([z.literal(1), z.literal(2)]), valeSenhaTentativas: z.number().int().min(1).max(20), valeSenhaJanelaMin: z.number().int().min(1).max(120),
+  assistentesMax: z.number().int().min(1).max(20), valeSenhaTentativas: z.number().int().min(1).max(20), valeSenhaJanelaMin: z.number().int().min(1).max(120),
   reciboTexto: z.string().max(RECIBO_TEXTO_MAX), pagarComissaoDesde: z.string().max(10).nullable().optional(),
 });
 export const saveCaixaRecursosAction = async (input: CaixaRecursos) =>

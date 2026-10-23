@@ -6,7 +6,9 @@ import { getCaixaMode } from "../domain/caixa/mode";
 import { listPackageDefs } from "../domain/caixa/packages";
 import { getEstoqueConfig } from "../domain/estoque/config";
 import { listProducts } from "../domain/estoque/produtos";
-import { listBookableServices } from "./agenda";
+import { listBookableServices, listServicePrices } from "./agenda";
+import { db } from "../db";
+import { professionalServices } from "../db/schema";
 import { clientAlertFor } from "../domain/client-alert";
 
 /**
@@ -15,10 +17,13 @@ import { clientAlertFor } from "../domain/client-alert";
  * Não confere permissão nem modo do caixa: quem chama já decidiu que a comanda abre.
  */
 export async function buildComandaCatalog(user: { perms: readonly Perm[] }, extra: { today?: string; paymentOptions?: { id: string; label: string }[] } = {}): Promise<ComandaCatalog> {
-  const [services, pros, packages, estoque, clientAlert] = await Promise.all([listBookableServices(), listProfessionals(), listPackageDefs({ activeOnly: true }), getEstoqueConfig(), clientAlertFor("comanda")]);
+  const [services, pros, packages, estoque, clientAlert, prices, proServiceRows] = await Promise.all([listBookableServices(), listProfessionals(), listPackageDefs({ activeOnly: true }), getEstoqueConfig(), clientAlertFor("comanda"),
+    listServicePrices(), db.select({ p: professionalServices.professionalId, s: professionalServices.serviceId }).from(professionalServices)]);
+  const proServices: Record<string, string[]> = {};
+  for (const r of proServiceRows) (proServices[r.p] ??= []).push(r.s);
   const products = estoque.ligado ? (await listProducts({ activeOnly: true })).filter((p) => p.use === "venda") : [];
   return {
-    services: services.map((x) => ({ id: x.id, label: x.label })),
+    services: services.map((x) => ({ id: x.id, label: x.label, priceCents: prices[x.id] ?? null })), proServices,
     professionals: pros.map((p) => ({ id: p.id, name: displayName(p.name), active: p.active, assistantOf: p.assistantOf })),
     packageDefs: packages.map((p) => ({ id: p.id, name: p.name, priceCents: p.priceCents })), canGerir: can(user.perms, "caixa.gerir"), canAssistente: can(user.perms, "caixa.assistente"), canDivida: can(user.perms, "caixa.divida"), canCancelar: can(user.perms, "caixa.cancelar"),
     clientAlert, canRedeemLoyalty: can(user.perms, "fidelidade.resgatar"),

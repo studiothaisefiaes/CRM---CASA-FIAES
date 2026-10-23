@@ -26,6 +26,17 @@ describe("itemCommission", () => {
   });
 });
 
+describe("três ou mais assistentes (22/10: quantas o dono quiser)", () => {
+  it("metade vira divisão igual entre N (centavos que sobram nas últimas); sobre o total, cada uma sobre o todo", () => {
+    const three = [{ professionalId: "a", bp: 1000 }, { professionalId: "b", bp: 1000 }, { professionalId: "c", bp: 1000 }];
+    const base = { baseCents: 1000, bp: 4000, cardFeeCents: 0, anticipationCents: 0, costCents: 0, assistants: three };
+    expect(itemCommission(base, CASA).assistants.map((a) => a.baseCents)).toEqual([333, 333, 334]);
+    expect(itemCommission({ ...base, baseCents: 1001, assistants: [...three, { professionalId: "d", bp: 1000 }] }, CASA).assistants.map((a) => a.baseCents)).toEqual([250, 250, 250, 251]);
+    expect(itemCommission(base, { ...CASA, doisAssistentes: "total" }).assistants.map((a) => a.baseCents)).toEqual([1000, 1000, 1000]);
+    expect(itemCommission({ ...base, assistants: three.slice(0, 1) }, CASA).assistants.map((a) => a.baseCents)).toEqual([1000]);
+  });
+});
+
 describe("allocateByNet", () => {
   it("rateia proporcional ao líquido, trata negativo como 0 e montante 0 devolve zeros", () => {
     const m = allocateByNet([{ id: "a", total: 3000 }, { id: "b", total: 7000 }, { id: "c", total: -50 }], 1001);

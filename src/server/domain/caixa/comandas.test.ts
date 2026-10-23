@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "../../db";
-import { clientPackages, comandaItems, comandas, packageDefs } from "../../db/schema";
+import { clientPackages, comandaItems, comandas, contacts, packageDefs } from "../../db/schema";
 import { resetDb } from "../../../../test/db";
 import { bahia, cliente, NOW, setSetting } from "../../../../test/agenda-fixtures";
 import { setupCaixa } from "../../../../test/caixa-fixtures";
@@ -10,7 +10,7 @@ import { money } from "@/lib/format";
 import { cancelAppointments, createVisit } from "../agenda/visits";
 import { setAppointmentStatus, undoAppointmentStatus } from "../appointments";
 import { addCreditTx } from "./credits";
-import { addItem, addPayment, joinTodayAppointments, openComandaForAppointment, openWalkInComanda, removePayment, setComandaDiscount } from "./comandas";
+import { addItem, addPayment, joinTodayAppointments, openComandaForAppointment, openWalkInComanda, removePayment, setComandaClient, setComandaDiscount } from "./comandas";
 
 let s: Awaited<ReturnType<typeof setupCaixa>>;
 beforeEach(async () => { await resetDb(); s = await setupCaixa({ estoque: false }); });
@@ -123,5 +123,39 @@ describe("as travas na Agenda", () => {
     await expect(cancelAppointments({ appointmentId: v.appointmentIds[0], reason: "cliente_desmarcou" }, s.recepcao, NOW)).rejects.toThrow("Essa visita já foi paga. Cancele a comanda antes (gestão).");
     await setAppointmentStatus(v.appointmentIds[0], "compareceu", s.cati.id, { via: "comanda", now: NOW });
     await expect(undoAppointmentStatus(v.appointmentIds[0], s.recepcao, NOW)).rejects.toThrow("Essa visita já foi paga: para mudar, a gestão cancela a comanda.");
+  });
+});
+
+describe("Nova comanda com a cliente de verdade (22/10)", () => {
+  const corte = () => ({ kind: "servico" as const, serviceId: s.corte.id, professionalId: s.ana.id });
+  it("cliente nova (nome + celular) cria a ficha e liga a comanda; o mesmo celular de novo reaproveita a ficha", async () => {
+    const a = await openWalkInComanda({ client: { name: "Marina Barros", phone: "71 99167-0000" }, requestKey: randomUUID(), item: corte() }, s.caixaRecepcao, NOW);
+    const [c1] = await db.select().from(comandas).where(eq(comandas.id, a.comandaId));
+    expect(c1.clientName).toBe("Marina Barros");
+    const fichas = await db.select().from(contacts).where(eq(contacts.phoneE164, "+5571991670000"));
+    expect(fichas.map((f) => f.id)).toEqual([c1.contactId]);
+    const b = await openWalkInComanda({ client: { name: "Lara M.", phone: "(71) 99167-0000" }, requestKey: randomUUID(), item: corte() }, s.caixaRecepcao, NOW);
+    const [c2] = await db.select().from(comandas).where(eq(comandas.id, b.comandaId));
+    expect([c2.contactId, c2.clientName]).toEqual([c1.contactId, "Marina Barros"]); // nunca duplica nem troca o nome
+    expect(await db.select().from(contacts).where(eq(contacts.phoneE164, "+5571991670000"))).toHaveLength(1);
+  });
+  it("com client: { contactId } usa o nome da ficha; trocar a cliente aceita cliente nova", async () => {
+    const p = await cliente("Paula Souza");
+    const a = await openWalkInComanda({ client: { contactId: p.contactId }, requestKey: randomUUID(), item: corte() }, s.caixaRecepcao, NOW);
+    expect((await db.select().from(comandas).where(eq(comandas.id, a.comandaId)))[0].clientName).toBe("Paula Souza");
+    await setComandaClient(a.comandaId, { client: { name: "Vera Klein", phone: "71 98888-1111" } }, s.caixaRecepcao, NOW);
+    const [c] = await db.select().from(comandas).where(eq(comandas.id, a.comandaId));
+    const [ct] = await db.select().from(contacts).where(eq(contacts.id, c.contactId!));
+    expect([c.clientName, ct.name, ct.phoneE164]).toEqual(["Vera Klein", "Vera Klein", "+5571988881111"]);
+  });
+  it("revisão final: não troca a cliente com crédito da cliente lançado, nem a comanda que veio de um horário", async () => {
+    const p = await cliente("Paula Souza");
+    await db.transaction((tx) => addCreditTx(tx, { contactId: p.contactId, deltaCents: 5000, reason: "ajuste" }, s.cati.id));
+    const a = await openWalkInComanda({ client: { contactId: p.contactId }, requestKey: randomUUID(), item: corte() }, s.caixaRecepcao, NOW);
+    await addPayment(a.comandaId, { method: "credito_cliente", valueCents: 5000 }, s.caixaRecepcao, NOW);
+    await expect(setComandaClient(a.comandaId, { client: { name: "Vera Klein", phone: "71 98888-1111" } }, s.caixaRecepcao, NOW)).rejects.toThrow("Estorne o crédito da cliente antes de trocar a cliente.");
+    const v = await createVisit({ requestKey: randomUUID(), client: { contactId: p.contactId }, startsAt: bahia(15, 10).toISOString(), items: [{ serviceId: s.corte.id, professionalId: s.ana.id, preference: "escolhida" }] }, s.recepcao, bahia(15, 8));
+    const r = await openComandaForAppointment(v.appointmentIds[0], s.caixaRecepcao, NOW);
+    await expect(setComandaClient(r.comandaId, { client: { name: "Vera Klein", phone: "71 98888-1111" } }, s.caixaRecepcao, NOW)).rejects.toThrow("Essa comanda é do horário da cliente: troque a cliente na Agenda.");
   });
 });

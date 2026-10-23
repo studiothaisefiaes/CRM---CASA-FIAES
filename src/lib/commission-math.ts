@@ -25,9 +25,11 @@ export function itemCommission(i: ItemCommissionInput, r: CommissionRules): Item
   const gross = i.bp == null ? null : commissionCents(i.baseCents, i.bp);
   const effect = (m: DeductMode, v: number) => (m === "nao" ? 0 : m === "depois" ? v : i.bp == null ? 0 : commissionCents(v, i.bp));
 
-  const two = i.assistants.length === 2 && r.doisAssistentes === "metade";
+  // "Metade" (o nome antigo) = divide o líquido igual entre as assistentes, de 2 em diante (22/10: quantas o dono quiser); o centavo que sobra fica nas últimas.
+  const n = i.assistants.length;
+  const split = n >= 2 && r.doisAssistentes === "metade";
   const assistants = i.assistants.map((a, idx) => {
-    const baseCents = two ? (idx === 0 ? Math.floor(net / 2) : net - Math.floor(net / 2)) : net;
+    const baseCents = split ? Math.floor(net / n) + (idx >= n - (net % n) ? 1 : 0) : net;
     return { professionalId: a.professionalId, baseCents, bp: a.bp, commissionCents: a.bp == null ? null : commissionCents(baseCents, a.bp) };
   });
   const assistentes = Math.round((assistants.reduce((a, x) => a + (x.commissionCents ?? 0), 0) * r.assistenteSaiDaPrincipalBp) / 10000);

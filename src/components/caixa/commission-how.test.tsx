@@ -21,9 +21,9 @@ it("mostra cada pergunta com o valor de hoje; cada desconto tem as três opçõe
   }
   expect(within(screen.getByRole("radiogroup", { name: "Taxa do cartão" })).getByRole("radio", { checked: true }).textContent).toBe(DEDUCT_LABEL.antes);
   expect(within(screen.getByRole("radiogroup", { name: "Custo do serviço" })).getByRole("radio", { checked: true }).textContent).toBe(DEDUCT_LABEL.depois);
-  const duas = within(screen.getByRole("radiogroup", { name: "Duas assistentes" }));
-  expect(duas.getAllByRole("radio").map((r) => r.textContent)).toEqual(["Sobre o total", "Metade"]);
-  expect(duas.getByRole("radio", { checked: true }).textContent).toBe("Metade");
+  const duas = within(screen.getByRole("radiogroup", { name: "Duas ou mais assistentes" }));
+  expect(duas.getAllByRole("radio").map((r) => r.textContent)).toEqual(["Sobre o total", "Dividir igual"]);
+  expect(duas.getByRole("radio", { checked: true }).textContent).toBe("Dividir igual");
   expect((screen.getByLabelText("Quanto da assistente sai da principal") as HTMLInputElement).value).toBe("100");
   const div = within(screen.getByRole("radiogroup", { name: "Comissão de comanda com dívida" }));
   expect(div.getAllByRole("radio").map((r) => r.textContent)).toEqual(["Na hora", "Quando ela pagar"]);
@@ -33,7 +33,7 @@ it("mostra cada pergunta com o valor de hoje; cada desconto tem as três opçõe
 it("salvar manda o objeto inteiro com o que foi mudado", async () => {
   render(<CommissionHow rules={CASA} />);
   fireEvent.click(within(screen.getByRole("radiogroup", { name: "Taxa do cartão" })).getByRole("radio", { name: DEDUCT_LABEL.nao }));
-  fireEvent.click(within(screen.getByRole("radiogroup", { name: "Duas assistentes" })).getByRole("radio", { name: "Sobre o total" }));
+  fireEvent.click(within(screen.getByRole("radiogroup", { name: "Duas ou mais assistentes" })).getByRole("radio", { name: "Sobre o total" }));
   fireEvent.click(within(screen.getByRole("radiogroup", { name: "Comissão de comanda com dívida" })).getByRole("radio", { name: "Na hora" }));
   fireEvent.change(screen.getByLabelText("Taxa de antecipação (%)"), { target: { value: "6,5" } });
   fireEvent.change(screen.getByLabelText("Quanto da assistente sai da principal"), { target: { value: "50" } });

@@ -36,15 +36,18 @@ describe("Equipe: número de funcionária avisa, mas fica fora do funil e das m�
     await setTeamContact(c.id, true, gestora.id);
     await inbound("71900000202", "E3", "a chave tá com quem?");
 
+    // r92 (22/10): com mensagem nova, a conversa da Equipe aparece no topo de Todas e conta em Não lidas até alguém abrir; lida, sai.
     const q = await getQueue(gestora);
-    expect(ids(q)).not.toContain(team);
+    expect(ids(q)[0]).toBe(team);
     expect(q.counts.total).toBe(1);
-    expect(q.counts.naoLidas).toBe(1);
+    expect(q.counts.naoLidas).toBe(2);
     expect(q.counts.views.equipe).toBe(1);
     expect(q.counts.equipeNaoLidas).toBe(1);
     const eq1 = await getQueue(gestora, { view: "equipe" });
     expect(ids(eq1)).toEqual([team]);
     expect(eq1.sections[0].items[0].unread).toBe(2);
+    await db.update(deals).set({ seenAt: new Date(Date.now() + 1000) }).where(eq(deals.id, team));
+    expect(ids(await getQueue(gestora))).not.toContain(team);
     // avisa no sino como qualquer conversa
     expect(await db.select().from(alerts).where(and(eq(alerts.dealId, team), eq(alerts.type, "mensagem_cliente"), isNull(alerts.resolvedAt)))).toHaveLength(1);
     // fora do funil, dos prazos e das métricas

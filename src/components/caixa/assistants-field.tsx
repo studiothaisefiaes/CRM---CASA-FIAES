@@ -1,7 +1,7 @@
 "use client";
 import { Select } from "@/components/ui/field";
 
-type Assistant = { professionalId: string; name: string; position: 1 | 2 };
+type Assistant = { professionalId: string; name: string; position: number };
 type Pro = { id: string; name: string; active: boolean; assistantOf?: string | null };
 
 /**

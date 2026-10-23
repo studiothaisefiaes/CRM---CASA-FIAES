@@ -3,6 +3,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 vi.mock("@/app/(app)/caixa/actions", () => ({ clientPackagesAction: vi.fn(async () => ({ ok: true, data: [] })) }));
+vi.mock("@/app/(app)/agenda/actions", () => ({ searchClientsAction: vi.fn(), peopleOnNumberAction: vi.fn() }));
 import { AddItem, type ComandaCatalog } from "./comanda-panel";
 
 afterEach(cleanup);

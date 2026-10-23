@@ -38,11 +38,11 @@ export function fillRecibo(texto: string, v: Record<string, string>): string {
  * `pagarComissaoDesde` ("AAAA-MM-DD"; vazio = sem corte): comandas e lançamentos antes desta data não entram no A pagar (o que já foi
  * pago fora do CRM não é pago de novo no primeiro recibo).
  */
-export type CaixaRecursos = Record<RecursoKey, boolean> & { assistentesMax: 1 | 2; valeSenhaTentativas: number; valeSenhaJanelaMin: number; reciboTexto: string; pagarComissaoDesde: string | null };
+export type CaixaRecursos = Record<RecursoKey, boolean> & { assistentesMax: number; valeSenhaTentativas: number; valeSenhaJanelaMin: number; reciboTexto: string; pagarComissaoDesde: string | null };
 
 export const CAIXA_RECURSOS_PADRAO: CaixaRecursos = {
   assistentes: true, taxaCartao: true, comissaoComDescontos: true, divida: true, vales: true, valePelaSangria: true, pagarComissao: true, excecoes: true,
-  assistentesMax: 2, valeSenhaTentativas: 5, valeSenhaJanelaMin: 10, reciboTexto: RECIBO_TEXTO_SUGERIDO, pagarComissaoDesde: null,
+  assistentesMax: 20, valeSenhaTentativas: 5, valeSenhaJanelaMin: 10, reciboTexto: RECIBO_TEXTO_SUGERIDO, pagarComissaoDesde: null,
 };
 
 /** Data "AAAA-MM-DD" que existe no calendário. */
@@ -52,8 +52,9 @@ export const isIsoDay = (v: unknown): v is string => {
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
 };
 
-export const isAssistentesMax = (v: unknown): v is 1 | 2 => v === 1 || v === 2;
 export const isIntBetween = (v: unknown, min: number, max: number): v is number => typeof v === "number" && Number.isInteger(v) && v >= min && v <= max;
+/** Assistentes por serviço: de 1 a 20 (o teto da agenda). */
+export const isAssistentesMax = (v: unknown): v is number => isIntBetween(v, 1, 20);
 
 /** Lê o que estiver gravado; campo ausente ou inválido = padrão; texto vazio = o sugerido. */
 export function readCaixaRecursos(v: unknown): CaixaRecursos {

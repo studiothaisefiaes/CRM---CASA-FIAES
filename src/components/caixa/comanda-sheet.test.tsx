@@ -10,7 +10,11 @@ const a = vi.hoisted(() => ({
   removePaymentAction: vi.fn(async () => ({ ok: true })), closeComandaAction: vi.fn(), discardComandaAction: vi.fn(async () => ({ ok: true })),
   cancelarComandaAction: vi.fn(async () => ({ ok: true })), undoCancelarComandaAction: vi.fn(async () => ({ ok: true })),
   cancelComandaAction: vi.fn(async () => ({ ok: true })), reopenComandaAction: vi.fn(async () => ({ ok: true })), openCashAction: vi.fn(async () => ({ ok: true })),
-  clientPackagesAction: vi.fn(async () => ({ ok: true, data: [] })), setCpfAction: vi.fn(async () => ({ ok: true })),
+  clientPackagesAction: vi.fn(async () => ({ ok: true, data: [] })), setCpfAction: vi.fn(async () => ({ ok: true })), setClientAction: vi.fn(async () => ({ ok: true })),
+}));
+vi.mock("@/app/(app)/agenda/actions", () => ({
+  searchClientsAction: vi.fn(async () => ({ ok: true, data: [{ id: "ct2", name: "Vera Klein", phone: "+5571988881111", lastVisit: null, ignored: false }] })),
+  peopleOnNumberAction: vi.fn(async () => ({ ok: true, data: [] })),
 }));
 const toast = vi.fn();
 vi.mock("@/app/(app)/caixa/actions", () => a);
@@ -226,4 +230,30 @@ it("psico r68 #1: com caixa.cancelar, cancelar mora no '⋯' e abre a confirmaç
   fireEvent.click(screen.getByRole("menuitem", { name: "Cancelar comanda" }));
   expect(screen.getByRole("dialog", { name: /^Cancelar a comanda 12/ })).toBeTruthy();
   expect(a.discardComandaAction).not.toHaveBeenCalled();
+});
+
+it("comanda fechada com 3 assistentes (22/10): 'Ana com Sidney, Roberta e Bia'", async () => {
+  const as = ["Sidney", "Roberta", "Bia"].map((name, k) => ({ professionalId: `a${k}`, name, position: k + 1 }));
+  const fechada = { ...base, status: "fechada", closedAt: "2026-10-15T15:00:00.000Z", items: [{ ...base.items[0], assistants: as }], totals: { ...base.totals, missingPrice: [] } } as ComandaDetail;
+  a.comandaDetailAction.mockResolvedValue({ ok: true, data: fechada });
+  render(<ComandaSheet comandaId="c1" open onClose={() => {}} catalog={CATALOG} />);
+  expect(await screen.findByText("Ana com Sidney, Roberta e Bia")).toBeTruthy();
+});
+
+it("22/10: 'Trocar cliente' na comanda avulsa busca a ficha e troca; a do horário não tem o botão", async () => {
+  a.comandaDetailAction.mockResolvedValue({ ok: true, data: base });
+  const { unmount } = render(<ComandaSheet comandaId="c1" open onClose={() => {}} catalog={CATALOG} />);
+  await screen.findByRole("dialog", { name: "Comanda 12 · Paula Souza" });
+  expect(screen.queryByRole("button", { name: "Trocar cliente" })).toBeNull();
+  unmount();
+  a.comandaDetailAction.mockResolvedValue({ ok: true, data: { ...base, visitId: null } });
+  render(<ComandaSheet comandaId="c1" open onClose={() => {}} catalog={CATALOG} />);
+  const trocar = await screen.findByRole("button", { name: "Trocar cliente" });
+  await act(async () => { fireEvent.click(trocar); });
+  fireEvent.change(screen.getByPlaceholderText("Nome ou telefone"), { target: { value: "Bru" } });
+  await act(async () => { await new Promise((r) => setTimeout(r, 300)); });
+  const bruna = await screen.findByRole("button", { name: /Vera Klein/ });
+  await act(async () => { fireEvent.click(bruna); });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Salvar cliente" })); });
+  expect(a.setClientAction).toHaveBeenCalledWith("c1", { client: { contactId: "ct2" } });
 });

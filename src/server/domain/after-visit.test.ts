@@ -98,7 +98,7 @@ describe("Depois do atendimento: quando entra na fila", () => {
     const va = await visita(a.contactId);
     await db.update(appointments).set({ status: "faltou" }).where(eq(appointments.visitId, va.visitId));
     expect(await afterVisitDone(va.visitId, at("2026-10-20T17:00:00Z"))).toBe("nao_concluida");
-    const b = await cliente("Vera Igarashi");
+    const b = await cliente("Vera Klein");
     const vb = await visita(b.contactId, "2026-10-20", "15:00");
     await finishAll(vb.visitId, at("2026-10-20T19:00:00Z"));
     await db.update(appointments).set({ status: "faltou", finishedAt: null }).where(eq(appointments.id, vb.appointmentIds[1]));

@@ -51,7 +51,7 @@ export function CommissionHow({ rules, descontosLigados = true }: { rules: Commi
         </div>
         {deduct("custo", "Custo do serviço")}
         <Question label="Duas assistentes">
-          <Segmented label="Duas assistentes" options={[{ value: "total", label: "Sobre o total" }, { value: "metade", label: "Metade" }]} value={r.doisAssistentes} onChange={(v) => setR({ ...r, doisAssistentes: v })} />
+          <Segmented label="Duas ou mais assistentes" options={[{ value: "total", label: "Sobre o total" }, { value: "metade", label: "Dividir igual" }]} value={r.doisAssistentes} onChange={(v) => setR({ ...r, doisAssistentes: v })} />
         </Question>
         <label className="flex flex-col gap-1.5 text-sm font-medium text-graphite">Quanto da assistente sai da principal
           <span className="flex items-center gap-2 font-normal"><Input aria-label="Quanto da assistente sai da principal" inputMode="decimal" value={sai} onChange={(e) => setSai(e.target.value)} className="h-9 w-20 text-right" />%</span>

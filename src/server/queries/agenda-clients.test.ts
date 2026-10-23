@@ -29,3 +29,12 @@ it("a agenda de uma cliente: próximos, anteriores e cancelados, sem gêmeos nem
   expect([r.futuros.map((x) => x.appointmentId), r.passados.map((x) => x.appointmentId), r.cancelados.map((x) => x.appointmentId)]).toEqual([[futuro.id], [passado.id], [cancelado.id]]);
   expect(r.futuros[0]).toMatchObject({ day: "2026-10-20", serviceLabel: "Corte" });
 });
+
+it("acha pelo CPF (11 dígitos, com ou sem pontuação) e nunca devolve o CPF (22/10)", async () => {
+  const [paula] = await db.insert(contacts).values({ name: "Paula Souza", phoneE164: "+5571988000101", cpf: "12345678901" }).returning();
+  await db.insert(contacts).values({ name: "Outra", phoneE164: "+5571988000102", cpf: "98765432100" });
+  const hits = await searchAgendaClients("123.456.789-01");
+  expect(hits.map((h) => h.id)).toEqual([paula.id]);
+  expect(JSON.stringify(hits)).not.toContain("12345678901");
+  expect((await searchAgendaClients("12345678901")).map((h) => h.id)).toEqual([paula.id]);
+});

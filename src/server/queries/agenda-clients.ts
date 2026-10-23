@@ -19,6 +19,8 @@ export async function searchAgendaClients(q: string, limit = 8): Promise<AgendaC
   if (term.length < 2) return [];
   const digits = term.replace(/\D/g, "");
   const byPhone = digits.length >= 4 ? sql`coalesce(h.phone_e164, c.phone_e164) like ${`%${digits}%`}` : sql`false`;
+  // CPF (22/10, Caixa e Agenda): os 11 dígitos exatos; o CPF nunca volta na resposta.
+  const byCpf = digits.length === 11 && /^[\d.\-\s]+$/.test(term) ? sql`c.cpf = ${digits}` : sql`false`;
   const r = await db.execute(sql`
     select c.id, c.name, coalesce(h.phone_e164, c.phone_e164) as phone, c.ignored, h.name as holder_name, c.phone_relation as relation, (h.id is not null) as shares,
       greatest(
@@ -26,7 +28,7 @@ export async function searchAgendaClients(q: string, limit = 8): Promise<AgendaC
         (select max(s.sold_on)::text from sales_items s where s.contact_id = c.id)
       ) as last_visit
     from contacts c left join contacts h on h.id = c.shares_phone_with
-    where coalesce(c.name, '') ilike ${`%${escapeLike(term)}%`} or ${byPhone}
+    where coalesce(c.name, '') ilike ${`%${escapeLike(term)}%`} or ${byPhone} or ${byCpf}
     order by c.ignored, (coalesce(c.name, '') ilike ${`${escapeLike(term)}%`}) desc, coalesce(h.name, c.name) nulls last, (h.id is not null), c.name nulls last
     limit ${limit}`);
   type Row = { id: string; name: string | null; phone: string; ignored: boolean; last_visit: string | null; holder_name: string | null; relation: string | null; shares: boolean };

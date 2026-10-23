@@ -21,7 +21,7 @@ export function CaixaRecursosForm({ value }: { value: CaixaRecursos }) {
     </Field>
   );
   const save = () => start(async () => {
-    const r = await saveCaixaRecursosAction({ ...v, assistentesMax: Number(nums.assistentesMax) as 1 | 2, valeSenhaTentativas: Number(nums.valeSenhaTentativas), valeSenhaJanelaMin: Number(nums.valeSenhaJanelaMin) });
+    const r = await saveCaixaRecursosAction({ ...v, assistentesMax: Number(nums.assistentesMax), valeSenhaTentativas: Number(nums.valeSenhaTentativas), valeSenhaJanelaMin: Number(nums.valeSenhaJanelaMin) });
     toast(r.ok ? "Caixa salvo" : r.error, r.ok ? "ok" : "error");
   });
   return (
@@ -36,7 +36,7 @@ export function CaixaRecursosForm({ value }: { value: CaixaRecursos }) {
         ))}
       </div>
       <div className="mt-5 grid gap-4 sm:grid-cols-3">
-        {num("assistentesMax", "Assistentes por serviço", "1 ou 2.")}
+        {num("assistentesMax", "Assistentes por serviço", "De 1 a 20.")}
         {num("valeSenhaTentativas", "Tentativas de senha do vale", "De 1 a 20.")}
         {num("valeSenhaJanelaMin", "Minutos de espera", "De 1 a 120.")}
       </div>

@@ -12,7 +12,7 @@ import { money } from "@/lib/format";
 import { isUuid } from "@/lib/uuid";
 import { teamNameOf } from "../../queries/team-name";
 import { lockKeyTx } from "../agenda/locks";
-import { ensureVisitFor } from "../agenda/visits";
+import { ensureVisitFor, resolveClientTx, type ClientRef } from "../agenda/visits";
 import { afterAgendaChange } from "../agenda/notify";
 import type { Actor } from "../agenda/actor";
 import { emit } from "../events";
@@ -140,7 +140,7 @@ export async function openComandaForAppointment(appointmentId: string, actor: Ac
  * Comanda avulsa (venda sem horário), pelo Caixa. Sem cliente: "Cliente de balcão". A request key evita abrir duas. Pela tela ("Nova
  * comanda"), ela nasce com o primeiro item na mesma transação (QA r58, I-8): item recusado não deixa comanda vazia para trás.
  */
-export async function openWalkInComanda(input: { contactId?: string | null; clientName?: string | null; requestKey: string; item?: AddItemInput | null }, actor: Actor, now = new Date()): Promise<{ comandaId: string; number: number }> {
+export async function openWalkInComanda(input: { contactId?: string | null; client?: ClientRef | null; clientName?: string | null; requestKey: string; item?: AddItemInput | null }, actor: Actor, now = new Date()): Promise<{ comandaId: string; number: number }> {
   const key = z.string().uuid().parse(input.requestKey);
   const r = await db.transaction(async (tx) => {
     await assertCaixaOn(tx);
@@ -148,14 +148,17 @@ export async function openWalkInComanda(input: { contactId?: string | null; clie
     const [dup] = await tx.select().from(comandas).where(eq(comandas.requestKey, key));
     if (dup) return { comandaId: dup.id, number: dup.number, day: dup.day };
     let name = input.clientName?.trim() || null;
-    if (input.contactId) {
-      const [c] = await tx.select({ name: contacts.name }).from(contacts).where(eq(contacts.id, input.contactId));
+    let contactId = input.contactId ?? null;
+    // Nova comanda com a cliente escolhida na busca ou "cliente nova" (22/10): o mesmo resolvedor do Marcar (celular que já existe reaproveita a ficha).
+    if (input.client) { const who = await resolveClientTx(tx, input.client); contactId = who.id; name = who.name ?? name; }
+    else if (contactId) {
+      const [c] = await tx.select({ name: contacts.name }).from(contacts).where(eq(contacts.id, contactId));
       if (!c) throw new UserFacingError("Cliente não encontrada.");
       name = c.name ?? name;
     }
     const day = todayBahia(now);
     const number = await nextComandaNumberTx(tx, day);
-    const [c] = await tx.insert(comandas).values({ day, number, contactId: input.contactId ?? null, clientName: name ?? BALCAO, requestKey: key, openedBy: actor.id, openedAt: now, updatedAt: now }).returning();
+    const [c] = await tx.insert(comandas).values({ day, number, contactId, clientName: name ?? BALCAO, requestKey: key, openedBy: actor.id, openedAt: now, updatedAt: now }).returning();
     await tx.insert(auditLog).values({ userId: actor.id, action: "comanda_aberta", entity: "comanda", entityId: c.id, data: { avulsa: true, numero: number } });
     if (input.item) await addItemTx(tx, c, { ...input.item, ruleDiscount: undefined }, actor, now);
     return { comandaId: c.id, number, day };
@@ -479,7 +482,7 @@ export async function setComandaNota(comandaId: string, input: { escolha: "nao" 
 }
 
 /** Trocar a cliente da comanda (avulsa que virou cliente conhecida). Recusa se já tem item de pacote. */
-export async function setComandaClient(comandaId: string, input: { contactId?: string | null; clientName?: string | null }, actor: Actor, now = new Date()): Promise<void> {
+export async function setComandaClient(comandaId: string, input: { contactId?: string | null; client?: ClientRef | null; clientName?: string | null }, actor: Actor, now = new Date()): Promise<void> {
   await db.transaction(async (tx) => {
     await assertCaixaOn(tx);
     const c = await lockComandaTx(tx, comandaId);
@@ -488,14 +491,19 @@ export async function setComandaClient(comandaId: string, input: { contactId?: s
     if (live.some((i) => i.kind === "pacote_sessao" || i.kind === "pacote_venda")) throw new UserFacingError("Tire os itens de pacote antes de trocar a cliente.");
     if (live.some((i) => i.kind === "divida")) throw new UserFacingError("Tire o item da dívida antes de trocar a cliente.");
     if ((await rewardItemIdsTx(tx, c.id)).size) throw new UserFacingError("Tire o prêmio da fidelidade antes de trocar a cliente.");
+    // Revisão final (22/10): o crédito lançado é da cliente atual (o Finalizar debitaria a nova); a comanda do horário fica com a cliente do horário.
+    if ((await livePaymentsTx(tx, c.id)).some((p) => p.method === "credito_cliente")) throw new UserFacingError("Estorne o crédito da cliente antes de trocar a cliente.");
+    if (c.visitId) throw new UserFacingError("Essa comanda é do horário da cliente: troque a cliente na Agenda.");
     let name = input.clientName?.trim() || BALCAO;
-    if (input.contactId) {
-      const [ct] = await tx.select({ name: contacts.name }).from(contacts).where(eq(contacts.id, input.contactId));
+    let contactId = input.contactId ?? null;
+    if (input.client) { const who = await resolveClientTx(tx, input.client); contactId = who.id; name = who.name ?? name; }
+    else if (contactId) {
+      const [ct] = await tx.select({ name: contacts.name }).from(contacts).where(eq(contacts.id, contactId));
       if (!ct) throw new UserFacingError("Cliente não encontrada.");
       name = ct.name ?? name;
     }
-    await tx.update(comandas).set({ contactId: input.contactId ?? null, clientName: name, updatedAt: now }).where(eq(comandas.id, c.id));
-    await tx.insert(auditLog).values({ userId: actor.id, action: "comanda_cliente", entity: "comanda", entityId: c.id, data: { de: c.contactId, para: input.contactId ?? null } });
+    await tx.update(comandas).set({ contactId, clientName: name, updatedAt: now }).where(eq(comandas.id, c.id));
+    await tx.insert(auditLog).values({ userId: actor.id, action: "comanda_cliente", entity: "comanda", entityId: c.id, data: { de: c.contactId, para: contactId } });
   });
 }
 

@@ -30,6 +30,10 @@ import { birthdayLabel } from "@/lib/birthday";
 import { fichaTabs, orderPackages, packageSeal, packageSessions } from "@/lib/ficha";
 import { isUuid } from "@/lib/uuid";
 import { NOT_IDENTIFIED } from "@/lib/source-kinds";
+import { clientComandas } from "@/server/queries/comandas-list";
+import { getComandaCatalog } from "@/server/queries/comanda-catalog";
+import { ComandaProvider } from "@/components/caixa/comanda-provider";
+import { ComandasList } from "@/components/caixa/comandas-list";
 
 export const metadata = { title: "Ficha da cliente" };
 const day = (d: Date) => d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "America/Bahia" });
@@ -55,6 +59,9 @@ export default async function ContatoPage({ params }: PageProps<"/contatos/[id]"
   ]);
   const consentOn = await funcaoLigada("consentimento");
   if (!data || !snap0) notFound();
+  // Comandas do CRM (22/10): sem valores.ver, a lista vem sem valor nem dívida.
+  const [comandas0, comandaCatalog] = await Promise.all([clientComandas(id), getComandaCatalog(user)]);
+  const comandasCrm = money ? comandas0 : comandas0.map((r) => ({ ...r, totalCents: null, paidCents: null, debtCents: 0 }));
   const canAnswer = can(user.perms, "fichas.responder");
   // A visão por contato é refeita à noite e depois de cada importação do Avec: enquanto isso, valem a origem do primeiro lead
   // e o total das vendas fechadas no CRM (a mesma regra do painel da conversa: com venda no Avec, vale o Avec).
@@ -118,6 +125,9 @@ export default async function ContatoPage({ params }: PageProps<"/contatos/[id]"
                   <VisitsBlock days={visits} money={money} />
                 </div>
               ),
+              // 22/10: as comandas do CRM (o histórico do Avec segue em Horários e Pagamentos); tocar abre a comanda com caixa.operar.
+              comandas: comandaCatalog ? <ComandaProvider catalog={comandaCatalog}><ComandasList rows={comandasCrm} showClient={false} /></ComandaProvider>
+                : <ComandasList rows={comandasCrm} showClient={false} />,
               pacotes: <div data-bloco="pacotes"><ClientPackages items={avec.pacotes} sessions={sessions} today={today} money={money} /></div>,
               ...(ficha ? {
                 consultoria: (

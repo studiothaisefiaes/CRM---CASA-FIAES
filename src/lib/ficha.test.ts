@@ -70,8 +70,8 @@ describe("packageSeal: o selo do topo", () => {
 
 describe("fichaTabs", () => {
   it("Pagamentos só para quem vê valores", () => {
-    expect(fichaTabs(true).map((t) => t.label)).toEqual(["Resumo", "Horários", "Pacotes", "Pagamentos", "Conversas", "Notas"]);
-    expect(fichaTabs(false).map((t) => t.value)).toEqual(["resumo", "horarios", "pacotes", "conversas", "notas"]);
+    expect(fichaTabs(true).map((t) => t.label)).toEqual(["Resumo", "Horários", "Comandas", "Pacotes", "Pagamentos", "Conversas", "Notas"]);
+    expect(fichaTabs(false).map((t) => t.value)).toEqual(["resumo", "horarios", "comandas", "pacotes", "conversas", "notas"]); // 22/10: Comandas para todas (sem valor sem valores.ver)
   });
 });
 

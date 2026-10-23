@@ -1,8 +1,9 @@
 "use client";
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/field";
+import { Input, Select } from "@/components/ui/field";
 import { openWalkInAction, type Approval } from "@/app/(app)/caixa/actions";
+import { ClientPicker, type PickedClient } from "@/components/agenda/client-picker";
 import { todayBahia } from "@/lib/agenda";
 import { ApprovalBox } from "./approval-box";
 import { AddItem, type ComandaCatalog } from "./comanda-panel";
@@ -10,17 +11,23 @@ import { AddItem, type ComandaCatalog } from "./comanda-panel";
 /**
  * "Nova comanda" (venda de balcão) sem comanda vazia (QA r58, I-8): abrir não cria nada; a comanda nasce no servidor junto com o primeiro
  * item, numa transação só. Cancelar não deixa rastro, e nenhuma vazia vira pendência no Fechar o dia.
+ * 22/10 (pedido do dono, "como no Avec"): a cliente vem da busca (nome, telefone, CPF) ou é cadastrada na hora; a profissional escolhida no
+ * topo vira a do item. Sem cliente, é "Cliente de balcão" (com o nome, se a recepção quiser).
  */
 export function NewComanda({ catalog, onCreated, onCancel }: { catalog: ComandaCatalog; onCreated: (comandaId: string) => void; onCancel: () => void }) {
   const [requestKey] = useState(() => crypto.randomUUID()); // dois toques no Somar não abrem duas
+  const [client, setClient] = useState<PickedClient | null>(null);
   const [name, setName] = useState("");
+  const [pro, setPro] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const day = catalog.today ?? todayBahia(new Date());
   const [approval, setApproval] = useState<null | { message: string; item: Record<string, unknown>; error?: string }>(null);
+  const who = client ? { client: client.kind === "contato" ? { contactId: client.contactId } : { name: client.name, phone: client.phone } }
+    : name.trim() ? { clientName: name.trim() } : {};
   const send = (item: Record<string, unknown>, ap?: NonNullable<Approval>) => start(async () => {
     setError(null);
-    const input = { requestKey, clientName: name.trim() || null, item: item as Parameters<typeof openWalkInAction>[0]["item"] };
+    const input = { requestKey, ...who, item: item as Parameters<typeof openWalkInAction>[0]["item"] };
     const r = await openWalkInAction(ap ? { ...input, approval: ap } : input);
     // Preço abaixo do limite de desconto da Casa (QA r58, I-11): a gestão aprova ali mesmo, e a comanda nasce com o item.
     if (!r.ok && r.needsApproval) { setApproval({ message: r.error, item }); return; }
@@ -35,10 +42,22 @@ export function NewComanda({ catalog, onCreated, onCancel }: { catalog: ComandaC
       {error && <p role="alert" className="rounded-[var(--radius-control)] bg-alert-soft px-3 py-2 text-sm text-alert">{error}</p>}
       {approval && <ApprovalBox message={approval.message} error={approval.error} canGerir={catalog.canGerir} pending={pending}
         onApprove={(ap) => send(approval.item, ap)} onCancel={() => setApproval(null)} />}
-      <label className="flex max-w-sm flex-col gap-1 text-sm text-graphite">Nome da cliente (opcional)
-        <Input value={name} maxLength={120} onChange={(e) => setName(e.target.value)} placeholder="Cliente de balcão" className="h-11" />
+      <div className="flex flex-col gap-1 text-sm text-graphite">
+        <span>Cliente</span>
+        <ClientPicker value={client} onChange={setClient} />
+      </div>
+      {!client && (
+        <label className="flex max-w-sm flex-col gap-1 text-sm text-graphite">Ou só o nome (cliente de balcão)
+          <Input value={name} maxLength={120} onChange={(e) => setName(e.target.value)} placeholder="Cliente de balcão" className="h-11" />
+        </label>
+      )}
+      <label className="flex max-w-sm flex-col gap-1 text-sm text-graphite">Profissional da comanda
+        <Select value={pro} onChange={(e) => setPro(e.target.value)} className="h-11">
+          <option value="">Escolher depois, em cada item</option>
+          {catalog.professionals.filter((p) => p.active).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </Select>
       </label>
-      <AddItem comanda={{ contactId: null, day }} catalog={catalog} pending={pending} onAdd={add} />
+      <AddItem comanda={{ contactId: client?.kind === "contato" ? client.contactId : null, day }} catalog={catalog} pending={pending} onAdd={add} defaultProfessionalId={pro || null} />
       <div className="flex justify-end"><Button variant="ghost" onClick={onCancel}>Cancelar</Button></div>
     </div>
   );

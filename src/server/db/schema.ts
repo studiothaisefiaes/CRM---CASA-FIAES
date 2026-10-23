@@ -1238,7 +1238,7 @@ export const comandaItemAssistants = pgTable("comanda_item_assistants", {
   createdBy: uuid("created_by").references(() => users.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
-  check("comanda_item_assistants_position_ck", sql`${t.position} in (1, 2)`),
+  check("comanda_item_assistants_position_ck", sql`${t.position} between 1 and 20`),
   uniqueIndex("comanda_item_assistants_position_uq").on(t.comandaItemId, t.position),
   uniqueIndex("comanda_item_assistants_pro_uq").on(t.comandaItemId, t.professionalId),
   index("comanda_item_assistants_pro_idx").on(t.professionalId),

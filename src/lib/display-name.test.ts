@@ -7,7 +7,7 @@ describe("displayName (só para mostrar; o banco não muda)", () => {
     expect(displayName("ÉRICA ÁVILA")).toBe("Érica Ávila");
   });
   it("partículas ficam minúsculas, menos no começo", () => {
-    expect(displayName("BIANCA KLEIN DOS HENRIQUES")).toBe("Bianca Klein dos Henriques");
+    expect(displayName("CARLA GOMES DOS HENRIQUES")).toBe("Carla Gomes dos Henriques");
     expect(displayName("MARIA DA SILVA E SOUZA")).toBe("Maria da Silva e Souza");
     expect(displayName("DA SILVA MARIA")).toBe("Da Silva Maria");
     expect(displayName("ANA DE OLIVEIRA DAS DORES DO CARMO")).toBe("Ana de Oliveira das Dores do Carmo");
@@ -19,7 +19,7 @@ describe("displayName (só para mostrar; o banco não muda)", () => {
     expect(displayName("  JOANA   LIMA ")).toBe("Joana Lima");
   });
   it("misturado ou já em minúsculas: fica como veio", () => {
-    expect(displayName("Zélia Barros")).toBe("Zélia Barros");
+    expect(displayName("Úrsula Freitas")).toBe("Úrsula Freitas");
     expect(displayName("marília")).toBe("marília");
     expect(displayName("Ana LIMA")).toBe("Ana LIMA");
   });

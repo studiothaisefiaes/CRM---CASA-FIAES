@@ -1,7 +1,7 @@
 import { stripCompleteProfile } from "./complete-profile";
 /**
  * O nome como a tela mostra. Nome que chegou todo em MAIÚSCULAS ("CARLA HENRIQUES", comum em contato salvo no celular) vira Título
- * ("Carla Henriques"), com as partículas em minúsculas ("Bianca Klein dos Henriques"). Misturado ou em minúsculas fica como veio:
+ * ("Carla Henriques"), com as partículas em minúsculas ("Carla Gomes dos Henriques"). Misturado ou em minúsculas fica como veio:
  * pode ser de propósito. Só desenho: o banco guarda o nome original.
  */
 const PARTICLES = new Set(["da", "de", "do", "das", "dos", "e", "d'"]);

@@ -28,9 +28,9 @@ export type ComandaDetail = {
   items: { id: string; kind: string; label: string; qty: number; unitCents: number | null; discountCents: number; totalCents: number | null;
     serviceId?: string | null; professionalId: string | null; professionalName: string | null; appointmentId: string | null; clientPackageId: string | null; commissionCents: number | null;
     originalUnitCents: number | null; priceReason: string | null; discountReason: string | null; fiscalKind: string;
-    /** Até 2, na ordem. Vazio com o recurso desligado. */ assistants: { professionalId: string; name: string; position: 1 | 2 }[];
+    /** Na ordem (até 20, 22/10). Vazio com o recurso desligado. */ assistants: { professionalId: string; name: string; position: number }[];
     /** Item "divida": a comanda que ele quita. */ settlesComandaId: string | null }[];
-  /** Assistente na comanda: ligado em Configurações › Caixa e o limite por serviço. */ assistentes: { on: boolean; max: 1 | 2 };
+  /** Assistente na comanda: ligado em Configurações › Caixa e o limite por serviço. */ assistentes: { on: boolean; max: number };
   payments: { id: string; method: string; valueCents: number; installments: number | null; brand: string | null; note: string | null; customLabel: string | null;
     changeCents: number; sessionOwnerName: string | null; createdByName: string | null;
     /** Retrato da taxa do momento do pagamento (vazio: sem taxa, desligada ou bandeira sem taxa). */ feeBp: number | null; feeCents: number | null }[];
@@ -84,7 +84,7 @@ export async function getComandaDetail(id: string, viewerId: string, perms: read
     items: items.map(({ i, pro }, k) => ({ id: i.id, kind: i.kind, label: i.label, qty: Number(i.qty), unitCents: i.unitCents, discountCents: i.discountCents, totalCents: itemTotal(math[k]),
       serviceId: i.serviceId, professionalId: i.professionalId, professionalName: pro, appointmentId: i.appointmentId, clientPackageId: i.clientPackageId, commissionCents: i.commissionCents,
       originalUnitCents: i.originalUnitCents, priceReason: i.priceReason, discountReason: i.discountReason, fiscalKind: i.fiscalKind,
-      assistants: recursos.assistentes ? assistRows.filter((a) => a.itemId === i.id).map((a) => ({ professionalId: a.professionalId, name: a.name, position: a.position as 1 | 2 })) : [],
+      assistants: recursos.assistentes ? assistRows.filter((a) => a.itemId === i.id).map((a) => ({ professionalId: a.professionalId, name: a.name, position: a.position })) : [],
       settlesComandaId: i.settlesComandaId })),
     assistentes: { on: recursos.assistentes, max: recursos.assistentesMax },
     payments: pays.map(({ p, custom, owner, by }) => ({ id: p.id, method: p.method, valueCents: p.valueCents, installments: p.installments, brand: p.brand, note: p.note, customLabel: custom,

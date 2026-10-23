@@ -1,5 +1,6 @@
 "use client";
 import { Menu } from "@/components/ui/menu";
+import { andList } from "@/lib/after-visit";
 import { CancelComandaDialog } from "./cancel-comanda";
 import { useCallback, useEffect, useId, useState, useTransition } from "react";
 import { FieldError, SheetLabel } from "@/components/queue/action-sheet";
@@ -9,8 +10,9 @@ import { Segmented } from "@/components/ui/segmented";
 import { useToast } from "@/components/ui/toast";
 import {
   addItemAction, addPaymentAction, cancelComandaAction, clientPackagesAction, closeComandaAction, comandaDetailAction, undoCancelarComandaAction, joinTodayAction,
-  openCashAction, removeItemAction, removePaymentAction, reopenComandaAction, setAssistantsAction, setCpfAction, setNotaAction, setDiscountAction, updateItemAction,
+  openCashAction, removeItemAction, removePaymentAction, reopenComandaAction, setAssistantsAction, setClientAction, setCpfAction, setNotaAction, setDiscountAction, updateItemAction,
 } from "@/app/(app)/caixa/actions";
+import { ClientPicker, type PickedClient } from "@/components/agenda/client-picker";
 import type { Approval } from "@/app/(app)/caixa/actions";
 import type { ComandaDetail } from "@/server/queries/caixa";
 import { todayBahia } from "@/lib/agenda";
@@ -24,6 +26,7 @@ import { ClientAlertPopup } from "@/components/contacts/client-alert-popup";
 import type { ClientAlertConfig } from "@/lib/client-alert";
 import { NotaFiscalBlock } from "./nota-fiscal-block";
 import { AssistantsField } from "./assistants-field";
+import { ServicePicker } from "./service-picker";
 import { ItemEditor, ProductPicker, type CatalogProduct } from "./item-editor";
 import { LoyaltyBanner } from "./loyalty-banner";
 import { NotaEscolhaBlock } from "./nota-escolha";
@@ -33,7 +36,8 @@ import { PaymentPanel, type NewPayment } from "./payment-panel";
 const UNDO_MS = 10 * 60_000;
 
 export type ComandaCatalog = {
-  services: { id: string; label: string }[]; professionals: { id: string; name: string; active: boolean; assistantOf?: string | null }[];
+  /** Com o preço de tabela (22/10: aparece na busca de serviço). */ services: { id: string; label: string; priceCents?: number | null }[]; professionals: { id: string; name: string; active: boolean; assistantOf?: string | null }[];
+  /** Quem faz o quê (`professional_services`): a busca de serviço põe os da profissional escolhida no topo (22/10). */ proServices?: Record<string, string[]>;
   packageDefs: { id: string; name: string; priceCents: number | null }[]; canGerir: boolean;
   /** Pôr e tirar assistente (caixa.assistente). Sem isso o campo é só leitura. */ canAssistente?: boolean;
   /** Deixar o que falta como dívida da cliente (caixa.divida). Quitar dívida antiga não depende disto. */ canDivida?: boolean;
@@ -179,6 +183,7 @@ export function ComandaBody({ d, catalog, error, setError, reload, onChanged }: 
         <ClientAlertPopup key={d.id} contactId={d.contactId} scope={d.id} alertNotes={d.alertNotes ?? null} imageUse={d.imageUse ?? null} noImageText={catalog.clientAlert.text} />
       )}
       {error && <p role="alert" className="rounded-[var(--radius-control)] bg-alert-soft px-3 py-2 text-sm text-alert">{error}</p>}
+      {isOpen && !d.visitId && <ChangeClient comandaId={d.id} clientName={d.clientName} onDone={async () => { await reload(); onChanged?.(); }} setError={setError} />}
       {isOpen && d.contactId && d.loyalty && (
         <LoyaltyBanner comandaId={d.id} programs={d.loyalty} items={d.items} services={catalog.services} professionals={catalog.professionals}
           canRedeem={!!catalog.canRedeemLoyalty} onDone={async () => { await reload(); onChanged?.(); }} />
@@ -205,7 +210,7 @@ export function ComandaBody({ d, catalog, error, setError, reload, onChanged }: 
               <div className="min-w-0">
                 <p className="truncate font-medium">{i.label}{i.qty !== 1 ? ` × ${i.qty}` : ""}</p>
                 <p className="text-xs text-muted">
-                  {[isOpen ? null : i.assistants.length ? `${i.professionalName ?? ""} com ${i.assistants.map((a) => a.name).join(" e ")}` : i.professionalName, i.kind === "produto" ? "produto" : null].filter(Boolean).join(" · ")}
+                  {[isOpen ? null : i.assistants.length ? `${i.professionalName ?? ""} com ${andList(i.assistants.map((a) => a.name))}` : i.professionalName, i.kind === "produto" ? "produto" : null].filter(Boolean).join(" · ")}
                   {i.originalUnitCents != null && i.unitCents != null && i.originalUnitCents !== i.unitCents && <> · <s>{money(i.originalUnitCents)}</s>{i.priceReason ? ` (${i.priceReason})` : ""}</>}
                   {i.discountCents > 0 && <> · {`desconto ${money(i.discountCents)}`}{i.discountReason ? ` (${i.discountReason})` : ""}</>}
                 </p>
@@ -381,12 +386,41 @@ function CpfField({ cpf, pending, onSave }: { cpf: string | null; pending: boole
   );
 }
 
-/** Somar item: na comanda aberta e na "Nova comanda" (que só nasce com o primeiro item: QA r58, I-8). */
-export function AddItem({ comanda, catalog, pending, onAdd }: { comanda: Pick<ComandaDetail, "contactId" | "day">; catalog: ComandaCatalog; pending: boolean; onAdd: (i: Record<string, unknown> & { kind: Kind }) => void }) {
+/** A cliente da comanda aberta: "Trocar cliente" (22/10) busca a ficha (nome, telefone, CPF) ou cadastra a cliente nova. */
+function ChangeClient({ comandaId, clientName, onDone, setError }: { comandaId: string; clientName: string; onDone: () => Promise<void>; setError: (e: string | null) => void }) {
+  const [open, setOpen] = useState(false);
+  const [picked, setPicked] = useState<PickedClient | null>(null);
+  const [pending, start] = useTransition();
+  if (!open) return (
+    <div className="flex items-center justify-between gap-3 text-sm">
+      <span className="text-graphite">Cliente: <span className="font-medium text-ink">{clientName}</span></span>
+      <button type="button" className="text-gold-ink hover:underline pointer-coarse:min-h-11" onClick={() => setOpen(true)}>Trocar cliente</button>
+    </div>
+  );
+  const save = () => start(async () => {
+    if (!picked) return;
+    const r = await setClientAction(comandaId, { client: picked.kind === "contato" ? { contactId: picked.contactId } : { name: picked.name, phone: picked.phone } });
+    if (!r.ok) { setError(r.error); return; }
+    setOpen(false); setPicked(null); await onDone();
+  });
+  return (
+    <section aria-label="Trocar cliente" className="flex flex-col gap-2 rounded-[var(--radius-card)] border border-line p-3">
+      <ClientPicker value={picked} onChange={setPicked} />
+      <div className="flex justify-end gap-2">
+        <Button variant="ghost" onClick={() => { setOpen(false); setPicked(null); }}>Cancelar</Button>
+        <Button variant="secondary" disabled={!picked || pending} onClick={save}>Salvar cliente</Button>
+      </div>
+    </section>
+  );
+}
+
+/** Somar item: na comanda aberta e na "Nova comanda" (que só nasce com o primeiro item: QA r58, I-8). `defaultProfessionalId`: a profissional da comanda (22/10). */
+export function AddItem({ comanda, catalog, pending, onAdd, defaultProfessionalId = null }: { comanda: Pick<ComandaDetail, "contactId" | "day">; catalog: ComandaCatalog; pending: boolean; onAdd: (i: Record<string, unknown> & { kind: Kind }) => void; defaultProfessionalId?: string | null }) {
   const fid = useId();
   const [kind, setKind] = useState<Kind>("servico");
   const [serviceId, setServiceId] = useState("");
-  const [pro, setPro] = useState("");
+  const [pro, setPro] = useState(defaultProfessionalId ?? "");
+  useEffect(() => { setPro(defaultProfessionalId ?? ""); }, [defaultProfessionalId]);
   const [label, setLabel] = useState("");
   const [product, setProduct] = useState<CatalogProduct | null>(null);
   const [price, setPrice] = useState("");
@@ -415,12 +449,7 @@ export function AddItem({ comanda, catalog, pending, onAdd }: { comanda: Pick<Co
   return (
     <section aria-label="Somar item" className="flex flex-col gap-2 rounded-[var(--radius-card)] border border-line p-3">
       <Segmented label="Tipo do item" value={kind} onChange={(v) => setKind(v)} options={kinds.map((k) => ({ value: k, label: KIND_LABEL[k] }))} />
-      {kind === "servico" && (
-        <Select aria-label="Serviço" value={serviceId} onChange={(e) => setServiceId(e.target.value)} className="h-11">
-          <option value="">Escolher serviço</option>
-          {catalog.services.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-        </Select>
-      )}
+      {kind === "servico" && <ServicePicker services={catalog.services} proServices={catalog.proServices ?? {}} professionalId={pro || null} value={serviceId || null} onPick={(v) => setServiceId(v ?? "")} />}
       {kind === "produto" && catalogMode && <ProductPicker products={catalog.products ?? []} value={product} onPick={(p) => { setProduct(p); setPrice(""); setReason(""); }} />}
       {kind === "produto" && !catalogMode && <label className="flex flex-col gap-1 text-sm text-graphite">Produto<Input value={label} maxLength={120} onChange={(e) => setLabel(e.target.value)} className="h-11" /></label>}
       {kind === "pacote_venda" && (

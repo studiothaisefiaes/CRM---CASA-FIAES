@@ -42,6 +42,7 @@ describe("assistente na comanda", () => {
   });
 
   it("até 2, sem repetir, nunca a própria profissional, só na comanda aberta; auditado com de/para; igual não audita", async () => {
+    await recursos({ assistentesMax: 2 });
     const { itemId } = await abrir();
     await expect(setItemAssistants(itemId, { professionalIds: [sidney.id, roberta.id, s.bia.id] }, s.caixaRecepcao)).rejects.toThrow("No máximo 2 assistentes por serviço.");
     await expect(setItemAssistants(itemId, { professionalIds: [s.ana.id] }, s.caixaRecepcao)).rejects.toThrow("A assistente não pode ser a própria profissional do serviço.");
@@ -79,7 +80,7 @@ describe("assistente na comanda", () => {
     const novo = await abrir();
     expect(await nomes(novo.c.comandaId)).toEqual([]);
     await expect(setItemAssistants(itemId, { professionalIds: [sidney.id] }, s.caixaRecepcao)).rejects.toThrow("Assistente na comanda está desligado em Configurações › Caixa.");
-    expect((await getComandaDetail(novo.c.comandaId, s.cati.id))!.assistentes).toEqual({ on: false, max: 2 });
+    expect((await getComandaDetail(novo.c.comandaId, s.cati.id))!.assistentes).toEqual({ on: false, max: 20 });
   });
 
   it("limite: com assistentesMax 1 só a Roberta é sugerida e 2 assistentes são recusadas", async () => {
@@ -90,5 +91,19 @@ describe("assistente na comanda", () => {
     await addItem(c.comandaId, { kind: "servico", serviceId: s.corte.id, professionalId: s.ana.id }, s.caixaRecepcao, NOW);
     const [, segundo] = (await getComandaDetail(c.comandaId, s.cati.id))!.items;
     expect(segundo.assistants.map((a) => a.name)).toEqual(["Roberta"]);
+  });
+
+  it("sem limite prático (22/10): 5 assistentes num serviço, na ordem; o horário com 4 auxiliares passa as 4, sem aviso", async () => {
+    const extra = await db.insert(professionals).values(["Carla", "Duda", "Eva"].map((name, k) => ({ name, fullName: `${name} Silva`, agendaPosition: 10 + k }))).returning();
+    const { c, itemId } = await abrir();
+    const ids = [sidney.id, roberta.id, s.bia.id, ...extra.slice(0, 2).map((x) => x.id)];
+    await setItemAssistants(itemId, { professionalIds: ids }, s.caixaRecepcao);
+    expect(await nomes(c.comandaId)).toEqual([["Sidney", 1], ["Roberta", 2], ["Bia", 3], ["Carla", 4], ["Duda", 5]]);
+    const p = await cliente("Paula Souza");
+    const v = await createVisit({ requestKey: randomUUID(), client: { contactId: p.contactId }, startsAt: bahia(15, 10).toISOString(),
+      items: [{ serviceId: s.corte.id, professionalId: s.ana.id, preference: "escolhida", assistantIds: [sidney.id, roberta.id, extra[0].id, extra[2].id] }] }, s.recepcao, bahia(15, 8));
+    const r = await openComandaForAppointment(v.appointmentIds[0], s.caixaRecepcao, NOW);
+    expect(r.warnings ?? []).toEqual([]);
+    expect(await nomes(r.comandaId)).toEqual([["Sidney", 1], ["Roberta", 2], ["Carla", 3], ["Eva", 4]]);
   });
 });

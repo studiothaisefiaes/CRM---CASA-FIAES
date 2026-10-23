@@ -156,7 +156,7 @@ it("Automáticas pausadas: o interruptor aparece com a função ligada e a permi
 /** Mãe (titular, a conversa) e a filha no mesmo celular (0051). */
 const maeEFilha = (filhaNext: object | null, maeNext: object | null = null) => ({ holderId: "c1", holderName: "Thamires Lopes", holderPhone: "+5571990000003", people: [
   { id: "c1", name: "Thamires Lopes", relation: null, isHolder: true, next: maeNext },
-  { id: "c2", name: "Vera Klein", relation: "filha", isHolder: false, next: filhaNext },
+  { id: "c2", name: "Vera Henriques", relation: "filha", isHolder: false, next: filhaNext },
 ] });
 
 it("mãe e filha no mesmo número (21/10): a aba Agora diz quem usa o número e o próximo horário de cada uma", () => {
@@ -166,7 +166,7 @@ it("mãe e filha no mesmo número (21/10): a aba Agora diz quem usa o número e 
   const linhas = within(bloco).getAllByRole("listitem").map((li) => li.textContent);
   expect(linhas[0]).toMatch(/^Thamires.*a conversa é dela.*Sem horário marcado$/);
   expect(linhas[1]).toMatch(/^Bruna.*filha.*Escova com Bia$/);
-  expect(within(bloco).getByRole("link", { name: "Vera Klein" }).getAttribute("href")).toContain("c2");
+  expect(within(bloco).getByRole("link", { name: "Vera Henriques" }).getAttribute("href")).toContain("c2");
 });
 
 it("só ela no número: nada de bloco Neste número", () => {
@@ -179,6 +179,6 @@ it("a mãe sem horário e a filha com horário: o próximo passo mostra o horár
   pane(d({ context: { nextAppointment: null, nextVisit: [] }, stage: { key: "agendado", kind: "agendado" }, deal: { scheduledAt: amanha },
     phonePeople: maeEFilha({ id: "a2", startsAt: amanha, serviceLabel: "Escova", professionalName: "BIA" }) }));
   const card = screen.getByTestId("cartao-horario");
-  expect(card.textContent).toContain("Horário de Vera Klein (filha)");
+  expect(card.textContent).toContain("Horário de Vera Henriques (filha)");
   expect(card.textContent).toContain("Escova · com Bia");
 });

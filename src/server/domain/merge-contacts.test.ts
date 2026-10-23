@@ -168,12 +168,12 @@ describe("unir cadastros: depois de unir, nada recria a que saiu", () => {
   });
 
   it("reimportar o Avec (0004 e 0051 com o telefone e o nome da que saiu) não recria a cliente", async () => {
-    const fica = await contato({ name: "Úrsula Vera Werneck", phoneE164: "+5571966000551", importedFields: { avec: { codigo: "1" } } });
+    const fica = await contato({ name: "Úrsula Vera Pacheco", phoneE164: "+5571966000551", importedFields: { avec: { codigo: "1" } } });
     const sai = await contato({ name: "Paulinha Rocha", phoneE164: "+5571966000552", importedFields: { avec: { codigo: "2" } } });
-    expect(samePerson("Úrsula Vera Werneck", "Paulinha Rocha")).toBe(false); // nomes que a importação trataria como duas pessoas
+    expect(samePerson("Úrsula Vera Pacheco", "Paulinha Rocha")).toBe(false); // nomes que a importação trataria como duas pessoas
     await mergeContacts({ keepId: fica.id, dropId: sai.id }, ana, NOW);
 
-    const r1 = await importa("0004.xlsx", H0004, [cliente0004("Paulinha Rocha", 71966000552), cliente0004("Úrsula Vera Werneck", 71966000551)], { now: NOW });
+    const r1 = await importa("0004.xlsx", H0004, [cliente0004("Paulinha Rocha", 71966000552), cliente0004("Úrsula Vera Pacheco", 71966000551)], { now: NOW });
     expect(r1.summary.contatosNovos).toBe(0);
     const r2 = await importa("0051.xlsx", AVEC_H.reservas, [reserva({ dia: "20/10/2026", hora: "10:00", cliente: "Paulinha Rocha", celular: 71966000552 })], { now: NOW });
     expect(r2.summary.contatosNovos).toBe(0);

@@ -10,8 +10,8 @@ import { afterCaixaChange, lockComandaTx } from "./comandas";
 import { assertCaixaOn } from "./mode";
 import { getCaixaRecursos } from "./recursos";
 
-/** Teto do schema (posição 1 ou 2). O limite de verdade é `assistentesMax` em Configurações › Caixa. */
-export const MAX_ASSISTANTS = 2;
+/** Teto do schema (posição 1 a 20, o mesmo da agenda): "quantas eu quiser" (22/10). O limite de verdade é `assistentesMax` em Configurações › Caixa. */
+export const MAX_ASSISTANTS = 20;
 const WITH_ASSISTANT = ["servico", "pacote_sessao"];
 
 /** Assistentes sugeridas para uma profissional: as ativas cujo `assistant_of` é ela, por nome, até `max`. */
