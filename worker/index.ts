@@ -4,10 +4,12 @@ import { assignWaitingUnowned, offerOverdue } from "../src/server/domain/offers"
 import { ensureMonthlyReport } from "../src/server/reports/pdf";
 process.env.TZ ??= "America/Bahia";
 import { PgBoss } from "pg-boss";
+import { ensureQueue, releaseStaleActive, trimScheduleQueue } from "../src/server/jobs/queues";
 import { runRules } from "../src/server/rules/engine";
 import { sweepClosingWaits, sweepOverdueWaits } from "../src/server/domain/overdue-waits";
 import { syncLidPairs } from "../src/server/whatsapp/lid-pairs";
 import { processHistoryEvents, purgeOldWebhookEvents, retryFailedWebhooks } from "../src/server/whatsapp/webhook";
+import { reconcileMissedMessages } from "../src/server/whatsapp/reconcile";
 import { purgeExpiredSessions } from "../src/server/auth/sessions-store";
 import { pool, db } from "../src/server/db";
 import { contactStats, settings } from "../src/server/db/schema";
@@ -35,15 +37,24 @@ import { processPendingNfce } from "../src/server/domain/fiscal/nfce/nfce";
 
 // Worker do CRM: automações (a cada minuto), reprocessamento de webhooks e limpeza.
 // Roda separado do app: `npm run worker` (no Contabo, sob pm2).
-const QUEUES = { rules: "regras", webhooks: "webhooks-reprocessar", history: "historico-whatsapp", media: "midia-whatsapp", audio: "audio-transcricao", cleanup: "limpeza", retention: "retencao-midia", reminders: "lembretes", outbox: "fila-envios", push: "push-alertas", pushAgenda: "push-agenda", lembreteD1: "lembrete-d1", depoisAtendimento: "depois-atendimento", resumoWhatsapp: "resumo-whatsapp", pedidosOnline: "pedidos-online", distribution: "distribuicao", monthly: "relatorio-mensal", visao: "visao-contatos", retorno: "retorno-sugerido", massa: "envio-massa", notaFiscal: "nota-fiscal" } as const;
+const QUEUES = { rules: "regras", webhooks: "webhooks-reprocessar", history: "historico-whatsapp", media: "midia-whatsapp", audio: "audio-transcricao", cleanup: "limpeza", retention: "retencao-midia", reminders: "lembretes", outbox: "fila-envios", push: "push-alertas", pushAgenda: "push-agenda", lembreteD1: "lembrete-d1", depoisAtendimento: "depois-atendimento", resumoWhatsapp: "resumo-whatsapp", pedidosOnline: "pedidos-online", distribution: "distribuicao", monthly: "relatorio-mensal", visao: "visao-contatos", retorno: "retorno-sugerido", massa: "envio-massa", notaFiscal: "nota-fiscal", reconcile: "reconciliar-whatsapp" } as const;
 
 async function main() {
   const boss = new PgBoss({ connectionString: process.env.DATABASE_URL!, schema: "pgboss" });
   boss.on("error", (e) => console.error("[pg-boss]", e));
   await boss.start();
-  for (const q of Object.values(QUEUES)) await boss.createQueue(q).catch(() => {});
+  // Um job por vez em cada fila e concluídos guardados 1 dia (ver ensureQueue). Uma fila que não acertou não impede as outras.
+  for (const q of Object.values(QUEUES)) {
+    await ensureQueue(boss, q).catch((e) => console.error(`[fila ${q}]`, e));
+    // Job "active" que sobrou de um worker que morreu travaria a fila exclusive por 15 min.
+    const n = await releaseStaleActive(boss, q).catch((e) => { console.error(`[fila ${q}] jobs presos`, e); return 0; });
+    if (n) console.log(`[fila ${q}] ${n} job(s) presos de um worker anterior cancelados`);
+  }
+  await trimScheduleQueue(boss).catch((e) => console.error("[fila dos agendamentos]", e));
   await boss.schedule(QUEUES.rules, "* * * * *", null, { tz: "America/Bahia", singletonKey: "rules" });
   await boss.schedule(QUEUES.webhooks, "*/2 * * * *", null, { tz: "America/Bahia" });
+  // Mensagem que a Evolution guardou e o CRM não recebeu (queda do banco de 22/10): confere as últimas 6 h a cada 5 min.
+  await boss.schedule(QUEUES.reconcile, "*/5 * * * *", null, { tz: "America/Bahia", singletonKey: "reconciliar" });
   await boss.schedule(QUEUES.history, "* * * * *", null, { tz: "America/Bahia", singletonKey: "historico" });
   await boss.schedule(QUEUES.media, "* * * * *", null, { tz: "America/Bahia", singletonKey: "midia" });
   await boss.schedule(QUEUES.audio, "* * * * *", null, { tz: "America/Bahia", singletonKey: "audio" });
@@ -111,6 +122,10 @@ async function main() {
     await beat().catch((e) => console.error("[batida do worker]", e));
   });
   await boss.work(QUEUES.webhooks, async () => { const r = await retryFailedWebhooks(); if (r.tried) console.log("[webhooks]", r); });
+  await boss.work(QUEUES.reconcile, { batchSize: 1 }, async () => {
+    const r = await reconcileMissedMessages().catch((e) => { console.error("[reconciliação]", e instanceof Error ? e.message : e); return null; });
+    if (r?.replayed) console.log("[reconciliação] mensagens que não tinham entrado", r);
+  });
   // Histórico do WhatsApp ao conectar um número: um lote por vez até esvaziar.
   await boss.work(QUEUES.history, { batchSize: 1 }, async () => {
     for (let i = 0; i < 50; i++) { const r = await processHistoryEvents(5); if (r.lotes) console.log("[histórico]", r); if (r.lotes < 5) break; }

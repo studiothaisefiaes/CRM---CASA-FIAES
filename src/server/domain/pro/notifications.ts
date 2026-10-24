@@ -5,7 +5,7 @@ import { effectiveRanges, type WorkHours } from "@/lib/work-hours";
 import { holdUntil, leaveDecisionDraft, notifyDedupeKey, planProNotifications, SILENT_VIA, type AgendaChange, type NotifyDraft } from "@/lib/pro-notify";
 import { getBusinessHours } from "../hours";
 import { getProAppSettings } from "./settings";
-import { webPushSender, type PushSender } from "../../push";
+import { retryPush, webPushSender, type PushSender } from "../../push";
 import type { ProContext } from "../../queries/pro";
 
 /** Aviso que passou mais de 2 h da hora em que podia sair é marcado sem push (evita avalanche quando o push é ligado depois). */
@@ -56,7 +56,8 @@ export async function queueLeaveNotificationTx(tx: Tx, i: { professionalId: stri
 }
 
 /** Job `push-agenda` (worker, a cada minuto): manda o que já pode sair para todos os aparelhos dela. Endereço 404/410 sai, como no push dos alertas. */
-export async function sendPendingProNotifications(sender: PushSender = webPushSender, now = new Date()): Promise<{ sent: number; failed: number; skipped: number }> {
+export async function sendPendingProNotifications(sender: PushSender = webPushSender, now = new Date(), opts: { retryDelayMs?: number } = {}): Promise<{ sent: number; failed: number; skipped: number }> {
+  const send = retryPush(sender, opts.retryDelayMs);
   const due = await db.select().from(proNotifications)
     .where(and(isNull(proNotifications.pushedAt), or(isNull(proNotifications.holdUntil), lte(proNotifications.holdUntil, now))))
     .orderBy(asc(proNotifications.createdAt)).limit(200);
@@ -70,7 +71,7 @@ export async function sendPendingProNotifications(sender: PushSender = webPushSe
     if (now.getTime() - (n.holdUntil ?? n.createdAt).getTime() > PUSH_FRESH_MS) { skipped++; continue; }
     const payload = JSON.stringify({ title: n.title, body: n.body, url: n.url });
     const targets = subs.filter((s) => s.userId === n.userId && !gone.has(s.endpoint));
-    const results = await Promise.allSettled(targets.map((s) => sender(s, payload)));
+    const results = await Promise.allSettled(targets.map((s) => send(s, payload)));
     results.forEach((r, i) => {
       const status = r.status === "fulfilled" ? r.value : 0;
       if (status >= 200 && status < 300) { sent++; ok.add(targets[i].endpoint); }

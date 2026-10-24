@@ -11,7 +11,8 @@ const state: State = (g.__crmRealtime ??= { listeners: new Set(), client: null, 
 async function connect() {
   if (state.client || state.connecting) return;
   state.connecting = true;
-  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  // keepAlive: o LISTEN fica parado esperando aviso; sem ele, uma conexão morta (banco reiniciado) passa despercebida.
+  const client = new Client({ connectionString: process.env.DATABASE_URL, keepAlive: true, keepAliveInitialDelayMillis: 30_000 });
   try {
     await client.connect();
     client.on("notification", (m) => { if (m.channel === "crm_events") state.listeners.forEach((l) => l(m.payload ?? "{}")); });

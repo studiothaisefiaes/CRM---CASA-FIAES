@@ -25,5 +25,18 @@ it("uma automação cuja busca quebra não derruba as outras: o erro vai para o 
   const s = await runRules(T0);
   expect(s.errors.some((e) => e.startsWith("A quebrada"))).toBe(true);
   expect(s.fired).toBe(1);
-  expect((await db.select().from(alerts)).length).toBe(1);
+  expect((await db.select().from(alerts)).filter((x) => x.type !== "automacao_falhou").length).toBe(1);
+});
+
+it("a automação quebrada avisa a gestão uma vez por dia, sem o texto do erro (24/10)", async () => {
+  await saveAutomation(null, { name: "A quebrada", enabled: true, trigger: { type: "parado_dias", useStageLimit: true, days: 1 }, conditions: [], actions: [{ type: "alertar_gestao", message: "{nome} parada" }] }, gestor);
+  await db.execute(sql`alter table stages rename column stale_days to quebrou`);
+  await runRules(T0);
+  await runRules(new Date(T0.getTime() + 60_000)); // a rodada do minuto seguinte não repete
+  const a = await db.select().from(alerts);
+  expect(a.map((x) => [x.audience, x.type])).toEqual([["gestao", "automacao_falhou"]]);
+  expect(a[0].message).toContain("A quebrada");
+  expect(a[0].message).not.toContain("quebrou");
+  await runRules(new Date(T0.getTime() + 86_400_000)); // no dia seguinte, avisa de novo
+  expect((await db.select().from(alerts)).length).toBe(2);
 });

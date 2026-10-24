@@ -55,8 +55,8 @@ it("marca pushed_at mesmo sem inscrição; alerta antigo ou resolvido é marcado
     { userId: ana.id, type: "a", message: "falha", dedupeKey: "o4", waitKey: "w5" },
   ]);
   let n = 0;
-  const r = await sendPushForPendingAlerts(async () => { n++; return 500; });
-  expect(n).toBe(1);
+  const r = await sendPushForPendingAlerts(async () => { n++; return 500; }, { retryDelayMs: 0 });
+  expect(n).toBe(2); // 5xx: uma tentativa a mais (24/10)
   expect(r).toEqual({ sent: 0, failed: 1 });
   expect((await db.select().from(alerts)).every((a) => a.pushedAt !== null)).toBe(true);
   expect(await db.select().from(pushSubscriptions)).toHaveLength(3);

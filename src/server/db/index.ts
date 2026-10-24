@@ -1,12 +1,15 @@
 import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "./schema";
+import { dbStatementTimeoutMs } from "./pool-config";
 
 const globalForDb = globalThis as unknown as { __crmPool?: Pool };
 
 export const pool =
   globalForDb.__crmPool ??
-  new Pool({ connectionString: process.env.DATABASE_URL, max: 15, idleTimeoutMillis: 30_000, connectionTimeoutMillis: 5_000 });
+  // Comando preso (lock, consulta ruim) não segura a conexão para sempre; keepAlive percebe a conexão morta (queda do banco de 22/10).
+  new Pool({ connectionString: process.env.DATABASE_URL, max: 15, idleTimeoutMillis: 30_000, connectionTimeoutMillis: 5_000, keepAlive: true,
+    ...(dbStatementTimeoutMs() ? { statement_timeout: dbStatementTimeoutMs() } : {}) });
 if (process.env.NODE_ENV !== "production") globalForDb.__crmPool = pool;
 
 export const db = drizzle(pool, { schema });

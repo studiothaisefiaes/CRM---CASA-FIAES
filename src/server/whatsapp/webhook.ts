@@ -630,7 +630,12 @@ export async function processHistoryEvents(limit = 20) {
       await db.update(webhookEvents).set({ processedAt: new Date(), error: null }).where(eq(webhookEvents.id, r.id));
     } catch (e) {
       console.error("[histórico] lote falhou", e);
-      await db.update(webhookEvents).set({ error: e instanceof Error ? e.message : String(e), attempts: r.attempts + 1 }).where(eq(webhookEvents.id, r.id));
+      const attempts = r.attempts + 1;
+      await db.update(webhookEvents).set({ error: e instanceof Error ? e.message : String(e), attempts }).where(eq(webhookEvents.id, r.id));
+      // Última tentativa: o lote para de ser processado; a gestão fica sabendo (antes parava em silêncio).
+      if (attempts >= MAX_ATTEMPTS) await db.insert(alerts).values({ audience: "gestao", type: "historico_falhou", severity: "info",
+        message: `Um lote do histórico do WhatsApp (conversas antigas) não pôde ser importado depois de ${attempts} tentativas. As mensagens novas continuam chegando normalmente.`,
+        dedupeKey: `historico:${r.id}` }).onConflictDoNothing();
     }
   }
   if (chats) await emit("historico_importado", { chats, leads });

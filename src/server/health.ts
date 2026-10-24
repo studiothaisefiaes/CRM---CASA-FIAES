@@ -1,6 +1,9 @@
-import { eq } from "drizzle-orm";
+import { monitorEventLoopDelay } from "node:perf_hooks";
+
+type IntervalHistogram = ReturnType<typeof monitorEventLoopDelay>;
+import { eq, sql } from "drizzle-orm";
 import { db, pool } from "@/server/db";
-import { channels, settings } from "@/server/db/schema";
+import { channels, outbox, settings } from "@/server/db/schema";
 import { notRemovedChannel } from "@/server/whatsapp/channel-removed";
 
 export type Health = {
@@ -8,7 +11,17 @@ export type Health = {
   db: boolean;
   worker: { ok: boolean; lastBeatAt: string | null };
   whatsapp: { name: string; status: string }[];
+  /** Só informam (o teto por hora, o modo quieto e o horário seguram envios de propósito): esperando e o mais atrasado, em minutos. */
+  outbox?: { pending: number; overdueMinutes: number | null };
+  /** Quanto o servidor demorou para atender (p99 do atraso do event loop desde a última consulta), em ms. Acima de ~200 a tela trava. */
+  eventLoopP99Ms?: number;
 };
+
+const g = globalThis as unknown as { __crmLoopDelay?: IntervalHistogram };
+function loopDelay(): IntervalHistogram {
+  if (!g.__crmLoopDelay) { g.__crmLoopDelay = monitorEventLoopDelay({ resolution: 20 }); g.__crmLoopDelay.enable(); }
+  return g.__crmLoopDelay;
+}
 
 /** O worker grava a batida a cada minuto; passou disso, considera parado. */
 const WORKER_MAX_AGE_MS = 3 * 60_000;
@@ -31,6 +44,11 @@ export async function getHealth(now = Date.now()): Promise<Health> {
   const { lastBeatAt, ok: workerOk } = await readWorkerBeat(now);
 
   const rows = await db.select({ name: channels.name, status: channels.status }).from(channels).where(notRemovedChannel).orderBy(channels.createdAt);
+  const [ob] = await db.select({ pending: sql<number>`count(*)::int`, oldest: sql<string | null>`min(${outbox.notBefore}) filter (where ${outbox.notBefore} <= ${new Date(now).toISOString()}::timestamptz)` })
+    .from(outbox).where(eq(outbox.status, "pending"));
+  const h = loopDelay();
+  const eventLoopP99Ms = Math.round(h.percentile(99) / 1e6);
+  h.reset();
   const whatsappBad = rows.some((c) => c.status !== "conectado");
 
   return {
@@ -38,5 +56,7 @@ export async function getHealth(now = Date.now()): Promise<Health> {
     db: true,
     worker: { ok: workerOk, lastBeatAt },
     whatsapp: rows,
+    outbox: { pending: ob?.pending ?? 0, overdueMinutes: ob?.oldest ? Math.floor((now - Date.parse(ob.oldest)) / 60_000) : null },
+    eventLoopP99Ms,
   };
 }

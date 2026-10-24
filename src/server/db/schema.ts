@@ -351,6 +351,8 @@ export const messages = pgTable("messages", {
 }, (t) => [
   uniqueIndex("messages_import_key_uq").on(t.contactId, t.importKey).where(sql`${t.importKey} is not null`),
   uniqueIndex("messages_external_uq").on(sql`coalesce(${t.channelId}::text, '')`, t.externalId).where(sql`${t.externalId} is not null`),
+  // Reação, edição, apagada, ligação e enquete procuram só pelo id do WhatsApp (sem o canal): o _uq começa pelo canal (0093).
+  index("messages_external_idx").on(t.externalId).where(sql`${t.externalId} is not null`),
   index("messages_deal_idx").on(t.dealId, t.createdAt),
   // Relatórios por período e histórico do contato (a conversa unificada pelo número).
   index("messages_created_at_idx").on(t.createdAt),
@@ -438,7 +440,12 @@ export const webhookEvents = pgTable("webhook_events", {
   processedAt: timestamp("processed_at", { withTimezone: true }),
   error: text("error"),
   attempts: integer("attempts").notNull().default(0),
-}, (t) => [uniqueIndex("webhook_events_uq").on(t.provider, t.externalId)]);
+}, (t) => [
+  uniqueIndex("webhook_events_uq").on(t.provider, t.externalId),
+  // O worker reprocessa os pendentes; a reconciliação com a Evolution procura o evento pelo id da mensagem (0093).
+  index("webhook_events_pending_idx").on(t.receivedAt).where(sql`${t.processedAt} is null`),
+  index("webhook_events_key_id_idx").on(sql`(${t.payload} #>> '{data,key,id}')`),
+]);
 
 export const settings = pgTable("settings", {
   key: text("key").primaryKey(),

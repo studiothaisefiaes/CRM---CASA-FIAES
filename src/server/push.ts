@@ -28,12 +28,24 @@ export const webPushSender: PushSender = async (sub, payload) => {
   }
 };
 
+/** Falha passageira do serviço de push (5xx, 429 ou erro de rede): espera um pouco e tenta mais uma vez. 404/410 (inscrição morta) não repete. */
+export function retryPush(sender: PushSender, delayMs = 1_500): PushSender {
+  const passageira = (s: number) => s >= 500 || s === 429;
+  return async (sub, payload) => {
+    const first = await sender(sub, payload).then((s) => s, () => 0);
+    if (first !== 0 && !passageira(first)) return first;
+    if (delayMs) await new Promise((r) => setTimeout(r, delayMs));
+    return sender(sub, payload);
+  };
+}
+
 /** Avisos sem espera que também vão por push (o resto fica só no sino). */
 export const PUSH_ALSO: readonly string[] = ["mencao", "agendada_falhou", "mensagem_cliente", "link_remarcar"];
 const PUSH_TITLE: Record<string, string> = { mencao: "Te marcaram numa nota", agendada_falhou: "Mensagem agendada não saiu", mensagem_cliente: "Mensagem de cliente", link_remarcar: "Cliente pediu para remarcar" };
 
 /** Envia o push dos alertas ainda não avisados. Marca `pushedAt` sempre, para não reprocessar. */
-export async function sendPushForPendingAlerts(sender: PushSender = webPushSender): Promise<{ sent: number; failed: number }> {
+export async function sendPushForPendingAlerts(sender: PushSender = webPushSender, opts: { retryDelayMs?: number } = {}): Promise<{ sent: number; failed: number }> {
+  const send = retryPush(sender, opts.retryDelayMs);
   // Saem da fila sem push: resolvidos antes do aviso e tudo que não é alerta de espera
   // (sem wait_key, ou lembrete de tarefa, cuja wait_key é "task:<id>"): ficam só no sistema.
   // Exceção: os tipos de PUSH_ALSO (menção numa nota…) vão por push mesmo sem espera.
@@ -63,7 +75,7 @@ export async function sendPushForPendingAlerts(sender: PushSender = webPushSende
     const payload = JSON.stringify({ title, body: a.message, url: leadHref(a.dealId) });
     const subsOf = targets.flatMap((uid) => byUser.get(uid) ?? []).filter((s) => !gone.has(s.endpoint));
     // Em paralelo: um endpoint lento ou fora do ar não segura os outros aparelhos.
-    const results = await Promise.allSettled(subsOf.map((s) => sender(s, payload)));
+    const results = await Promise.allSettled(subsOf.map((s) => send(s, payload)));
     results.forEach((res, i) => {
       const status = res.status === "fulfilled" ? res.value : 0;
       if (status >= 200 && status < 300) { sent++; ok.add(subsOf[i].endpoint); }

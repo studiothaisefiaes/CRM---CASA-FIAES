@@ -205,7 +205,7 @@ const GROUP_OF: Record<string, AlertGroup> = {
   folga_pedida: "agenda", link_remarcar: "agenda", link_cancelou: "agenda", pedido_online: "agenda",
   oferta: "conversas", assumiu_sua_conversa: "conversas", transferido_para_voce: "conversas", respondida_por_outra: "conversas", mencao: "conversas", ligacao_sem_nota: "conversas", nota_baixa: "conversas",
   aniversario_em_dias: "lembretes", parado_dias: "lembretes", sem_retorno_cliente_dias: "lembretes", data_recontato: "lembretes", data_cobranca: "lembretes", agendamento_em_horas: "lembretes",
-  whatsapp_desconectado: "sistema", whatsapp_sem_conexao: "sistema", envio_automatico_falhou: "sistema", agendada_falhou: "sistema", massa_concluida: "sistema", massa_pausada: "sistema", webhook_falhou: "sistema", mensagem_sem_numero: "sistema",
+  whatsapp_desconectado: "sistema", whatsapp_sem_conexao: "sistema", envio_automatico_falhou: "sistema", agendada_falhou: "sistema", massa_concluida: "sistema", massa_pausada: "sistema", webhook_falhou: "sistema", mensagem_sem_numero: "sistema", historico_falhou: "sistema", automacao_falhou: "sistema",
 };
 export const ALERT_TYPES = Object.keys(GROUP_OF);
 export const alertGroupOf = (type: string): AlertGroup => GROUP_OF[type] ?? "outros";
@@ -275,6 +275,10 @@ export const ALERT_HELP: (HelpEntry & { types: string[] })[] = [
     example: alertText.campaignDone("Retorno de outubro", 85, 2) },
   { id: "alerta-registro", types: ["webhook_falhou", "mensagem_sem_numero"], title: "Mensagem que não entrou no CRM",
     text: "Uma mensagem do WhatsApp não pôde ser registrada. Avise quem cuida do sistema." },
+  { id: "alerta-automacao", types: ["automacao_falhou"], title: "Automação que não está rodando",
+    text: "Uma automação deu erro e foi pulada (as outras continuam). Confira a configuração dela em Configurações › Automações; se estiver certa, avise quem cuida do sistema. O aviso volta uma vez por dia enquanto o erro continuar." },
+  { id: "alerta-historico", types: ["historico_falhou"], title: "Histórico do WhatsApp que não entrou",
+    text: "Um lote de conversas antigas, que o WhatsApp manda ao conectar o número, não pôde ser importado. As mensagens novas continuam chegando. Avise quem cuida do sistema." },
 ];
 
 /* ---------- A página "O que cada aviso quer dizer" ---------- */

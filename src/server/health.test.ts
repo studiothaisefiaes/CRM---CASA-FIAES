@@ -47,3 +47,22 @@ it("canal não removido fora de 'conectado' (ex.: aguardando QR) deixa degraded"
   await db.insert(channels).values({ name: "Recepção", instanceName: "rec", status: "aguardando_qr" });
   expect((await getHealth()).status).toBe("degraded");
 });
+
+it("detalhes: fila de envios (quantos esperando e o mais atrasado) e o atraso do servidor; só informam, não mudam o status (24/10)", async () => {
+  const { outbox } = await import("./db/schema");
+  const { recordInbound } = await import("./domain/deals");
+  await db.insert(settings).values({ key: "worker_heartbeat", value: new Date().toISOString() });
+  await db.insert(channels).values({ name: "Recepção", instanceName: "rec", status: "conectado" });
+  const r = await recordInbound({ channelId: null, externalId: "h1", phoneRaw: "71999990001", body: "oi", at: new Date() });
+  if (!("dealId" in r)) throw new Error("sem lead");
+  const now = Date.now();
+  await db.insert(outbox).values([
+    { dealId: r.dealId, kind: "text", text: "a", notBefore: new Date(now - 45 * 60_000) },
+    { dealId: r.dealId, kind: "text", text: "b", notBefore: new Date(now + 60 * 60_000) },
+    { dealId: r.dealId, kind: "text", text: "c", notBefore: new Date(now - 90 * 60_000), status: "sent" },
+  ]);
+  const h = await getHealth(now);
+  expect(h.status).toBe("ok");
+  expect(h.outbox).toEqual({ pending: 2, overdueMinutes: 45 });
+  expect(typeof h.eventLoopP99Ms).toBe("number");
+});

@@ -417,6 +417,18 @@ export async function fireRule(auto: Automation, trigger: Trigger, acts: Action[
   return out;
 }
 
+/**
+ * Automação que não roda (configuração inválida ou busca que quebra): a gestão fica sabendo, uma vez por dia. Antes ficava só no log do
+ * servidor. Sem o texto do erro (o do banco pode trazer dados da cliente nos parâmetros); o erro completo continua no log.
+ */
+async function warnBrokenAutomation(auto: Automation, why: string, now: Date) {
+  const day = new Date(now.getTime() - 3 * 3600_000).toISOString().slice(0, 10); // dia em Salvador (UTC-3 fixo)
+  await db.insert(alerts).values({ audience: "gestao", type: "automacao_falhou", severity: "info",
+    message: `A automação "${auto.name}" não está rodando: ${why}. Confira em Configurações › Automações ou avise quem cuida do sistema.`,
+    dedupeKey: `automacao:${auto.id}:${day}` }).onConflictDoNothing()
+    .catch((e) => console.error("[regras] não avisou a automação quebrada", e instanceof Error ? e.message : e));
+}
+
 /** Roda todas as automações ligadas (as aposentadas nunca, mesmo que tenham ficado ligadas). Idempotente: a mesma janela nunca dispara duas vezes. */
 export async function runRules(now = new Date()) {
   const list = await db.select().from(automations).where(and(eq(automations.enabled, true), activeAutomationFilter()));
@@ -429,13 +441,13 @@ export async function runRules(now = new Date()) {
     const trigger = triggerSchema.safeParse(auto.trigger);
     const conds = conditionSchema.array().safeParse(auto.conditions);
     const acts = actionSchema.array().safeParse(auto.actions);
-    if (!trigger.success || !conds.success || !acts.success) { summary.errors.push(`${auto.name}: configuração inválida`); continue; }
+    if (!trigger.success || !conds.success || !acts.success) { summary.errors.push(`${auto.name}: configuração inválida`); await warnBrokenAutomation(auto, "a configuração está incompleta", now); continue; }
     // Gatilho por acontecimento (palavra, contato novo, ligação perdida, mídia, etiqueta) roda na hora em que acontece, nunca aqui.
     if (isEventTrigger(trigger.data)) continue;
     // Uma automação cuja busca quebra vai para o resumo; as outras (e as varreduras do worker depois) seguem.
     let cands: Candidate[];
     try { cands = await candidatesFor(trigger.data, now, hours); }
-    catch (e) { summary.errors.push(`${auto.name}: ${e instanceof Error ? e.message : e}`); continue; }
+    catch (e) { summary.errors.push(`${auto.name}: ${e instanceof Error ? e.message : e}`); await warnBrokenAutomation(auto, "deu erro ao procurar as conversas", now); continue; }
     for (const cond of conds.data) if (cond.type === "etapa_em") cands = cands.filter((c) => cond.stages.includes(c.stageKey));
     const others = conds.data.filter((x) => x.type !== "etapa_em");
     for (const c of cands) {
