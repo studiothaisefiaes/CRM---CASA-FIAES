@@ -89,8 +89,10 @@ export function AgendaShell({ nav, day, nowMs, isToday, tools, transfer = null, 
         )}
         <button type="button" onClick={() => setPendTab(pending.noBaixa.length ? "semBaixa" : "espera")} title="Pendências"
           aria-label={count ? `Pendências: ${pending.noBaixa.length ? `${pending.noBaixa.length} sem desfecho, ` : ""}${count} no total` : "Pendências: nada pendente"}
-          className="relative grid size-10 shrink-0 place-items-center rounded-[var(--radius-control)] text-graphite hover:bg-paper-2 hover:text-ink">
+          className="relative inline-flex h-10 min-w-10 shrink-0 items-center justify-center gap-2 rounded-[var(--radius-control)] px-2 text-graphite hover:bg-paper-2 hover:text-ink lg:pr-6">
           <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M4 13h4l1.5 3h5L16 13h4" /><path d="M5.5 5.5 4 13v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5l-1.5-7.5a1 1 0 0 0-1-.8H6.5a1 1 0 0 0-1 .8Z" /></svg>
+          {/* Dono 24/10: as pendências à vista, com o nome escrito (no celular fica só o ícone com a contagem). */}
+          <span aria-hidden className="text-sm font-medium max-lg:hidden">Pendências</span>
           {count > 0 && <span aria-hidden className={cn("absolute right-0.5 top-1 grid h-4 min-w-4 place-items-center rounded-full px-1 text-xs font-bold tabular text-paper", pending.noBaixa.length ? "bg-alert" : "bg-gold-ink")}>{count}</span>}
         </button>
         {personalize && (

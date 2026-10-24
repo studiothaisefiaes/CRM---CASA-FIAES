@@ -32,7 +32,7 @@ test("programadas (desktop): aba na Fila, lista por dia, editar e cancelar com D
 
   await page.setViewportSize({ width: 1366, height: 768 });
   // Hoje (v3): uma linha em Meus combinados; o painel tem as que saem hoje e o "Ver todas".
-  await page.goto("/");
+  await page.goto("/?vista=resumo");
   // A da Zuleica sai daqui a 2 h: depois das 22h já é amanhã, e a linha do Hoje só conta as de hoje (o painel sempre leva a todas).
   const hojeAinda = new Date(Date.now() + 2 * 3_600_000).toLocaleDateString("en-CA", { timeZone: "America/Bahia" }) === new Date().toLocaleDateString("en-CA", { timeZone: "America/Bahia" });
   if (hojeAinda) await expect(page.getByRole("region", { name: "Meus combinados" })).toContainText("Mensagens programadas hoje");

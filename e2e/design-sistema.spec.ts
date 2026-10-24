@@ -58,7 +58,7 @@ test("Relatórios: abas logo abaixo do título e filtros/exportação numa linha
 test("Caixa fechado: só o convite para abrir, sem comanda nem vermelho; o Hoje lembra com 'Abrir caixa' (r68 #5, psico #6)", async ({ page }) => {
   await caixaNoCrm();
   await login(page);
-  await page.goto("/");
+  await page.goto("/?vista=resumo");
   await expect(page.getByRole("status").filter({ hasText: "O caixa está fechado." })).toBeVisible();
   await page.getByRole("link", { name: "Abrir caixa" }).click();
   await expect(page).toHaveURL(/\/caixa$/);

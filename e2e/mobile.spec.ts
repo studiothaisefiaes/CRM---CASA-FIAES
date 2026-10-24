@@ -4,7 +4,7 @@ import { login, simulate, ageLead, e2eSql, shot } from "./helpers";
 test("celular: navegação inferior, fila e conversa sem rolagem lateral", async ({ page }) => {
   await login(page);
   await simulate(page, { phone: "71 99700-1010", name: "Bruna Lima", text: "Oi, tudo bem? Queria agendar." });
-  await page.goto("/");
+  await page.goto("/?vista=resumo");
   const nav = page.getByRole("navigation", { name: "Principal" }).last();
   // Hoje, Conversas, Agenda e Caixa (o reset do e2e liga o caixa no CRM, 6C), + o botão Mais (Clientes e o grupo Gestão)
   await expect(nav.getByRole("link")).toHaveCount(4);
@@ -30,7 +30,7 @@ test("celular: sino abre o painel embaixo e tocar no alerta abre o lead", async 
   await login(page);
   await simulate(page, { phone: "71 99700-3030", name: "Carla Mendes", text: "Oi, tem horário amanhã?" });
   ageLead("+5571997003030", 31); // passa dos 30 min: o alerta escala e entra no sino da gestão (Lote 0)
-  await page.goto("/");
+  await page.goto("/?vista=resumo");
   const bell = page.getByRole("button", { name: /Alertas, [1-9]/ }).first();
   expect((await bell.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await bell.tap();

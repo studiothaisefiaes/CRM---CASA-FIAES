@@ -13,7 +13,7 @@ test("Serviços (desktop): no menu, preço na linha, painel grande com tudo, nov
   const antes = await svc("Corte");
   try {
     await login(page);
-    await page.goto("/");
+    await page.goto("/?vista=resumo");
     await page.getByRole("navigation", { name: "Principal" }).first().getByRole("link", { name: "Serviços e pacotes" }).click();
     await expect(page).toHaveURL(/\/servicos$/);
     await expect(page.getByRole("heading", { level: 1, name: "Serviços" })).toBeVisible();
@@ -87,7 +87,7 @@ test("Serviços: a atendente só consulta (sem Novo serviço, sem campo de preç
 test("Serviços (celular 390): sem rolagem lateral, no Mais, preço e painel em tela cheia", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await login(page);
-  await page.goto("/");
+  await page.goto("/?vista=resumo");
   await page.getByRole("button", { name: "Mais" }).click();
   await page.getByRole("dialog", { name: "Mais" }).getByRole("link", { name: "Serviços e pacotes" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Serviços" })).toBeVisible();
@@ -107,7 +107,7 @@ test("Pacotes (desktop): abas no topo, Novo pacote no painel grande, cartão com
   const corte = await svc("Corte");
   try {
     await login(page);
-    await page.goto("/");
+    await page.goto("/?vista=resumo");
     await expect(page.getByRole("navigation", { name: "Principal" }).first().getByRole("link", { name: "Pacotes", exact: true })).toHaveCount(0);
     await page.goto("/servicos");
     const abas = page.getByRole("navigation", { name: "Serviços e pacotes" });

@@ -27,7 +27,7 @@ test("conversa, Quadro, Jornada, Hoje, sino, Agenda e Relatórios levam à ficha
   await naFicha(page, id);
 
   // Hoje › Esperando resposta (a cliente escreveu e ninguém respondeu): o bloco é um resumo; a lista com a ficha fica no painel.
-  await page.goto("/");
+  await page.goto("/?vista=resumo");
   await page.getByRole("button", { name: "Abrir as conversas: Esperando resposta" }).click();
   await page.getByRole("dialog", { name: "Esperando resposta" }).getByRole("link", { name: "Ficha de Olga Fictícia" }).click();
   await naFicha(page, id);
@@ -35,11 +35,11 @@ test("conversa, Quadro, Jornada, Hoje, sino, Agenda e Relatórios levam à ficha
   // Hoje › Meus combinados e Aniversário hoje (no painel de cada bloco)
   await e2eSql(`insert into tasks (deal_id, contact_id, kind, title, due_at, assignee_id) select $1, $2, 'proxima_acao', 'Mandar valores Olga', now() + interval '1 hour', u.id from users u where u.email = 'gestao@e2e.local'`, [deal, id]);
   await e2eSql("update contacts set birth_day = extract(day from (now() at time zone 'America/Bahia'))::int, birth_month = extract(month from (now() at time zone 'America/Bahia'))::int where id = $1", [id]);
-  await page.goto("/");
+  await page.goto("/?vista=resumo");
   await page.getByRole("button", { name: "Ver todos: Meus combinados" }).click();
   await page.getByRole("dialog", { name: "Meus combinados" }).getByRole("link", { name: "Ficha de Olga Fictícia" }).click();
   await naFicha(page, id);
-  await page.goto("/");
+  await page.goto("/?vista=resumo");
   await page.getByRole("button", { name: "Ver todos: Aniversário hoje" }).click();
   await page.getByRole("dialog", { name: "Aniversário hoje" }).getByRole("link", { name: /Ficha de Olga Fictícia/ }).first().click();
   await naFicha(page, id);
@@ -56,7 +56,7 @@ test("conversa, Quadro, Jornada, Hoje, sino, Agenda e Relatórios levam à ficha
 
   // Sino: aviso de espera, botão "Ficha"
   ageLead(fone(1), 40);
-  await page.goto("/");
+  await page.goto("/?vista=resumo");
   await page.getByRole("button", { name: /^Alertas/ }).click();
   await page.getByTestId("alerts-panel").getByRole("link", { name: "Ficha de Olga Fictícia" }).first().click();
   await naFicha(page, id);

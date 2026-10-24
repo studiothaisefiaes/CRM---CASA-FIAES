@@ -6,9 +6,9 @@ const perfil = (k: string) => SYSTEM_PROFILES.find((p) => p.key === k)!.permissi
 const hrefs = (t: { href: string }[]) => t.map((x) => x.href);
 
 describe("abas dentro das telas", () => {
-  it("Hoje: Resumo · Recepção · Ao vivo para quem atende; sem atendimento.ver, nada", () => {
-    expect(hojeTabs(perfil("atendente")).map((t) => t.label)).toEqual(["Resumo", "Recepção", "Ao vivo"]);
-    expect(hrefs(hojeTabs(perfil("atendente")))).toEqual(["/", "/?vista=recepcao", "/ao-vivo"]);
+  it("Hoje: Recepção (abre direto, dono 24/10) · Resumo · Ao vivo para quem atende; sem atendimento.ver, nada", () => {
+    expect(hojeTabs(perfil("atendente")).map((t) => t.label)).toEqual(["Recepção", "Resumo", "Ao vivo"]);
+    expect(hrefs(hojeTabs(perfil("atendente")))).toEqual(["/", "/?vista=resumo", "/ao-vivo"]);
     expect(hojeTabs(perfil("profissional"))).toEqual([]);
   });
   it("Clientes: Clientes · Com pacote (atendimento.ver) · Fidelidade (função ligada)", () => {

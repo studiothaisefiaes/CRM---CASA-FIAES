@@ -97,7 +97,7 @@ export async function markProposalSent(dealId: string, userId: string | null, no
 export const NO_REPLY_REASON = "Não respondeu mais";
 
 /** Perdido "Não respondeu mais". Recontato em 30 dias só na 1ª vez deste lead (a automação "recontato" o devolve para Em conversa). */
-async function loseNoReplyTx(tx: Tx, dealId: string, now: Date, hours: BusinessHours) {
+export async function loseNoReplyTx(tx: Tx, dealId: string, now: Date, hours: BusinessHours) {
   await tx.insert(lists).values({ kind: "lost_reason", label: NO_REPLY_REASON, position: 99 }).onConflictDoNothing();
   const [reason] = await tx.select({ id: lists.id }).from(lists).where(and(eq(lists.kind, "lost_reason"), eq(lists.label, NO_REPLY_REASON)));
   const before = await tx.select({ id: dealEvents.id }).from(dealEvents)

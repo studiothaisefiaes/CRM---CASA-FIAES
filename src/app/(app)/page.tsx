@@ -27,6 +27,8 @@ import { SectionTabs } from "@/components/shell/section-tabs";
 import { hojeTabs } from "@/lib/section-tabs";
 import { greeting } from "@/components/today/hoje-topo";
 import { DayTable } from "@/components/today/day-table";
+import { AgendaPendingStrip } from "@/components/today/agenda-pending-strip";
+import { agendaPendingSummary } from "@/server/queries/agenda-pending";
 
 export const metadata = { title: "Hoje" };
 
@@ -78,9 +80,12 @@ export default async function HojePage({ searchParams }: PageProps<"/">) {
   );
   const vapid = vapidConfig();
   const nowMs = now.getTime();
-  const tabs = <SectionTabs label="Hoje" tabs={hojeTabs(user.perms)} current={sp.vista === "recepcao" ? "recepcao" : "resumo"} className="mt-5" />;
-  // Recepção: o dia inteiro na tabela (a mesma do "Ver o dia todo" do Resumo).
-  if (sp.vista === "recepcao") {
+  // Hoje abre na Recepção (o balcão, dono 24/10); o Resumo é ?vista=resumo.
+  const resumo = sp.vista === "resumo";
+  const tabs = <SectionTabs label="Hoje" tabs={hojeTabs(user.perms)} current={resumo ? "resumo" : "recepcao"} className="mt-5" />;
+  // Recepção: as pendências da Agenda à vista e o dia inteiro na tabela (a mesma do "Ver o dia todo" do Resumo).
+  if (!resumo) {
+    const pend = await agendaPendingSummary(user, now);
     const recepcao = (
       <main className="mx-auto w-full max-w-[1480px] px-5 lg:px-8 pt-6 lg:pt-9 pb-12">
         {notice}
@@ -89,7 +94,8 @@ export default async function HojePage({ searchParams }: PageProps<"/">) {
         <p className="mt-2 text-sm text-muted"><span className="inline-block first-letter:uppercase">{date}.</span> Todo mundo que vem hoje, na ordem de chegada.</p>
         <LiveRefresh scopes={["team", "agenda", "caixa"]} />
         {tabs}
-        <div className="mt-5"><DayTable visits={visits} nowMs={nowMs} caixaOn={caixaOn} canMark={can(user.perms, "agenda.marcar")} agendaMode={agendaMode} /></div>
+        <div className="mt-5"><AgendaPendingStrip items={pend} /></div>
+        <div className="mt-4"><DayTable visits={visits} nowMs={nowMs} caixaOn={caixaOn} canMark={can(user.perms, "agenda.marcar")} agendaMode={agendaMode} /></div>
       </main>
     );
     return comandaCatalog ? <ComandaProvider catalog={comandaCatalog}>{recepcao}</ComandaProvider> : recepcao;

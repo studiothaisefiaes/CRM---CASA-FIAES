@@ -3,10 +3,10 @@ import { can, canSeeAvecReports, canSeeSalon } from "./permissions";
 /** Uma visão dentro de uma tela (pedido do dono, 18/10: o menu lateral não tem subtópicos; a troca de visões mora na tela). */
 export type SectionTab = { key: string; label: string; href: string };
 
-/** Hoje: Resumo · Recepção · Ao vivo. Sem atendimento.ver a tela é só o aviso (sem abas). */
+/** Hoje: Recepção (abre direto: o balcão, dono 24/10) · Resumo · Ao vivo. Sem atendimento.ver a tela é só o aviso (sem abas). */
 export function hojeTabs(perms: readonly string[]): SectionTab[] {
   if (!can(perms, "atendimento.ver")) return [];
-  return [{ key: "resumo", label: "Resumo", href: "/" }, { key: "recepcao", label: "Recepção", href: "/?vista=recepcao" }, { key: "ao-vivo", label: "Ao vivo", href: "/ao-vivo" }];
+  return [{ key: "recepcao", label: "Recepção", href: "/" }, { key: "resumo", label: "Resumo", href: "/?vista=resumo" }, { key: "ao-vivo", label: "Ao vivo", href: "/ao-vivo" }];
 }
 
 /**

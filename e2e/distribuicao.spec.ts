@@ -67,7 +67,7 @@ test.describe("distribuição automática", () => {
       // o tempo passa também para o histórico do lead (a entrega na chegada não pode parecer "agora")
       await e2eSql("update deal_events set created_at = created_at - interval '12 minutes' where deal_id = (select id from deals where contact_id = (select id from contacts where phone_e164 = '+5571997010201'))");
       ageLead("+5571997010201", 12); // motor cria o atraso; em seguida, a oferta
-      await page.goto("/");
+      await page.goto("/?vista=resumo");
       const bell = page.getByRole("button", { name: /Alertas/ }).first();
       await bell.click();
       const oferta = page.getByRole("dialog", { name: "Alertas" }).getByRole("listitem").filter({ hasText: "A dona não respondeu. Pode assumir Olga Oferta?" });

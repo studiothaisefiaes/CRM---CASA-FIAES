@@ -134,7 +134,7 @@ test.describe("lado da equipe (computador)", () => {
     await e2eSql(`insert into alerts (user_id, audience, type, severity, message, dedupe_key) values ($1, 'responsavel', 'pedido_online', 'info',
       'Olivia pediu Corte E2E pelo site. Confirme ou recuse na Agenda.', $2) on conflict do nothing`, [me.id, `online:${v.id}:${me.id}`]);
     await login(page);
-    await page.goto("/");
+    await page.goto("/?vista=resumo");
     const avisos = page.getByRole("region", { name: "Avisos para você" });
     await avisos.getByRole("link", { name: /Olivia pediu Corte E2E/ }).click();
     await expect(page).toHaveURL(/\/agenda\?pedidos=site/);

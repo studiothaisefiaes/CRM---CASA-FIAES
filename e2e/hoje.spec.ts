@@ -44,7 +44,7 @@ test("gestão: o resumo fica recolhido até as 19h e abre em destaque depois", a
   await semPortal(page);
   const topo = async (id: string) => (await page.getByTestId(id).boundingBox())!.y;
 
-  await page.goto(`/?agora=${encodeURIComponent(em("10:00"))}`);
+  await page.goto(`/?vista=resumo&agora=${encodeURIComponent(em("10:00"))}`);
   await semPortal(page);
   const resumo = page.getByTestId("resumo-do-dia");
   await expect(resumo).toHaveAttribute("data-destaque", "nao");
@@ -58,7 +58,7 @@ test("gestão: o resumo fica recolhido até as 19h e abre em destaque depois", a
   await expect(resumo.getByRole("button", { name: "Copiar texto" })).toBeVisible();
   await expect(resumo.getByText(/^Resumo de hoje/)).toBeVisible();
 
-  await page.goto(`/?agora=${encodeURIComponent(em("20:00"))}`);
+  await page.goto(`/?vista=resumo&agora=${encodeURIComponent(em("20:00"))}`);
   await semPortal(page);
   await expect(resumo).toHaveAttribute("data-destaque", "sim");
   await expect(resumo.getByText("Resumo do dia")).toBeVisible();
@@ -72,7 +72,7 @@ test("o contador de atrasados (no painel de Esperando resposta) é um link para 
   await login(page);
   await simulate(page, { phone: "71 99795-0901", name: "Paula Atrasada", text: "Oi, quero horário." });
   ageLead("+5571997950901", 11);
-  await page.goto("/");
+  await page.goto("/?vista=resumo");
   const bloco = page.getByRole("region", { name: "Esperando resposta" });
   await expect(bloco).toContainText("1 atrasado");
   await expect(page).toHaveTitle(/\(1\) atrasados/);
@@ -94,7 +94,7 @@ test("gestão: comparecimentos ficam no painel de Meus combinados; Compareceu e 
   const a = await agendado(1, "Bianca Conferida", ontem("15:00"));
   const b = await agendado(2, "Carla Faltosa", ontem("16:00"));
   await login(page);
-  await page.goto("/");
+  await page.goto("/?vista=resumo");
   await expect(page.getByRole("region", { name: "Meus combinados" })).toContainText("Comparecimentos para conferir");
   await page.getByRole("button", { name: "Ver todos: Meus combinados" }).click();
   const secao = page.getByRole("dialog", { name: "Meus combinados" }).getByRole("region", { name: "Comparecimentos para conferir" });
@@ -191,7 +191,7 @@ test("O dia na Casa: 'Ver o dia todo' abre a tabela; filtro Na Casa; Chegou na l
   await ins(String(na.id), "Dia Manoela", "Maiara", "Escova", cedo, "chegou");
   await ins(null, "CLIENTE PADRÃO", "Carla", "Corte", daqui, "confirmado");
   await login(page);
-  await page.goto("/");
+  await page.goto("/?vista=resumo");
   const bloco = page.getByRole("region", { name: "O dia na Casa" });
   await expect(bloco.getByTestId("dia-numeros")).toBeVisible();
   await bloco.getByRole("button", { name: "Ver o dia todo: O dia na Casa" }).click();

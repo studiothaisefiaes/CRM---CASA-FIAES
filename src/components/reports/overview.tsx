@@ -21,7 +21,7 @@ export function OverviewTab({ data: d, period, qs, gestor, scope }: { data: Over
   const csv = (tipo: string, label: string) => ({ href: `/api/relatorios/${tipo}?${qs}`, label });
   return (
     <div className="flex flex-col gap-10">
-      <p className="-mb-4 text-sm text-graphite">O resumo do dia fica em <Link href="/" className="font-medium text-gold-ink underline underline-offset-4">Hoje</Link>.</p>
+      <p className="-mb-4 text-sm text-graphite">O resumo do dia fica em <Link href="/?vista=resumo" className="font-medium text-gold-ink underline underline-offset-4">Hoje</Link>.</p>
       <Section id="numeros" title="Os números do período" csv={csv("numeros", "números do período")} legend="numeros">
         <ExecutiveNumbers numbers={d.numbers} slaHit={d.response.slaHit} slaN={d.response.n} previousLabel={PREVIOUS_LABEL[period]} />
       </Section>

@@ -15,15 +15,15 @@ test.describe("menu limpo", () => {
     }
   });
 
-  test("Hoje: Resumo · Recepção · Ao vivo dentro da tela", async ({ page }) => {
+  test("Hoje: Recepção (abre direto) · Resumo · Ao vivo dentro da tela", async ({ page }) => {
     await login(page);
     await page.goto("/");
     const abas = page.getByRole("navigation", { name: "Hoje" });
-    await expect(abas.getByRole("link")).toHaveText(["Resumo", "Recepção", "Ao vivo"]);
-    await expect(abas.getByRole("link", { name: "Resumo" })).toHaveAttribute("aria-current", "page");
-    await abas.getByRole("link", { name: "Recepção" }).click();
-    await expect(page).toHaveURL(/\/\?vista=recepcao$/);
-    await expect(page.getByRole("navigation", { name: "Hoje" }).getByRole("link", { name: "Recepção" })).toHaveAttribute("aria-current", "page");
+    await expect(abas.getByRole("link")).toHaveText(["Recepção", "Resumo", "Ao vivo"]);
+    await expect(abas.getByRole("link", { name: "Recepção" })).toHaveAttribute("aria-current", "page");
+    await abas.getByRole("link", { name: "Resumo" }).click();
+    await expect(page).toHaveURL(/\/\?vista=resumo$/);
+    await expect(page.getByRole("navigation", { name: "Hoje" }).getByRole("link", { name: "Resumo" })).toHaveAttribute("aria-current", "page");
     await page.getByRole("navigation", { name: "Hoje" }).getByRole("link", { name: "Ao vivo" }).click();
     await expect(page).toHaveURL(/\/ao-vivo$/);
     await expect(page.getByRole("navigation", { name: "Principal" }).first().getByRole("link", { name: "Hoje" })).toHaveAttribute("aria-current", "page");

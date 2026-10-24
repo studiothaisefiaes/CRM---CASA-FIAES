@@ -21,7 +21,7 @@ test("título e som: lead que estoura o prazo muda a aba uma vez só", async ({ 
   await page.addInitScript(countBeeps);
   await login(page);
   await simulate(page, { phone: "71 99700-5001", name: "Paula Neri", text: "Oi, quero horário." });
-  await page.goto("/");
+  await page.goto("/?vista=resumo");
   await expect(page.getByTestId("late-live")).toBeAttached();
   const base = await page.title();
   expect(base).not.toContain("atrasados");
@@ -54,7 +54,7 @@ test("aba em segundo plano: 2 -> 1 -> 0 atrasados atualiza título e som sem rec
   await login(page);
   await simulate(page, { phone: "71 99700-5011", name: "Rita Alves", text: "Oi!" });
   await simulate(page, { phone: "71 99700-5012", name: "Sara Lopes", text: "Oi!" });
-  await page.goto("/");
+  await page.goto("/?vista=resumo");
   const base = await page.title();
   const beeps = () => page.evaluate(() => (window as unknown as { __beeps: number }).__beeps);
   ageLead("+5571997005011", 11);
@@ -118,7 +118,7 @@ test("sino no desktop: Esc fecha e devolve o foco", async ({ page }) => {
   await login(page);
   await simulate(page, { phone: "71 99700-5002", name: "Lia Dantas", text: "Oi!" });
   ageLead("+5571997005002", 31); // passa dos 30 min: o alerta escala e entra no sino da gestão (Lote 0)
-  await page.goto("/");
+  await page.goto("/?vista=resumo");
   const bell = page.getByRole("button", { name: /Alertas, [1-9]/ }).first();
   await bell.click();
   const panel = page.getByRole("dialog", { name: "Alertas" });
