@@ -22,7 +22,7 @@ export function LibraryEditor({ items, suggestedTags, enabled, maxMb, canManage 
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">Que arquivos a Casa manda com frequência?</h2>
-          <p className="mt-1 max-w-[60ch] text-sm text-graphite">Foto, vídeo MP4, PDF ou áudio de até {maxMb} MB. Na conversa, o clipe tem “Da biblioteca”: a atendente escolhe e envia em um toque.</p>
+          <p className="mt-1 max-w-[60ch] text-sm text-graphite">Foto, vídeo MP4, PDF ou áudio de até {maxMb} MB (o vídeo é comprimido ao subir: pode escolher um de até 64 MB). Na conversa, o clipe tem “Da biblioteca”: a atendente escolhe e envia em um toque.</p>
         </div>
         {canManage && enabled && <Button onClick={() => setAdding(true)}>Subir arquivo</Button>}
       </div>
@@ -73,6 +73,9 @@ function TagsField({ value, onChange, suggested }: { value: string; onChange: (v
   );
 }
 
+/** Vídeo pelo tipo ou, quando o navegador não diz o tipo (.mov no Windows), pela extensão. */
+const isVideo = (f: File) => f.type.startsWith("video/") || /\.(mp4|m4v|mov)$/i.test(f.name);
+
 function AddDialog({ open, onClose, suggestedTags, maxMb }: { open: boolean; onClose: () => void; suggestedTags: string[]; maxMb: number }) {
   const file = useRef<HTMLInputElement>(null);
   const [name, setName] = useState(""); const [caption, setCaption] = useState(""); const [tags, setTags] = useState(""); const [picked, setPicked] = useState<File | null>(null);
@@ -80,23 +83,27 @@ function AddDialog({ open, onClose, suggestedTags, maxMb }: { open: boolean; onC
   const [pending, start] = useTransition(); const toast = useToast();
   const submit = () => start(async () => {
     if (!picked) return setErr("Escolha um arquivo.");
-    if (picked.size > maxMb * 1024 * 1024) return setErr(`O arquivo passa de ${maxMb} MB. Escolha um menor.`);
+    // Vídeo vai até 64 MB: o servidor comprime e confere o limite depois (whatsapp/video.ts).
+    if (isVideo(picked) ? picked.size > 64 * 1024 * 1024 : picked.size > maxMb * 1024 * 1024)
+      return setErr(isVideo(picked) ? "O vídeo passa de 64 MB. Corte um pedaço e tente de novo." : `O arquivo passa de ${maxMb} MB. Escolha um menor.`);
     const form = new FormData();
     form.set("file", picked); form.set("name", name.trim() || picked.name.replace(/\.[^.]+$/, "")); form.set("caption", caption); form.set("tags", JSON.stringify(parseTags(tags)));
-    const r = await uploadLibraryFileAction(form);
+    // A ação pode nem responder (internet caiu no meio de um vídeo grande): erro claro em vez de a tela quebrar.
+    const r = await uploadLibraryFileAction(form).catch(() => ({ ok: false as const, error: "Não deu para subir o arquivo. Confira a internet e tente de novo." }));
     if (!r.ok) return setErr(r.error);
     toast("Arquivo na Biblioteca", "ok"); setPicked(null); setName(""); setCaption(""); setTags(""); setErr(null); onClose();
   });
   return (
     <Dialog open={open} onClose={onClose} title="Qual arquivo você quer subir?" footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button loading={pending} onClick={submit}>Subir</Button></>}>
       <div className="flex flex-col gap-3">
-        <input ref={file} type="file" hidden accept="image/*,video/mp4,application/pdf,audio/*" aria-label="Escolher arquivo" onChange={(e) => { setPicked(e.target.files?.[0] ?? null); setErr(null); }} />
+        <input ref={file} type="file" hidden accept="image/*,video/mp4,video/quicktime,application/pdf,audio/*" aria-label="Escolher arquivo" onChange={(e) => { setPicked(e.target.files?.[0] ?? null); setErr(null); }} />
         <Button variant="secondary" onClick={() => file.current?.click()}>{picked ? picked.name : "Escolher foto, vídeo MP4, PDF ou áudio"}</Button>
         <div><label className="block text-sm font-medium text-graphite" htmlFor="lib-nome">Nome</label>
           <Input id="lib-nome" className="mt-1.5" value={name} onChange={(e) => setName(e.target.value)} maxLength={120} placeholder="Ex.: Tabela de preços" /></div>
         <div><label className="block text-sm font-medium text-graphite" htmlFor="lib-legenda">Legenda (vai junto com o arquivo)</label>
           <Textarea id="lib-legenda" className="mt-1.5" value={caption} onChange={(e) => setCaption(e.target.value)} maxLength={1000} /></div>
         <TagsField value={tags} onChange={setTags} suggested={suggestedTags} />
+        {pending && picked && isVideo(picked) && <p role="status" className="text-sm text-graphite">Enviando o vídeo e deixando mais leve… Pode levar 1 ou 2 minutos. Não feche esta tela.</p>}
         {err && <p role="alert" className="text-sm text-alert">{err}</p>}
       </div>
     </Dialog>

@@ -6,6 +6,7 @@ import { db } from "../db";
 import { auditLog, libraryFiles } from "../db/schema";
 import { save as saveMediaFile } from "../whatsapp/media";
 import { safeMediaFile } from "../whatsapp/retention";
+import { shrinkVideo } from "../whatsapp/video";
 import { sendMediaFromCrm, type Upload, planMedia } from "./send";
 import { assertFuncaoLigada, funcaoParam } from "./funcoes";
 import { UserFacingError } from "./errors";
@@ -30,19 +31,23 @@ function cleanMeta(meta: { name: string; caption?: string | null; tags: string[]
   return { name, caption, tags };
 }
 
-/** Sobe um arquivo para a Biblioteca: foto, vídeo MP4, PDF ou áudio; tipo conferido pelos bytes; tamanho limitado pela função (até 16 MB). */
+/**
+ * Sobe um arquivo para a Biblioteca: foto, vídeo MP4, PDF ou áudio; tipo conferido pelos bytes; tamanho limitado pela função (até 16 MB).
+ * Vídeo (24/10): aceita até 64 MB bruto e é guardado comprimido (whatsapp/video.ts); o limite da função vale depois de comprimir.
+ */
 export async function uploadLibraryFile(file: Upload, meta: { name: string; caption?: string | null; tags: string[] }, userId: string): Promise<{ id: string }> {
   await assertFuncaoLigada("biblioteca");
   const maxMb = await funcaoParam("biblioteca", "tamanho_max_mb");
   if (!file.data.length) throw new UserFacingError("O arquivo está vazio.");
-  if (file.data.length > maxMb * 1024 * 1024) throw new UserFacingError(`O arquivo passa de ${maxMb} MB. Escolha um menor.`);
   const plan = planMedia(file);
+  if (plan?.kind !== "video" && file.data.length > maxMb * 1024 * 1024) throw new UserFacingError(`O arquivo passa de ${maxMb} MB. Escolha um menor.`);
   if (!plan) throw new UserFacingError("Esse tipo de arquivo não pode ir pelo WhatsApp. Use foto, vídeo MP4, PDF ou áudio.");
   const m = cleanMeta(meta);
   if (m.caption && plan.kind === "audio") throw new UserFacingError("Áudio não aceita legenda.");
+  const data = plan.kind === "video" ? await shrinkVideo(file.data, maxMb * 1024 * 1024) : file.data;
   const id = randomUUID();
-  const stored = await saveMediaFile(`${LIBRARY_DIR}/${id}.${plan.ext}`, file.data);
-  await db.insert(libraryFiles).values({ id, name: m.name, caption: m.caption, tags: m.tags, path: stored, mime: plan.mime, kind: plan.kind, sizeBytes: file.data.length, createdBy: userId });
+  const stored = await saveMediaFile(`${LIBRARY_DIR}/${id}.${plan.ext}`, data);
+  await db.insert(libraryFiles).values({ id, name: m.name, caption: m.caption, tags: m.tags, path: stored, mime: plan.mime, kind: plan.kind, sizeBytes: data.length, createdBy: userId });
   await audit(userId, "subiu", id, { nome: m.name, tipo: plan.mime, etiquetas: m.tags });
   return { id };
 }
@@ -95,11 +100,14 @@ export async function readLibraryFile(id: string): Promise<{ data: Buffer; mime:
   catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return null; throw e; }
 }
 
-/** Envio na hora pela atendente: o mesmo caminho de `sendMediaFromCrm` (assinatura, pendente, eco, visto azul). Legenda: a digitada ou a da Biblioteca. */
+/**
+ * Envio na hora pela atendente: o mesmo caminho de `sendMediaFromCrm` (pendente, eco, visto azul). Legenda: a digitada ou a da Biblioteca.
+ * A mensagem aponta para o arquivo da Biblioteca (sem cópia por envio), como a fila já fazia; a retenção nunca apaga `biblioteca/`.
+ */
 export async function sendLibraryFile(dealId: string, fileId: string, caption: string | null, userId: string): Promise<void> {
   await assertFuncaoLigada("biblioteca");
   const f = await readLibraryFile(fileId);
   if (!f) throw new UserFacingError("Esse arquivo não está mais na Biblioteca.");
   const text = f.kind === "audio" ? null : (caption?.trim() || f.caption);
-  await sendMediaFromCrm(dealId, { name: f.fileName, mime: f.mime, data: f.data }, text, userId);
+  await sendMediaFromCrm(dealId, { name: f.fileName, mime: f.mime, data: f.data }, text, userId, { storedPath: f.path });
 }

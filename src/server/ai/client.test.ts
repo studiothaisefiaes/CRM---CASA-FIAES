@@ -92,3 +92,20 @@ describe("cliente da IA (fetch na Messages API, sem SDK)", () => {
     expect((await callSuggestion({ system: "s", user: "u" }, opts(f))).data.sugestao).toBe("Oi, Maria!");
   });
 });
+
+describe("callLegivel: a marca de material sai antes de conferir e acabar o texto", () => {
+  const usage = { inputTokens: 1, cachedTokens: 0, cacheWriteTokens: 0, outputTokens: 1 };
+  it("marca na primeira linha não faz o texto parecer embaralhado e vai em `material`", async () => {
+    const { callLegivel } = await import("./client");
+    const call = vi.fn(async () => ({ data: { resumo: "r", sugestao: "[[material:/metodo-fiaes]]\nO Metodo fiaes é exclusivo da Casa. Assista!", precisa_humano: false, motivo: "", horario: "" }, usage, costMicros: 1, model: "m" }));
+    const r = await callLegivel(call);
+    expect(call).toHaveBeenCalledTimes(1);
+    expect(r.data.sugestao).toBe("O Método Fiaes® é exclusivo da Casa. Assista!");
+    expect(r.data.material).toBe("metodo-fiaes");
+  });
+  it("sem marca: material null", async () => {
+    const { callLegivel } = await import("./client");
+    const r = await callLegivel(async () => ({ data: { resumo: "r", sugestao: "Oi, tudo bem?", precisa_humano: false, motivo: "", horario: "" }, usage, costMicros: 1, model: "m" }));
+    expect(r.data.material).toBeNull();
+  });
+});

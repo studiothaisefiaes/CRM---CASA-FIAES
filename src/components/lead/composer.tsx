@@ -101,7 +101,7 @@ export function Composer({ dealId, firstName, quickReplies, onOptimistic, onSent
     ...(tools?.contato ? [{ label: "Mandar contato", onSelect: () => setToolDialog("contato") }] : []),
   ];
   const [replyDialog, setReplyDialog] = useState<{ editing: Reply | null } | null>(null);
-  const [replyFile, setReplyFile] = useState<{ replyId: string; name: string } | null>(null);
+  const [replyFile, setReplyFile] = useState<{ replyId: string; name: string; kind?: string } | null>(null);
   const [attachment, setAttachment] = useState<Attachment | null>(null);
   const [recording, setRecording] = useState<{ seconds: number } | null>(null);
   const wide = useSyncExternalStore(wideSubscribe, wideNow, () => false);
@@ -134,8 +134,13 @@ export function Composer({ dealId, firstName, quickReplies, onOptimistic, onSent
   useEffect(() => { if (replyTo) ref.current?.focus(); }, [replyTo?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (autoFocus) ref.current?.focus({ preventScroll: true }); }, [autoFocus, dealId]);
   // Lote 7B: texto pronto do painel da cliente ("Enviar link de confirmação"). Só preenche o campo; quem envia é a atendente.
-  useEffect(() => onDraft(dealId, (t) => {
+  // Sugestão da IA que indicou o vídeo/foto de uma resposta pronta (24/10): o anexo vem preso ao texto e só sai no Enviar (sendQuickReply).
+  // Texto oferecido SEM anexo (outra sugestão, o link de confirmação) troca o texto inteiro: o anexo da resposta pronta sai junto, senão o
+  // vídeo iria com um texto que não é dele. O arquivo que a atendente escolheu no clipe continua.
+  useEffect(() => onDraft(dealId, (t, extra) => {
     setText(t); setSel(0); justFilled.current = true;
+    setReplyFile(extra?.replyFile ?? null);
+    if (extra?.replyFile) setAttachment(null);
     setTimeout(() => { justFilled.current = false; }, 450);
     requestAnimationFrame(() => ref.current?.focus());
   }), [dealId]);
@@ -155,7 +160,7 @@ export function Composer({ dealId, firstName, quickReplies, onOptimistic, onSent
   const render = (b: string | null) => renderReply(b, v).text;
   const fill = (q: Reply) => {
     const r = renderReply(q.body, v);
-    setText(r.text); setReplyFile(q.attachment ? { replyId: q.id, name: q.attachment.name } : null); setAttachment(null);
+    setText(r.text); setReplyFile(q.attachment ? { replyId: q.id, name: q.attachment.name, kind: q.attachment.kind } : null); setAttachment(null);
     setSel(0); justFilled.current = true; setTimeout(() => { justFilled.current = false; }, 450);
     if (r.missing.length) toast(`Falta preencher: ${r.missing.join(" e ")}. Preencha acima do campo antes de enviar.`, "info");
     requestAnimationFrame(() => ref.current?.focus());
@@ -344,7 +349,7 @@ export function Composer({ dealId, firstName, quickReplies, onOptimistic, onSent
           <motion.div key="reply-file" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }} transition={{ duration: T.fast, ease: EASE }}
             className="mb-2 flex items-center gap-3 rounded-[var(--radius-control)] border border-line bg-paper-2 p-2" role="group" aria-label="Arquivo da resposta pronta">
             <span className="size-10 shrink-0 grid place-items-center rounded-[8px] bg-paper text-xs font-semibold text-gold-ink">{replyFile.name.split(".").pop()?.slice(0, 4).toUpperCase() ?? "ARQ"}</span>
-            <p className="min-w-0 flex-1 text-sm"><span className="block truncate font-medium">{replyFile.name}</span><span className="text-muted">vai junto, depois do texto</span></p>
+            <p className="min-w-0 flex-1 text-sm"><span className="block truncate font-medium">{replyFile.name}</span><span className="text-muted">{replyFile.kind === "image" || replyFile.kind === "video" ? "o texto vai como legenda, embaixo" : "vai junto, depois do texto"}</span></p>
             <IconButton label="Não enviar o arquivo" size="lg" onClick={() => setReplyFile(null)}><IconTrash size={16} /></IconButton>
           </motion.div>
         )}

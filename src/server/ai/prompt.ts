@@ -27,7 +27,14 @@ export type CasaData = {
   nomes?: string[];
   /** Nomes das assistentes ativas (`professionals.assistant_of`): só o pós-processamento usa (frase que oferece assistente sai). Não vai no texto da IA. */
   assistentes?: string[];
+  /**
+   * Respostas prontas universais com foto/vídeo e "A IA indica quando…" (24/10, o vídeo do Método Fiaes): a IA pode indicar UMA com a marca
+   * `[[material:/atalho]]`; o servidor confere e prende o anexo na sugestão. Vazio/ausente = a seção nem aparece (o bloco fica igual).
+   */
+  materiais?: Material[];
 };
+
+export type Material = { atalho: string; kind: "image" | "video"; quando: string; inicio: string };
 
 /** `quoted`: o trecho que a mensagem responde (citação do WhatsApp). `auto`: mensagem automática da Casa (lembrete, fora do horário), não de alguém da equipe. */
 export type PromptMessage = { direction: "in" | "out"; kind: string; body: string | null; transcript: string | null; at: Date; quoted?: string | null; auto?: boolean };
@@ -205,6 +212,18 @@ function servicesBlock(services: CasaData["services"]): string {
 
 const validityText = (d: number) => (d % 365 === 0 ? `${d / 365} ${d === 365 ? "ano" : "anos"}` : `${d} dias`);
 
+/** Começo do texto de cada material no bloco fixo (economia de tokens). */
+export const MAX_MATERIAL_CHARS = 80;
+/** A marca que a IA põe numa linha separada para indicar um material (tirada do texto em pos.ts → `separarMaterial`). */
+export const MATERIAL_MARK = "[[material:/atalho]]";
+const MATERIAL_KIND = { image: "foto", video: "vídeo" } as const;
+function materiaisBlock(materiais: Material[]): string | null {
+  if (!materiais.length) return null;
+  const lines = [...materiais].sort((a, b) => a.atalho.localeCompare(b.atalho, "pt-BR"))
+    .map((m) => `- /${m.atalho} (${MATERIAL_KIND[m.kind]}): quando ${clean(m.quando, 200)}. Texto: "${clean(m.inicio, MAX_MATERIAL_CHARS)}"`);
+  return [`Fotos e vídeos prontos da Casa. Se fizer sentido mandar um deles agora, escreva a resposta normalmente E acrescente, numa linha separada no fim, a marca ${MATERIAL_MARK} com o atalho dele (no máximo um, só destes). A sua resposta vai como legenda, embaixo do vídeo ou da foto: não diga que vai mandar depois. Sem material que combine com o que a cliente quer agora, não ponha marca nenhuma.`, ...lines].join("\n");
+}
+
 /** Pacotes em ordem de nome: "- Combo X: R$ 8.000,00 por 4 sessões (R$ 2.000,00 cada) de A + B; vale 1 ano: descrição". */
 function packagesBlock(packages: NonNullable<CasaData["packages"]>): string | null {
   if (!packages.length) return null;
@@ -243,6 +262,7 @@ export function buildSystem(casa: CasaData): string {
     ...section("Cenários", m("cenarios")),
     ...section("Objeções", m("objecoes")),
     ...section("Exemplos", m("exemplos") ? `Respostas ideais (o jeito, não o texto para copiar):\n${m("exemplos")}` : null),
+    ...section("Materiais para enviar", materiaisBlock(casa.materiais ?? [])),
     "## Resposta",
     OUTPUT,
   ].join("\n");

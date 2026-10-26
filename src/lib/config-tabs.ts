@@ -58,7 +58,7 @@ export type ConfigSnapshot = Partial<{
 /** `on` pinta o estado de ligado/desligado; `alert` só para o que está quebrado (WhatsApp desconectado). */
 export type ConfigState = { text: string; on?: boolean; alert?: boolean };
 
-type Need = "diaadia" | "sistema" | "equipe" | "pessoas" | "nota" | "funcoes" | "marcadores" | "aviso" | "fichas";
+type Need = "diaadia" | "sistema" | "equipe" | "pessoas" | "nota" | "funcoes" | "marcadores" | "aviso" | "fichas" | "api";
 export type ConfigItem = {
   id: string; group: ConfigGroupId; href: string; label: string; description: string; keywords: string[]; need: Need;
   /** Manda mensagem para cliente sozinho. */ sends?: boolean;
@@ -115,6 +115,10 @@ export const CONFIG_ITEMS: ConfigItem[] = [
       if (s.distribution != null) parts.push(s.distribution ? "distribuição ligada" : "distribuição desligada");
       return { text: parts.join(" · ") };
     } },
+  { id: "api", group: "pessoas", href: "/config/api", need: "api", label: "API",
+    description: "Chaves para planilhas, scripts e outros sistemas lerem e escreverem no CRM em nome de alguém da equipe.",
+    keywords: ["api", "chave", "token", "integracao", "integração", "script", "planilha", "automacao", "sistema", "programar"],
+    changes: "A chave faz só o que o perfil da pessoa escolhida pode fazer, e só o que foi marcado nela. Revogar corta na hora." },
   // Mensagens automáticas
   { id: "fora-do-horario", group: "mensagens", href: "/config/mensagens?parte=fora-do-horario", need: "sistema", sends: true, label: "Resposta fora do horário",
     description: "Responde sozinha quem escreve com a Casa fechada, no máximo uma vez a cada 12 horas por cliente.",
@@ -288,6 +292,7 @@ export const CONFIG_ITEMS: ConfigItem[] = [
 const allowed = (perms: readonly string[] | null | undefined, need: Need) => {
   const d = can(perms, "config.diaadia"), s = can(perms, "config.sistema"), e = can(perms, "equipe.gerir");
   if (need === "nota") return can(perms, "nota.configurar");
+  if (need === "api") return can(perms, "api.gerir");
   return need === "funcoes" ? can(perms, "config.funcoes") : need === "marcadores" ? can(perms, "config.marcadores") : need === "aviso" ? can(perms, "config.aviso_cliente") : need === "fichas" ? can(perms, "config.fichas") : need === "equipe" ? e : need === "diaadia" ? d : need === "sistema" ? s : d || s || e;
 };
 

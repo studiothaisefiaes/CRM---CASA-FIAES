@@ -39,6 +39,8 @@ export const PERMS = [
   "financeiro.lancar", "financeiro.pagar", "financeiro.cancelar", "financeiro.cadastros",
   "estoque.produtos", "estoque.movimentar",
   "nota.configurar", "nota.emitir", "nota.ver", "nota.cancelar", "nota.resolver",
+  // API v1 (26/10): criar, listar e revogar as chaves da API. Só a Gestão.
+  "api.gerir",
 ] as const;
 export type Perm = (typeof PERMS)[number];
 
@@ -131,6 +133,7 @@ export const PERM_LABEL: Record<Perm, string> = {
   "nota.ver": "Ver e baixar notas fiscais (XML e PDF)",
   "nota.cancelar": "Cancelar nota fiscal",
   "nota.resolver": "Resolver nota fora do CRM",
+  "api.gerir": "Criar e revogar chaves da API",
 };
 
 export const PERM_HELP: Record<Perm, string> = {
@@ -216,6 +219,7 @@ export const PERM_HELP: Record<Perm, string> = {
   "nota.ver": "Vê a chave de acesso da nota para abrir no nfse.gov.br e baixa o XML da nota.",
   "nota.cancelar": "Cancela no governo uma nota fiscal autorizada, sempre com o motivo. Só depois disso a comanda pode ser reaberta ou cancelada.",
   "nota.resolver": "Registra, com o motivo, o que foi conferido no portal do governo quando o CRM não consegue resolver a nota sozinho (sem certificado, NFC-e fora do prazo de cancelamento, envio sem resposta). Depois disso a comanda pode ser reaberta ou cancelada.",
+  "api.gerir": "Em Configurações › API, cria chaves para scripts e outros sistemas lerem e escreverem no CRM em nome de uma pessoa da equipe, e revoga as que não usa mais. A chave aparece uma vez só.",
 };
 
 export const PERM_GROUP: Record<Perm, PermGroup> = {
@@ -239,7 +243,7 @@ export const PERM_GROUP: Record<Perm, PermGroup> = {
   "config.marcadores": "Gestão", "config.fichas": "Gestão", "config.aviso_cliente": "Gestão", "config.funcoes": "Gestão",
   "financeiro.lancar": "Gestão", "financeiro.pagar": "Gestão", "financeiro.cancelar": "Gestão", "financeiro.cadastros": "Gestão",
   "estoque.produtos": "Caixa", "estoque.movimentar": "Caixa",
-  "nota.configurar": "Gestão", "nota.resolver": "Gestão",
+  "nota.configurar": "Gestão", "nota.resolver": "Gestão", "api.gerir": "Gestão",
   "nota.emitir": "Caixa", "nota.ver": "Caixa", "nota.cancelar": "Caixa",
 };
 
@@ -326,6 +330,6 @@ export const firstAllowedPath = (perms: readonly string[]): string => (isProOnly
 export const LEGACY_CONFIG_PERM = "config.editar";
 
 /** UMA lista só das permissões que abrem Configurações: o menu (`canConfigure`), o layout e o índice de /config usam esta. */
-export const CONFIG_ENTRY_PERMS = ["config.diaadia", "config.sistema", "equipe.gerir", "config.funcoes", "config.marcadores", "config.fichas", "config.aviso_cliente", "nota.configurar"] as const satisfies readonly Perm[];
-/** Entra em Configurações: quem configura o dia a dia, o sistema, gere a equipe, liga e desliga funções, cuida dos marcadores e das fichas ou configura a nota fiscal. */
+export const CONFIG_ENTRY_PERMS = ["config.diaadia", "config.sistema", "equipe.gerir", "config.funcoes", "config.marcadores", "config.fichas", "config.aviso_cliente", "nota.configurar", "api.gerir"] as const satisfies readonly Perm[];
+/** Entra em Configurações: quem configura o dia a dia, o sistema, gere a equipe, liga e desliga funções, cuida dos marcadores e das fichas, configura a nota fiscal ou gere as chaves da API. */
 export const canConfigure = (perms: readonly string[] | null | undefined): boolean => CONFIG_ENTRY_PERMS.some((p) => can(perms, p));

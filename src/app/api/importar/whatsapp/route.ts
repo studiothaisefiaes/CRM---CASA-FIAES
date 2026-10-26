@@ -12,7 +12,7 @@ const json = (body: unknown, status = 200) => Response.json(body, { status, head
 const TOO_BIG = "O arquivo passa de 50 MB. Exporte sem mídia ou envie só o .txt.";
 
 /**
- * Upload do "Exportar conversa" do WhatsApp (.zip ou .txt, até 50 MB) e a prévia. Rota e não Server Action: as actions param em 20 MB.
+ * Upload do "Exportar conversa" do WhatsApp (.zip ou .txt, até 50 MB) e a prévia. Rota e não Server Action: as actions param em 70 MB e este upload tem limite e conferência próprios.
  * Fica fora do proxy (matcher exclui api/importar), então confere aqui sessão, permissão e origem. Só gestão (Configurações do sistema)
  * ou quem mexe na ficha da cliente. Nada é gravado na conversa: o arquivo fica numa pasta temporária até Importar (ou 2 h).
  */

@@ -18,7 +18,8 @@ import { UNCERTAIN_SEND_MESSAGE } from "@/lib/send-status";
 export { UNCERTAIN_SEND_MESSAGE };
 /** O provider não respondeu (timeout, rede, resposta ilegível): a mensagem PODE ter saído. Nunca reenviar sozinho. */
 export class UncertainSendError extends SendError {
-  constructor() { super(UNCERTAIN_SEND_MESSAGE); }
+  /** `message`: o arquivo mantém o recado de sempre ("Não foi possível enviar: …"); o que importa para quem chama é a classe (não repetir). */
+  constructor(message: string = UNCERTAIN_SEND_MESSAGE) { super(message); }
 }
 /** A Evolution respondeu com erro explícito de que NÃO enviou (4xx/5xx, exceto 408/502/503/504): é o único caso com retry. */
 export class NotSentError extends SendError {}
@@ -27,6 +28,8 @@ const AMBIGUOUS_STATUS = new Set([408, 502, 503, 504]);
 const isNotSent = (e: unknown) => e instanceof ProviderError && e.status !== undefined && e.status >= 400 && e.status <= 599 && !AMBIGUOUS_STATUS.has(e.status);
 
 export const MAX_MEDIA_BYTES = 16 * 1024 * 1024;
+/** Limite de legenda de foto/vídeo do WhatsApp (com a assinatura junto, quando vai assinada). */
+export const WHATSAPP_CAPTION_MAX = 1024;
 type Channel = typeof channels.$inferSelect;
 type Target = { deal: typeof deals.$inferSelect; phone: string };
 
@@ -72,6 +75,12 @@ async function loadQuote(dealId: string, quoteMessageId?: string | null): Promis
   return { externalId: q.externalId, fromMe: q.direction === "out", text: (q.body?.trim() || QUOTE_LABEL[q.kind] || "Mensagem").slice(0, 300) };
 }
 
+/** A assinatura da pessoa logada vai na primeira linha, como no ChatGuru (as clientes já conhecem). Sem assinatura cadastrada, o 1º nome em maiúsculas. */
+export async function signAs(userId: string, text: string): Promise<string> {
+  const [me] = await db.select({ signature: users.signature, name: users.name }).from(users).where(eq(users.id, userId));
+  return signBody(me?.signature || defaultSignature(me?.name), text);
+}
+
 /**
  * Envia texto pelo WhatsApp a partir do card.
  * 1) grava a mensagem como "enviando" (com quem enviou), 2) chama a Evolution, 3) confirma e registra como resposta.
@@ -82,9 +91,7 @@ export async function sendFromCrm(dealId: string, text: string, userId: string, 
   const typed = text.trim();
   if (!typed) throw new SendError("Escreva uma mensagem antes de enviar.");
   if (typed.length > 4000) throw new SendError("Mensagem muito longa (máximo 4.000 caracteres).");
-  // A assinatura da pessoa logada vai na primeira linha, como no ChatGuru (as clientes já conhecem). Sem assinatura cadastrada, o 1º nome em maiúsculas.
-  const [me] = await db.select({ signature: users.signature, name: users.name }).from(users).where(eq(users.id, userId));
-  const body = signBody(me?.signature || defaultSignature(me?.name), typed);
+  const body = await signAs(userId, typed);
   const row = await loadTarget(dealId);
   const quote = await loadQuote(dealId, opts.quoteMessageId);
   const channel = await resolveChannel(dealId, row.deal);
@@ -178,15 +185,20 @@ const cleanName = (name: string) => Array.from(path.basename(name).replace(/[\u0
 /**
  * Envia foto, PDF, vídeo ou áudio (gravação) a partir do card. O arquivo enviado fica guardado em MEDIA_DIR para aparecer na conversa.
  * Aceita até 16 MB e só tipos reconhecidos pelos bytes; áudio vai como mensagem de voz.
+ * `sign`: a legenda vai assinada como o texto do CRM (resposta pronta com foto/vídeo: o texto dela vira a legenda, 24/10); o limite passa a ser
+ * o do WhatsApp (1024) contando a assinatura. `storedPath`: o arquivo JÁ está em MEDIA_DIR (resposta pronta, Biblioteca) e a mensagem aponta
+ * para ele, sem gravar uma cópia por envio (quem guarda esse arquivo garante que a retenção e a troca do anexo não o apaguem).
  */
-export async function sendMediaFromCrm(dealId: string, file: Upload, caption: string | null, userId: string, opts: { quoteMessageId?: string | null } = {}) {
+export async function sendMediaFromCrm(dealId: string, file: Upload, caption: string | null, userId: string, opts: { quoteMessageId?: string | null; sign?: boolean; storedPath?: string } = {}) {
   if (!file.data.length) throw new SendError("O arquivo está vazio.");
   if (file.data.length > MAX_MEDIA_BYTES) throw new SendError("O arquivo passa de 16 MB. Escolha um menor.");
   const plan = planMedia(file);
   if (!plan) throw new SendError("Esse tipo de arquivo não pode ser enviado. Use foto, PDF ou áudio.");
-  const text = caption?.trim() || null;
-  if (text && plan.kind === "audio") throw new SendError("Áudio não aceita legenda. Envie o texto em outra mensagem.");
-  if (text && text.length > 1000) throw new SendError("Legenda muito longa (máximo 1.000 caracteres).");
+  const typed = caption?.trim() || null;
+  if (typed && plan.kind === "audio") throw new SendError("Áudio não aceita legenda. Envie o texto em outra mensagem.");
+  const text = typed && opts.sign ? await signAs(userId, typed) : typed;
+  if (text && opts.sign && text.length > WHATSAPP_CAPTION_MAX) throw new SendError(`Legenda muito longa (máximo ${WHATSAPP_CAPTION_MAX.toLocaleString("pt-BR")} caracteres com a assinatura).`);
+  if (text && !opts.sign && text.length > 1000) throw new SendError("Legenda muito longa (máximo 1.000 caracteres).");
   const name = cleanName(file.name);
   const row = await loadTarget(dealId);
   const quote = await loadQuote(dealId, opts.quoteMessageId);
@@ -197,7 +209,7 @@ export async function sendMediaFromCrm(dealId: string, file: Upload, caption: st
   // Documento mostra a legenda ou o nome do arquivo; foto/vídeo/áudio mostram a legenda (se houver).
   const body = plan.kind === "document" ? text ?? name : text;
   const id = randomUUID();
-  const mediaPath = await saveMediaFile(`${id}.${plan.ext}`, file.data);
+  const mediaPath = opts.storedPath ?? await saveMediaFile(`${id}.${plan.ext}`, file.data);
   const [pending] = await db.insert(messages).values({
     id, dealId, contactId: row.deal.contactId, channelId: channel?.id ?? null, direction: "out", kind: plan.kind, body, status: "pending", sentByUserId: userId, sentVia: "crm",
     mediaPath, mediaMime: plan.mime, quotedBody: quote?.text ?? null,
@@ -218,7 +230,8 @@ export async function sendMediaFromCrm(dealId: string, file: Upload, caption: st
     const msg = e instanceof Error ? e.message : "erro desconhecido";
     await db.update(messages).set({ status: "failed", error: msg.slice(0, 300) }).where(eq(messages.id, pending.id));
     await emit("mensagem_falhou", { dealId });
-    throw new SendError(`Não foi possível enviar: ${msg}`);
+    // Timeout/rede: o arquivo pode ter saído. Mesmo recado de antes, mas a classe avisa quem envia em série (encaminhar várias) para parar.
+    throw isNotSent(e) ? new SendError(`Não foi possível enviar: ${msg}`) : new UncertainSendError(`Não foi possível enviar: ${msg}`);
   }
   const res = await confirmSent(pending.id, { dealId, channelId: channel.id, externalId, userId });
   void markConversationRead(dealId, userId, { replying: true }); // sem esperar (ver sendFromCrm)

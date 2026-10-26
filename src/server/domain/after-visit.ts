@@ -92,6 +92,8 @@ export async function saveAfterVisit(input: unknown, userId: string, opts?: { co
 
 /** Ligado e com o que precisa (o agradecimento sem link não sai). */
 const isActive = (cfg: AfterVisitConfig) => cfg.mode === "pesquisa" || (cfg.mode === "agradecimento" && !!cfg.linkGoogle);
+/** A mensagem do Depois do atendimento está valendo (a API pede o escopo "enviar" para Finalizar quando está). */
+export const afterVisitOn = isActive;
 
 /**
  * A visita está concluída? Todos os horários que contam (sem os cancelados, a lista de espera e o gêmeo do Avec) estão Finalizados

@@ -14,7 +14,8 @@ import type { BubbleTools, Msg } from "./conversation";
 export function useMessageTools(state: MessageToolsState | undefined, viewerId: string | undefined, onDone: () => void, dealId?: string) {
   const [target, setTarget] = useState<Msg | null>(null);
   const [text, setText] = useState("");
-  const [fwd, setFwd] = useState<Msg | null>(null);
+  // Encaminhar uma (seta do balão) ou várias (modo seleção, 24/10). `done` avisa a conversa se encaminhou (a seleção acaba) ou se voltou.
+  const [fwd, setFwd] = useState<{ msgs: Msg[]; done?: (sent: boolean) => void } | null>(null);
   const [pending, start] = useTransition();
   const toast = useToast();
   const react = useCallback((m: Msg, emoji: string) => {
@@ -28,7 +29,9 @@ export function useMessageTools(state: MessageToolsState | undefined, viewerId: 
     return {
       ...(state.reagir ? { react } : {}),
       ...(state.encaminhar ? {
-        forward: (m: Msg) => setFwd(m),
+        forward: (m: Msg) => setFwd({ msgs: [m] }),
+        forwardMany: (msgs: Msg[], done: (sent: boolean) => void) => setFwd({ msgs, done }),
+        maxSelect: state.maxMensagens,
         canForward: (m: Msg) => m.id !== "optimistic" && !m.deleted && !m.importedAt && m.status !== "pending" && m.status !== "failed" && ["text", "image", "video", "audio", "document"].includes(m.kind) && !(m.kind !== "text" && m.purgedAt),
       } : {}),
       ...(state.editar ? {
@@ -49,6 +52,7 @@ export function useMessageTools(state: MessageToolsState | undefined, viewerId: 
       <Textarea aria-label="Texto da mensagem" value={text} maxLength={4000} onChange={(e) => setText(e.target.value)} />
     </Dialog>
   );
-  const forwardDialog = <ForwardDialog key={fwd?.id ?? "fechado"} message={fwd} dealId={dealId ?? null} max={state?.maxDestinos ?? 10} onClose={() => setFwd(null)} />;
+  const forwardDialog = <ForwardDialog key={fwd ? fwd.msgs.map((m) => m.id).join() : "fechado"} messages={fwd?.msgs ?? null} dealId={dealId ?? null} max={state?.maxDestinos ?? 10}
+    onClose={(sent) => { fwd?.done?.(sent); setFwd(null); }} />;
   return { tools, dialog: <>{dialog}{forwardDialog}</> };
 }

@@ -1,6 +1,7 @@
 "use server";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { assertPerm } from "@/server/auth/session";
 import { userErrorMessage } from "@/server/user-error";
 import { addNote } from "@/server/domain/notes";
@@ -23,7 +24,7 @@ import { searchPeople, type PersonFound } from "@/server/queries/people-search";
 import { startNewConversation } from "@/server/domain/new-client";
 import { editSentMessage, reactToMessage, sendCasaLocation, sendContactCard } from "@/server/domain/message-tools";
 import { markUnread, setFollowing } from "@/server/domain/follow";
-import { forwardMessage } from "@/server/domain/forward";
+import { forwardInBackground, prepareForward } from "@/server/domain/forward";
 import { forwardTargets, type ForwardTarget } from "@/server/queries/forward-targets";
 import { UserFacingError } from "@/server/domain/errors";
 import { assertCanActOnDeal, assertCanActOnMessage, assertCanActOnOutbox } from "@/server/domain/deal-scope";
@@ -355,26 +356,38 @@ export async function forwardTargetsAction(q: string, exceptDealId: string | nul
   } catch (e) { return fail(e); }
 }
 
-/** Encaminha a mensagem para até `max_destinos` conversas; devolve quantas saíram e quais falharam. */
 /** Destino: uma conversa aberta (id), uma pessoa sem conversa aberta (`contactId`: abre uma) ou um número novo (`phone`: cadastra e abre). */
 export type ForwardTo = string | { contactId: string } | { phone: string };
-export async function forwardAction(messageId: string, to: ForwardTo[]): Promise<ActionResult<{ sent: number; failed: { dealId: string; error: string }[] }>> {
+/** O encaminhamento foi aceito: `messages` mensagens vão para `targets` conversas (os envios seguem depois da resposta). */
+export type ForwardResult = { messages: number; targets: number };
+/**
+ * Encaminha uma ou várias mensagens da mesma conversa (selecionar como no WhatsApp, 24/10) para até `max_destinos` conversas.
+ * Tudo o que pode recusar o pedido roda ANTES de abrir qualquer conversa nova (pedido recusado não deixa conversa vazia na Fila): a
+ * permissão, o escopo de CADA mensagem e, no domínio (`prepareForward`), limites, mesma conversa e o que dá para encaminhar. Depois abre
+ * as conversas que faltam, confere o escopo de cada destino e devolve na hora: os envios seguem depois da resposta (`after`), em série e
+ * na ordem da conversa em cada destino, e o que não sair vira aviso no sino de quem encaminhou (revisão 24/10: com 12 vídeos para 3
+ * conversas o "Para quem?" ficava minutos preso no spinner).
+ */
+export async function forwardMessagesAction(messageIds: string[], to: ForwardTo[]): Promise<ActionResult<ForwardResult>> {
   try {
     const user = await assertPerm("mensagem.encaminhar");
-    const id = uuid.parse(messageId);
+    const mids = [...new Set(z.array(z.string().uuid()).min(1).max(100).parse(messageIds))];
     const parsed = z.array(z.union([z.string().uuid(), z.object({ contactId: z.string().uuid() }), z.object({ phone: z.string().min(8).max(40) })])).min(1).max(50).parse(to);
-    // "Encaminhar para outras pessoas" (20/10): quem não tem conversa aberta ganha uma (como o "Nova conversa"); nada sai além da mensagem encaminhada.
+    for (const id of mids) await assertCanActOnMessage(user, id);
+    const count = new Set(parsed.map((t) => (typeof t === "string" ? t : "contactId" in t ? `c:${t.contactId}` : `p:${t.phone.replace(/\D/g, "")}`))).size;
+    const plan = await prepareForward(mids, count);
+    // "Encaminhar para outras pessoas" (20/10): quem não tem conversa aberta ganha uma (como o "Nova conversa"); nada sai além do que foi encaminhado.
     const ids: string[] = [];
     for (const t of parsed) {
       if (typeof t === "string") ids.push(t);
       else if ("contactId" in t) ids.push((await startConversation(t.contactId, user.id)).dealId);
       else ids.push((await startNewConversation({ phone: t.phone }, user.id)).dealId);
     }
-    await assertCanActOnMessage(user, id);
-    for (const d of ids) await assertCanActOnDeal(user, d);
-    const r = await forwardMessage(id, ids, user.id);
+    const targets = [...new Set(ids)];
+    for (const d of targets) await assertCanActOnDeal(user, d);
+    after(() => forwardInBackground(plan, targets, user.id));
     revalidatePath("/atendimento"); revalidatePath("/");
-    return { ok: true, data: r };
+    return { ok: true, data: { messages: mids.length, targets: targets.length } };
   } catch (e) { return fail(e); }
 }
 

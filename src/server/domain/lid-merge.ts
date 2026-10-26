@@ -1,7 +1,8 @@
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db, type Tx } from "../db";
-import { alerts, clientNotes, contactMerges, contacts, contactTags, deals, messages, satisfactionAnswers, tasks } from "../db/schema";
+import { alerts, contactMerges, contacts, deals, messages, tasks } from "../db/schema";
 import { emit, logEvent } from "./events";
+import { moveContactDataTx } from "./merge-contacts";
 
 export type LidMergeResult = { merged?: true; renamed?: true; learned?: true; nothing?: true; dealId?: string | null };
 
@@ -52,16 +53,9 @@ export async function mergeLidInto(lid: string, phone: string): Promise<LidMerge
     if (keep && others.length) await tx.update(messages).set({ dealId: keep.id }).where(inArray(messages.dealId, others));
     if (hiddenDeals.length) await tx.update(deals).set({ contactId: real.id }).where(inArray(deals.id, hiddenDeals.map((d) => d.id)));
     await tx.update(messages).set({ contactId: real.id }).where(eq(messages.contactId, hidden.id));
-    await tx.update(tasks).set({ contactId: real.id }).where(eq(tasks.contactId, hidden.id));
-    // Lote 7A: a ficha técnica (anotações para a profissional) vai junto.
-    await tx.update(clientNotes).set({ contactId: real.id }).where(eq(clientNotes.contactId, hidden.id));
-    // Fase B: as respostas da Pesquisa de satisfação também (a linha apaga em cascata com o contato).
-    await tx.update(satisfactionAnswers).set({ contactId: real.id }).where(eq(satisfactionAnswers.contactId, hidden.id));
-    await tx.execute(sql`insert into contact_tags (contact_id, tag_id, created_by, created_at)
-      select ${real.id}::uuid, tag_id, created_by, created_at from contact_tags where contact_id = ${hidden.id}::uuid on conflict do nothing`);
-    await tx.delete(contactTags).where(eq(contactTags.contactId, hidden.id));
-    // Pessoas a mais do número oculto (filha, mãe…, 0051) passam para o número da cliente.
-    await tx.update(contacts).set({ sharesPhoneWith: real.id }).where(eq(contacts.sharesPhoneWith, hidden.id));
+    // Todo o resto da cliente (agenda, comandas, fichas, fotos, notas, pacotes, etiquetas, tarefas…) vai junto, como na junção de cadastros:
+    // antes iam só tarefas, fichas técnicas, pesquisa e etiquetas, e o banco recusava apagar o oculto com horário na agenda (26/10).
+    await moveContactDataTx(tx, hidden.id, real.id, new Date());
     // Unir cadastros (0086): as junções que caíam no oculto passam a cair no número (a cadeia continua).
     await tx.update(contactMerges).set({ keptId: real.id }).where(eq(contactMerges.keptId, hidden.id));
     await tx.delete(contacts).where(eq(contacts.id, hidden.id));

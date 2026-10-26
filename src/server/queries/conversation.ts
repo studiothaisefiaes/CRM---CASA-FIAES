@@ -33,7 +33,8 @@ export async function conversationFor(user: SessionUser, dealId: string): Promis
     ["mensagem.reagir", "reagir"], ["mensagem.editar", "editar_mensagem"], ["mensagem.localizacao", "como_chegar"], ["mensagem.contato", "mandar_contato"], ["mensagem.encaminhar", "encaminhar"], ["conversa.nao_lida", "marcar_nao_lida"], ["conversa.acompanhar", "acompanhar"],
   ].map(async ([perm, fn]) => can(user.perms, perm as Perm) && (await funcaoLigada(fn))));
   const acompanhando = acompanhar && (await db.select({ d: dealFollows.dealId }).from(dealFollows).where(and(eq(dealFollows.userId, user.id), eq(dealFollows.dealId, dealId))).limit(1)).length > 0;
-  const tools = { reagir, editar, localizacao, contato, encaminhar, naoLida, acompanhar, acompanhando, editWindowMin: editar ? await funcaoParam("editar_mensagem", "janela_min") : 0, maxDestinos: encaminhar ? await funcaoParam("encaminhar", "max_destinos") : 0 };
+  const tools = { reagir, editar, localizacao, contato, encaminhar, naoLida, acompanhar, acompanhando, editWindowMin: editar ? await funcaoParam("editar_mensagem", "janela_min") : 0, maxDestinos: encaminhar ? await funcaoParam("encaminhar", "max_destinos") : 0,
+    maxMensagens: encaminhar ? await funcaoParam("encaminhar", "max_mensagens") : 0 };
   const [detail, [me]] = await Promise.all([
     getDealDetail(dealId, { money: canSeeDealMoney(user.perms), viewer: { id: user.id, name: user.name, canShare: can(user.perms, "config.sistema"), canLibrary: libraryOn, tools } }),
     db.select({ signature: users.signature }).from(users).where(eq(users.id, user.id)),

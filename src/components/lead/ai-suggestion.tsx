@@ -32,6 +32,8 @@ export function agendaNote(iso: string, now = new Date()): string {
  * Precisa de alguém da equipe (reclamação, desconto, remarcação): mostra o motivo primeiro. Desligada: não aparece nada.
  * Horário proposto (17/10): "Marcar este horário" confere de novo no servidor e abre a folha "Marcar horário" PREENCHIDA (`onBook`);
  * nada é marcado sem a atendente confirmar na folha. Depois de "Usar e editar", o horário fica numa faixa até marcar ou fechar.
+ * Material (24/10): a IA indicou o vídeo/foto de uma resposta pronta ("📎 vai junto"); o "Usar" prende o anexo na caixa e o texto vai
+ * como legenda. Nada sai sozinho.
  */
 export function AiSuggestion({ dealId, replyTo = null, onBook }: { dealId: string; replyTo?: QuoteTarget | null;
   /** Abre a folha "Marcar horário" preenchida; `onBooked` quando a atendente confirmou a marcação. Ausente: sem o botão (sem permissão/modo consulta). */
@@ -96,7 +98,10 @@ export function AiSuggestion({ dealId, replyTo = null, onBook }: { dealId: strin
   const mark = (what: "usada" | "fechada") => { if (s) void markAiSuggestionAction({ id: s.id, dealId, what }); };
   const fill = () => {
     if (!s) return;
-    offerDraft(dealId, shown.trim() || s.sugestao);
+    // A IA indicou o vídeo/foto de uma resposta pronta: o anexo vai preso na caixa e o texto sai como legenda, só no Enviar da atendente.
+    const m = s.material;
+    if (m) offerDraft(dealId, shown.trim() || s.sugestao, { replyFile: { replyId: m.replyId, name: m.name, kind: m.kind } });
+    else offerDraft(dealId, shown.trim() || s.sugestao);
     if (s.horario && onBook) setKept({ dealId, id: s.id, horario: s.horario });
     if (s.retomarEm && !feitas[s.id]) setKeptRet({ dealId, id: s.id, at: s.retomarEm });
     // O botão volta na hora (17/10): "Sugerir resposta" vale a qualquer momento, inclusive logo depois de usar ou fechar.
@@ -168,6 +173,7 @@ export function AiSuggestion({ dealId, replyTo = null, onBook }: { dealId: strin
             <textarea data-testid="sugestao-ia" aria-label="Texto da sugestão (pode editar aqui)" value={shown} rows={Math.min(7, Math.max(2, Math.ceil(shown.length / 70)))} maxLength={4000}
               onChange={(e) => setEdit({ id: s.id, text: e.target.value })}
               className={`mt-1.5 max-h-40 w-full resize-y rounded-[var(--radius-control)] border border-transparent bg-transparent px-1 py-0.5 text-sm hover:border-line focus:border-ink focus:bg-paper focus:outline-none ${s.precisaHumano ? "text-graphite" : "text-ink"}`} />
+            {s.material && <p data-testid="material-ia" className="mt-1 truncate text-sm text-graphite">📎 vai junto: {s.material.name}</p>}
             {s.agendaAt && <p className="mt-1 text-xs text-muted">{agendaNote(s.agendaAt)}</p>}
             {s.horario && <ProposedRow horario={s.horario} busy={booking} onBook={onBook ? () => void book(s.id, false) : undefined} />}
             {(s.retomarEm || feitas[s.id]) && <RetomadaRow at={s.retomarEm ?? feitas[s.id]} feita={feitas[s.id] ?? null} busy={programando} onProgramar={() => void programar(s.id)} />}

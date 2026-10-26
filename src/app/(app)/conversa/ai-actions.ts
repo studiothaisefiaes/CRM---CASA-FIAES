@@ -20,11 +20,12 @@ const uuid = z.string().uuid();
 
 /** `agendaAt`: ISO de quando os horários oferecidos foram lidos da agenda (a tela pede para conferir). */
 export type AiSuggestionView = { id: string; resumo: string; sugestao: string; precisaHumano: boolean; motivo: string | null; agendaAt: string | null; horario: ProposedSlot | null;
-  /** Cancelou sem nova data: ISO de quando retomar (botão "Programar retomada"). */ retomarEm: string | null };
+  /** Cancelou sem nova data: ISO de quando retomar (botão "Programar retomada"). */ retomarEm: string | null;
+  /** A resposta pronta com foto/vídeo que a IA indicou para ir junto (o "Usar" prende o anexo na caixa). */ material?: { replyId: string; name: string; kind: string } | null };
 export type AiView = { state: "pronta"; suggestion: AiSuggestionView } | { state: "pode_pedir"; again?: boolean } | { state: "escrevendo" | "nada" };
 const view = (s: SuggestionState): AiView => (s.state === "pronta"
   ? { state: "pronta", suggestion: { id: s.suggestion.id, resumo: s.suggestion.resumo, sugestao: s.suggestion.sugestao, precisaHumano: s.suggestion.precisaHumano, motivo: s.suggestion.motivo,
-    agendaAt: s.suggestion.agendaAt?.toISOString() ?? null, horario: s.suggestion.horario, retomarEm: s.suggestion.retomarEm?.toISOString() ?? null } }
+    agendaAt: s.suggestion.agendaAt?.toISOString() ?? null, horario: s.suggestion.horario, retomarEm: s.suggestion.retomarEm?.toISOString() ?? null, material: s.suggestion.material } }
   : s.state === "pode_pedir" ? { state: "pode_pedir", again: s.again } : { state: s.state });
 
 /**

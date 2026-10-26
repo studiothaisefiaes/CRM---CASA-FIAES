@@ -336,3 +336,30 @@ describe("saída quebrada do Sonnet 5.5 (avaliação 20/10)", () => {
     expect(pareceIlegivel("Oi, Ana! Tudo bem? Ja te mando.")).toBe(false);
   });
 });
+
+describe("marca de material da IA ([[material:/atalho]], 24/10)", () => {
+  it("tira a marca do texto e devolve o atalho (normalizado)", async () => {
+    const { separarMaterial } = await import("./pos");
+    expect(separarMaterial("O Método Fiaes® é exclusivo da Casa. Assista ao vídeo! 💛\n[[material:/metodo-fiaes]]")).toEqual({ texto: "O Método Fiaes® é exclusivo da Casa. Assista ao vídeo! 💛", material: "metodo-fiaes" });
+    expect(separarMaterial("Veja o vídeo.\n\n[[ material : /Metodo-Fiaes ]]  ")).toEqual({ texto: "Veja o vídeo.", material: "metodo-fiaes" });
+    expect(separarMaterial("[[material:metodo-fiaes]]\nVeja o vídeo.")).toEqual({ texto: "Veja o vídeo.", material: "metodo-fiaes" });
+  });
+  it("sem marca: texto igual e nenhum material; duas marcas: fica a primeira e as duas saem do texto", async () => {
+    const { separarMaterial } = await import("./pos");
+    expect(separarMaterial("Oi, Paula! Tudo bem?")).toEqual({ texto: "Oi, Paula! Tudo bem?", material: null });
+    expect(separarMaterial("Olha só.\n[[material:/a]]\n[[material:/b]]")).toEqual({ texto: "Olha só.", material: "a" });
+  });
+  it("marca no meio da frase também sai sem deixar espaço duplo", async () => {
+    const { separarMaterial } = await import("./pos");
+    expect(separarMaterial("Assista [[material:/metodo]] e me conta o que achou.")).toEqual({ texto: "Assista e me conta o que achou.", material: "metodo" });
+  });
+  it("marca torta nunca vaza para o texto: atalho com espaço, colchete simples, sem fechar ou vazia", async () => {
+    const { separarMaterial } = await import("./pos");
+    expect(separarMaterial("Assista ao vídeo!\n[[material:/Metodo Fiaes]]")).toEqual({ texto: "Assista ao vídeo!", material: "metodo-fiaes" });
+    expect(separarMaterial("Assista ao vídeo!\n[material:/metodo-fiaes]")).toEqual({ texto: "Assista ao vídeo!", material: "metodo-fiaes" });
+    expect(separarMaterial("Assista ao vídeo!\n[[material:/metodo-fiaes]")).toEqual({ texto: "Assista ao vídeo!", material: "metodo-fiaes" });
+    expect(separarMaterial("Assista ao vídeo!\n[[material:/metodo-fiaes")).toEqual({ texto: "Assista ao vídeo!", material: "metodo-fiaes" });
+    expect(separarMaterial("Assista ao vídeo!\n[[ MATERIAL : / Método-Fiaes ]]")).toEqual({ texto: "Assista ao vídeo!", material: "método-fiaes" });
+    expect(separarMaterial("Oi!\n[[material:]]")).toEqual({ texto: "Oi!", material: null });
+  });
+});

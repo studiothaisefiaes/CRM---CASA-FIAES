@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
+import { act, render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
 import { Conversation, bubblePropsEqual, optimisticArrived, quotePreview, type Msg } from "./conversation";
+import { isTop, popModal, pushModal } from "@/components/ui/modal-stack";
 
 /**
  * Relógio injetado: só o `Date` é falso (timers e requestAnimationFrame seguem reais, o motion precisa deles). Meio-dia fixo evita que o rótulo
@@ -459,5 +460,143 @@ describe("links no balão (22/10, reel do Instagram da cliente não abria)", () 
     ]);
     expect(links[0].getAttribute("rel")).toContain("noopener");
     expect(screen.getByText(/javascript:alert\(1\) sem link/)).toBeTruthy();
+  });
+});
+
+/** Selecionar várias e encaminhar de uma vez, como no WhatsApp (Cati 24/10). */
+describe("modo seleção (encaminhar várias)", () => {
+  const canForward = (m: Msg) => !m.deleted && m.kind !== "call";
+  const conversa = () => [msg({ id: "a", body: "primeira" }), msg({ id: "b", kind: "image", body: "foto dela", hasMedia: true, externalId: "E2" }),
+    msg({ id: "c", body: "terceira", externalId: "E3" }), msg({ id: "x", body: "sumiu", deleted: true, externalId: "E4" })];
+  const entrar = async (texto: string) => {
+    fireEvent.click(screen.getAllByRole("button", { name: "Mais ações da mensagem" })[["primeira", "foto dela", "terceira"].indexOf(texto)]);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Selecionar" }));
+  };
+
+  it("'Selecionar' no menu entra no modo: a mensagem fica marcada e só as encaminháveis ganham a caixa", async () => {
+    render(<Conversation tools={{ forward: vi.fn(), canForward, forwardMany: vi.fn() }} messages={conversa()} />);
+    await entrar("primeira");
+    expect(screen.getByRole("toolbar", { name: "Mensagens selecionadas" })).toBeTruthy();
+    expect(screen.getByText("1 selecionada")).toBeTruthy();
+    const caixas = screen.getAllByRole("checkbox");
+    expect(caixas).toHaveLength(3); // a apagada não pode ser marcada
+    expect(caixas.map((c) => c.getAttribute("aria-checked"))).toEqual(["true", "false", "false"]);
+    // No modo seleção somem o menu e os atalhos do balão: tocar é só marcar.
+    expect(screen.queryByRole("button", { name: "Mais ações da mensagem" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Encaminhar" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Encaminhar 1 mensagem" }).closest("[role=toolbar]")).toBeTruthy();
+  });
+
+  it("tocar na mensagem marca e desmarca (não abre a foto); desmarcar a última sai do modo", async () => {
+    render(<Conversation tools={{ forward: vi.fn(), canForward, forwardMany: vi.fn() }} messages={conversa()} />);
+    await entrar("primeira");
+    const foto = screen.getByRole("checkbox", { name: /Selecionar mensagem: Foto/ });
+    fireEvent.click(foto);
+    expect(screen.getByText("2 selecionadas")).toBeTruthy();
+    expect(foto.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(foto);
+    expect(screen.getByText("1 selecionada")).toBeTruthy();
+    fireEvent.click(screen.getByRole("checkbox", { name: /primeira/ }));
+    expect(screen.queryByRole("toolbar", { name: "Mensagens selecionadas" })).toBeNull();
+    expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+  });
+
+  it("Encaminhar entrega as marcadas na ordem da conversa (não na ordem do toque); voltar mantém a seleção, encaminhar limpa", async () => {
+    const forwardMany = vi.fn();
+    render(<Conversation tools={{ forward: vi.fn(), canForward, forwardMany }} messages={conversa()} />);
+    await entrar("terceira");
+    fireEvent.click(screen.getByRole("checkbox", { name: /primeira/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Encaminhar 2 mensagens" }));
+    expect(forwardMany.mock.calls[0][0].map((m: Msg) => m.id)).toEqual(["a", "c"]);
+    act(() => forwardMany.mock.calls[0][1](false));
+    expect(screen.getByText("2 selecionadas")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Encaminhar 2 mensagens" }));
+    act(() => forwardMany.mock.calls[1][1](true));
+    expect(screen.queryByRole("toolbar", { name: "Mensagens selecionadas" })).toBeNull();
+  });
+
+  it("Cancelar e Esc saem do modo", async () => {
+    render(<Conversation tools={{ forward: vi.fn(), canForward, forwardMany: vi.fn() }} messages={conversa()} />);
+    await entrar("primeira");
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar seleção" }));
+    expect(screen.queryByRole("toolbar", { name: "Mensagens selecionadas" })).toBeNull();
+    await entrar("primeira");
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("toolbar", { name: "Mensagens selecionadas" })).toBeNull();
+  });
+
+  it("Esc é só da seleção: a gaveta do Funil (pilha de modais, ouvinte do document registrado antes) não fecha junto", async () => {
+    // Como o BoardLeadPanel: entra na pilha ao abrir e fecha no Esc se é o topo e ninguém tratou o Esc.
+    const fechaGaveta = vi.fn();
+    const gaveta = pushModal();
+    const painel = (e: KeyboardEvent) => { if (isTop(gaveta) && e.key === "Escape" && !e.defaultPrevented) { e.preventDefault(); fechaGaveta(); } };
+    document.addEventListener("keydown", painel);
+    try {
+      render(<Conversation tools={{ forward: vi.fn(), canForward, forwardMany: vi.fn() }} messages={conversa()} />);
+      await entrar("primeira");
+      fireEvent.keyDown(document.body, { key: "Escape" });
+      expect(screen.queryByRole("toolbar", { name: "Mensagens selecionadas" })).toBeNull();
+      expect(fechaGaveta).not.toHaveBeenCalled();
+      // Sem seleção, o Esc volta a ser da gaveta.
+      fireEvent.keyDown(document.body, { key: "Escape" });
+      expect(fechaGaveta).toHaveBeenCalledTimes(1);
+    } finally { document.removeEventListener("keydown", painel); popModal(gaveta); }
+  });
+
+  it("diálogo ou folha aberto por cima (Para quem?, Agendar, dados da cliente): o Esc fecha só ele e a seleção continua", async () => {
+    render(<Conversation tools={{ forward: vi.fn(), canForward, forwardMany: vi.fn() }} messages={conversa()} />);
+    await entrar("primeira");
+    const fechaFolha = vi.fn();
+    const folha = pushModal();
+    const onKey = (e: KeyboardEvent) => { if (isTop(folha) && e.key === "Escape") { e.preventDefault(); fechaFolha(); } };
+    document.addEventListener("keydown", onKey);
+    try {
+      fireEvent.keyDown(document.body, { key: "Escape" });
+      expect(fechaFolha).toHaveBeenCalledTimes(1);
+      expect(screen.getByText("1 selecionada")).toBeTruthy();
+    } finally { document.removeEventListener("keydown", onKey); popModal(folha); }
+    // A folha fechou: o Esc volta a ser da seleção.
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(screen.queryByRole("toolbar", { name: "Mensagens selecionadas" })).toBeNull();
+  });
+
+  it("marcada que deixou de ser encaminhável (apagada para todos no meio) sai da conta e não vai junto", async () => {
+    const forwardMany = vi.fn();
+    const { rerender } = render(<Conversation tools={{ forward: vi.fn(), canForward, forwardMany }} messages={conversa()} />);
+    await entrar("primeira");
+    fireEvent.click(screen.getByRole("checkbox", { name: /terceira/ }));
+    expect(screen.getByText("2 selecionadas")).toBeTruthy();
+    rerender(<Conversation tools={{ forward: vi.fn(), canForward, forwardMany }} messages={conversa().map((m) => (m.id === "c" ? { ...m, deleted: true } : m))} />);
+    expect(screen.getByText("1 selecionada")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Encaminhar 1 mensagem" }));
+    expect(forwardMany.mock.calls[0][0].map((m: Msg) => m.id)).toEqual(["a"]);
+  });
+
+  it("foco: entrar pelo menu leva à caixa da mensagem marcada; sair devolve o foco à conversa (não some no body)", async () => {
+    render(<Conversation tools={{ forward: vi.fn(), canForward, forwardMany: vi.fn() }} messages={conversa()} label="Conversa com Maria" />);
+    await entrar("terceira");
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("checkbox", { name: /terceira/ })));
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar seleção" }));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("log", { name: "Conversa com Maria" })));
+  });
+
+  it("passou do limite: não marca mais e avisa", async () => {
+    render(<Conversation tools={{ forward: vi.fn(), canForward, forwardMany: vi.fn(), maxSelect: 2 }} messages={conversa()} />);
+    await entrar("primeira");
+    fireEvent.click(screen.getByRole("checkbox", { name: /terceira/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Foto/ }));
+    expect(screen.getByText("2 selecionadas")).toBeTruthy();
+    expect(screen.getByText("Dá para encaminhar até 2 de uma vez.")).toBeTruthy();
+  });
+
+  it("segurar a mensagem (barra do celular) também oferece Selecionar; sem forwardMany, nada de Selecionar", async () => {
+    const { rerender } = render(<Conversation tools={{ forward: vi.fn(), canForward, forwardMany: vi.fn() }} messages={conversa()} />);
+    fireEvent.contextMenu(screen.getByText("primeira"));
+    fireEvent.click(within(screen.getByTestId("barra-mensagem")).getByRole("button", { name: "Selecionar" }));
+    expect(screen.getByText("1 selecionada")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar seleção" }));
+    rerender(<Conversation tools={{ forward: vi.fn(), canForward }} messages={conversa()} />);
+    fireEvent.click(screen.getAllByRole("button", { name: "Mais ações da mensagem" })[0]);
+    expect(screen.queryByRole("menuitem", { name: "Selecionar" })).toBeNull();
   });
 });

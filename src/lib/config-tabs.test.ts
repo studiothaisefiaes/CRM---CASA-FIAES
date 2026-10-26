@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { CONFIG_GROUPS, CONFIG_ITEMS, configGroups, groupHint, configTabs, defaultConfigGroup, itemHref, matchConfigItem, searchConfig, stateOf, type ConfigSnapshot } from "./config-tabs";
 
 const ids = (perms: string[]) => configTabs(perms).map((t) => t.id);
-const ALL = ["config.diaadia", "config.sistema", "equipe.gerir", "config.funcoes", "config.marcadores", "config.aviso_cliente", "config.fichas", "nota.configurar"];
+const ALL = ["config.diaadia", "config.sistema", "equipe.gerir", "config.funcoes", "config.marcadores", "config.aviso_cliente", "config.fichas", "nota.configurar", "api.gerir"];
 
 describe("grupos e itens", () => {
   it("poucos grupos, numa ordem só, com a Área de cuidado por último", () => {
@@ -68,6 +68,15 @@ describe("quem vê o quê", () => {
     expect(i).toMatchObject({ group: "mensagens", href: "/config/virada", sends: true, label: "Troca do ChatGuru para o CRM" });
     expect(i?.keywords).toEqual(expect.arrayContaining(["chatguru", "avec", "desligar"]));
     expect(matchConfigItem("/config/virada", "")?.id).toBe("virada");
+  });
+  it("API (26/10): em Pessoas, só com api.gerir (configurar o sistema não basta), achada por chave, token e integração", () => {
+    expect(CONFIG_ITEMS.find((x) => x.id === "api")).toMatchObject({ group: "pessoas", href: "/config/api", need: "api" });
+    expect(ids(["api.gerir"])).toEqual(["api"]);
+    expect(ids(["config.sistema", "equipe.gerir"])).not.toContain("api");
+    const busca = (q: string) => searchConfig(configTabs(ALL), q).map((i) => i.id);
+    expect(busca("token")).toContain("api");
+    expect(busca("integracao")).toContain("api");
+    expect(matchConfigItem("/config/api", "")?.id).toBe("api");
   });
   it("a gestão vê todos os itens; sem permissão, nenhum", () => {
     expect(ids(ALL)).toHaveLength(CONFIG_ITEMS.length);

@@ -42,8 +42,8 @@ export function retryPush(sender: PushSender, delayMs = 1_500): PushSender {
 }
 
 /** Avisos sem espera que também vão por push (o resto fica só no sino). */
-export const PUSH_ALSO: readonly string[] = ["mencao", "agendada_falhou", "mensagem_cliente", "link_remarcar"];
-const PUSH_TITLE: Record<string, string> = { mencao: "Te marcaram numa nota", agendada_falhou: "Mensagem agendada não saiu", mensagem_cliente: CLIENT_MESSAGE_TITLE, link_remarcar: "Cliente pediu para remarcar" };
+export const PUSH_ALSO: readonly string[] = ["mencao", "agendada_falhou", "encaminhar_falhou", "mensagem_cliente", "link_remarcar"];
+const PUSH_TITLE: Record<string, string> = { mencao: "Te marcaram numa nota", agendada_falhou: "Mensagem agendada não saiu", encaminhar_falhou: "Encaminhamento não saiu", mensagem_cliente: CLIENT_MESSAGE_TITLE, link_remarcar: "Cliente pediu para remarcar" };
 
 /** Envia o push dos alertas ainda não avisados. Marca `pushedAt` sempre, para não reprocessar. */
 export async function sendPushForPendingAlerts(sender: PushSender = webPushSender, opts: { retryDelayMs?: number } = {}): Promise<{ sent: number; failed: number }> {

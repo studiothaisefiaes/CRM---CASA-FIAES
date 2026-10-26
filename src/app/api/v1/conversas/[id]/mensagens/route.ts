@@ -1,0 +1,6 @@
+import { enviarMensagem, listarMensagens } from "@/server/api/rotas/conversas";
+
+// API v1: a trava (chave, escopo, permissão do perfil, limite) e a auditoria ficam em rotaApi (src/server/api/rota.ts).
+export const dynamic = "force-dynamic";
+export const GET = listarMensagens.handler;
+export const POST = enviarMensagem.handler;

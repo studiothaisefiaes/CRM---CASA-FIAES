@@ -350,6 +350,28 @@ export function pareceRobo(texts: (string | null | undefined)[]): boolean {
   return ROBO.reduce((n, [re, w]) => n + (re.test(t) ? w : 0), 0) >= 3;
 }
 
+/* ---------- Material indicado pela IA (24/10, o vídeo do Método Fiaes) ---------- */
+
+// Tolerante de propósito: colchete simples, sem fechar (resposta cortada) ou atalho com espaço também saem. A marca NUNCA pode chegar à cliente.
+const MATERIAL_RE = /[ \t]*\[\[?\s*material\s*:\s*\/?\s*([^\]\n]*?)\s*(?:\]\]?|(?=\n|$))[ \t]*/giu;
+/**
+ * Tira a marca `[[material:/atalho]]` do texto (a IA põe numa linha separada; em qualquer lugar ela sai) e devolve o atalho em minúsculas
+ * (espaço vira hífen, como no atalho da resposta pronta). Mais de uma marca: vale a primeira, todas saem. Quem confere se o atalho existe,
+ * está ativo e é universal com foto/vídeo e "A IA indica quando…" é o servidor (suggest.ts); marca inválida é só ignorada.
+ * Roda ANTES do resto do acabamento (a marca não pode virar "texto embaralhado").
+ */
+export function separarMaterial(t: string): { texto: string; material: string | null } {
+  let material: string | null = null, achou = false;
+  const out = t.replace(MATERIAL_RE, (_m, a: string) => {
+    achou = true;
+    const atalho = a.trim().replace(/\s+/g, "-").toLocaleLowerCase("pt-BR");
+    if (atalho) material ??= atalho;
+    return " ";
+  });
+  if (!achou) return { texto: t, material: null };
+  return { texto: out.replace(/[ \t]{2,}/g, " ").replace(/[ \t]+\n/g, "\n").replace(/\n[ \t]+/g, "\n").replace(/\n{3,}/g, "\n\n").trim(), material };
+}
+
 /* ---------- Tudo junto ---------- */
 
 /**

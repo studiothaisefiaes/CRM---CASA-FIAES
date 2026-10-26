@@ -12,6 +12,8 @@ import { setWhatsappProvider } from "../whatsapp/evolution";
 import { mediaDir } from "../whatsapp/media";
 import { purgeExpiredMedia } from "../whatsapp/retention";
 import { ProviderError } from "../whatsapp/provider";
+import { setVideoCompressor } from "../whatsapp/video";
+import { readFile, writeFile } from "node:fs/promises";
 import { resetDb } from "../../../test/db";
 
 const OPEN_TIME = new Date("2026-10-13T13:00:00Z"); // ter 10h em Salvador (aberto)
@@ -39,7 +41,8 @@ beforeEach(async () => {
   const r = await recordInbound({ channelId: ch.id, externalId: "IN1", phoneRaw: "71999995555", body: "oi", at: OPEN_TIME, now: OPEN_TIME });
   if (!("dealId" in r)) throw new Error(); dealId = r.dealId;
 });
-afterEach(() => setWhatsappProvider(null));
+afterEach(() => { setWhatsappProvider(null); setVideoCompressor(null); });
+const mp4 = (size: number) => Buffer.concat([Buffer.from("\0\0\0\x18ftypisom\0\0\0\0isom"), Buffer.alloc(Math.max(0, size - 20))]);
 
 describe("Biblioteca: subir e listar", () => {
   it("sobe uma foto com etiqueta Preços e lista por etiqueta", async () => {
@@ -61,6 +64,17 @@ describe("Biblioteca: subir e listar", () => {
     await uploadLibraryFile({ name: "g.png", mime: "image/png", data: big }, { name: "Grande", tags: [] }, uid); // 2 MB cabe em 16
     await saveFuncao("biblioteca", { params: { tamanho_max_mb: 1 } }, uid);
     await expect(uploadLibraryFile({ name: "g.png", mime: "image/png", data: big }, { name: "Grande 2", tags: [] }, uid)).rejects.toThrow("O arquivo passa de 1 MB. Escolha um menor.");
+  });
+  it("vídeo é comprimido antes de guardar e o limite da função vale DEPOIS de comprimir", async () => {
+    await saveFuncao("biblioteca", { params: { tamanho_max_mb: 1 } }, uid);
+    setVideoCompressor(async (_in, out) => { await writeFile(out, mp4(300)); });
+    const { id } = await uploadLibraryFile({ name: "metodo.mp4", mime: "video/mp4", data: mp4(3 * 1024 * 1024) }, { name: "Método", tags: [] }, uid);
+    const [row] = await db.select().from(libraryFiles).where(eq(libraryFiles.id, id));
+    expect(row).toMatchObject({ kind: "video", mime: "video/mp4", sizeBytes: 300 });
+    expect((await readFile(path.join(mediaDir(), row.path))).length).toBe(300);
+    setVideoCompressor(async (_in, out) => { await writeFile(out, mp4(2 * 1024 * 1024)); });
+    await expect(uploadLibraryFile({ name: "longo.mp4", mime: "video/mp4", data: mp4(5 * 1024 * 1024) }, { name: "Longo", tags: [] }, uid))
+      .rejects.toThrow("Mesmo comprimido o vídeo passou de 1 MB. Corte um pedaço e tente de novo.");
   });
   it("função desligada: subir, editar e enviar são recusados", async () => {
     const { id } = await photo();
@@ -85,6 +99,11 @@ describe("Biblioteca: envio", () => {
     expect(await lastOut(dealId)).toMatchObject({ kind: "image", status: "sent", sentByUserId: uid });
     await sendLibraryFile(dealId, id, "Para você 💛", uid);
     expect(fake.media[1].caption).toBe("Para você 💛");
+  });
+  it("o envio da atendente aponta para o arquivo da Biblioteca (nenhuma cópia por mensagem)", async () => {
+    const { id } = await photo();
+    await sendLibraryFile(dealId, id, null, uid);
+    expect((await lastOut(dealId)).mediaPath).toBe(`biblioteca/${id}.png`);
   });
   it("a fila envia um arquivo da Biblioteca como mídia e ele aparece na conversa", async () => {
     const { id: fileId } = await photo();

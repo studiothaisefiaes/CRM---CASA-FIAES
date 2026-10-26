@@ -155,3 +155,22 @@ describe("cancelou sem nova data (Cati 17/10): retomada proposta, criada só no 
     expect(within(faixa).getByRole("button", { name: "Programar retomada" })).toBeTruthy();
   });
 });
+
+describe("a IA indicou um vídeo da resposta pronta (24/10): vai junto, mas só no Enviar da atendente", () => {
+  const material = { replyId: "q9", name: "metodo.mp4", kind: "video" };
+  it("o cartão mostra o arquivo que vai junto e o Usar prende o anexo na caixa com o texto", async () => {
+    const offer = vi.spyOn(draft, "offerDraft").mockImplementation(() => {});
+    getAiSuggestionAction.mockResolvedValue({ ok: true, data: { state: "pronta", suggestion: { ...base, agendaAt: null, material } } });
+    render(<AiSuggestion dealId="d1" />);
+    expect((await screen.findByTestId("material-ia")).textContent).toBe("📎 vai junto: metodo.mp4");
+    fireEvent.click(screen.getByRole("button", { name: "Usar e editar" }));
+    expect(offer).toHaveBeenCalledWith("d1", base.sugestao, { replyFile: { replyId: "q9", name: "metodo.mp4", kind: "video" } });
+    offer.mockRestore();
+  });
+  it("sem material: sem a linha do anexo", async () => {
+    getAiSuggestionAction.mockResolvedValue({ ok: true, data: { state: "pronta", suggestion: { ...base, agendaAt: null, material: null } } });
+    render(<AiSuggestion dealId="d1" />);
+    await screen.findByTestId("sugestao-ia");
+    expect(screen.queryByTestId("material-ia")).toBeNull();
+  });
+});

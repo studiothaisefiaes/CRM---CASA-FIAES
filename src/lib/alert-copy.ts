@@ -177,6 +177,12 @@ export const alertText = {
   offer: (client: string) => `A dona não respondeu. Pode assumir ${client}?`,
   claimed: (actor: string | null, client: string) => `${firstName(actor) ?? "Alguém"} assumiu a conversa de ${client}`,
   transferred: (actor: string | null, client: string) => `${firstName(actor) ?? "Alguém"} te passou a conversa de ${client}`,
+  /**
+   * Encaminhar (24/10): o que não saiu do envio em segundo plano, para quem encaminhou. `dest` null = a conversa de destino não existe mais.
+   * `why` é o recado do envio ("Envio incerto: … Confira no WhatsApp antes de reenviar.").
+   */
+  forwardFailed: (dest: string | null, what: string, why: string) =>
+    `Encaminhamento para ${dest ?? "uma conversa que não existe mais"}: ${what}. ${/[.!?]$/.test(why.trim()) ? why.trim() : `${why.trim()}.`}`,
   /** Lote 1A: outra pessoa respondeu a conversa da dona (a dona não muda). */
   repliedByOther: (actor: string | null, client: string) => `${firstName(actor) ?? "Outra pessoa"} respondeu a conversa de ${client}. Ela continua sua; se for para passar, use Transferir.`,
   birthday: (client: string, day: number, month: number) => `Aniversário de ${client} dia ${pad(day)}/${pad(month)}. Que tal mandar um parabéns?`,
@@ -205,7 +211,7 @@ const GROUP_OF: Record<string, AlertGroup> = {
   folga_pedida: "agenda", link_remarcar: "agenda", link_cancelou: "agenda", pedido_online: "agenda",
   oferta: "conversas", assumiu_sua_conversa: "conversas", transferido_para_voce: "conversas", respondida_por_outra: "conversas", mencao: "conversas", ligacao_sem_nota: "conversas", nota_baixa: "conversas",
   aniversario_em_dias: "lembretes", parado_dias: "lembretes", sem_retorno_cliente_dias: "lembretes", data_recontato: "lembretes", data_cobranca: "lembretes", agendamento_em_horas: "lembretes",
-  whatsapp_desconectado: "sistema", whatsapp_sem_conexao: "sistema", envio_automatico_falhou: "sistema", agendada_falhou: "sistema", massa_concluida: "sistema", massa_pausada: "sistema", webhook_falhou: "sistema", mensagem_sem_numero: "sistema", historico_falhou: "sistema", automacao_falhou: "sistema",
+  whatsapp_desconectado: "sistema", whatsapp_sem_conexao: "sistema", envio_automatico_falhou: "sistema", agendada_falhou: "sistema", encaminhar_falhou: "sistema", massa_concluida: "sistema", massa_pausada: "sistema", webhook_falhou: "sistema", mensagem_sem_numero: "sistema", historico_falhou: "sistema", automacao_falhou: "sistema",
 };
 export const ALERT_TYPES = Object.keys(GROUP_OF);
 export const alertGroupOf = (type: string): AlertGroup => GROUP_OF[type] ?? "outros";
@@ -270,6 +276,9 @@ export const ALERT_HELP: (HelpEntry & { types: string[] })[] = [
   { id: "alerta-agendada", types: ["agendada_falhou"], title: "Mensagem agendada não saiu",
     text: "Uma mensagem agendada não foi enviada: a cliente escreveu antes, quem agendou saiu da equipe, ela perdeu a hora (mais de 2 h de atraso) ou o WhatsApp recusou. Nunca sai sozinha depois disso: abra a conversa e decida.",
     example: alertText.scheduledFailed("Fulana", "a cliente escreveu depois que você agendou") },
+  { id: "alerta-encaminhar", types: ["encaminhar_falhou"], title: "Encaminhamento que não saiu",
+    text: "Você encaminhou mensagens e alguma não chegou numa das conversas: o aviso diz quais (tipo e hora) e o motivo. O resto já saiu. Se o WhatsApp não respondeu, a mensagem pode ter chegado: confira na conversa antes de encaminhar de novo.",
+    example: alertText.forwardFailed("Fulana", "2 de 5 não saíram (foto de 20/10 às 10:00, vídeo de 20/10 às 10:02)", "Não foi possível enviar: o WhatsApp recusou o arquivo.") },
   { id: "alerta-massa", types: ["massa_concluida", "massa_pausada"], title: "Mensagem em massa",
     text: "A mensagem em massa terminou (com quantas saíram) ou parou sozinha porque nenhum WhatsApp está conectado. Para continuar, conecte o número e toque em Retomar em Configurações › Mensagem em massa.",
     example: alertText.campaignDone("Retorno de outubro", 85, 2) },

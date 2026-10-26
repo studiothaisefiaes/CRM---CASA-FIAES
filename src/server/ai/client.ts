@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { stripSignature } from "@/lib/signature";
 import { costMicros, type Usage, pricesFor } from "./pricing";
-import { pareceIlegivel, posProcessar } from "./pos";
+import { pareceIlegivel, posProcessar, separarMaterial } from "./pos";
 
 /**
  * Cliente fino da Messages API da Anthropic (fetch, sem SDK): um pedido, tempo limite, uma nova tentativa em erro passageiro
@@ -35,6 +35,8 @@ export const suggestionSchema = z.object({
   horario: z.string().trim().max(12).nullish(),
   /** Cancelou sem nova data (Cati 17/10): em quantos dias retomar; 0/ausente = nada. Quem decide se vira proposta é o servidor (suggest.ts). */
   retomar_dias: z.number().int().min(0).max(365).nullish().catch(null),
+  /** Não vem da API: o atalho da marca `[[material:/atalho]]` que `callLegivel` tirou do texto (o servidor confere em suggest.ts). */
+  material: z.string().nullish(),
 });
 export type Suggestion = z.infer<typeof suggestionSchema>;
 
@@ -151,8 +153,10 @@ export async function callLegivel(call: () => Promise<CallResult>, nomes: string
     try {
       const r: CallResult = await call();
       const usage: Usage = spent ? plus(spent, r.usage) : r.usage;
-      if (!pareceIlegivel(r.data.sugestao)) {
-        return { ...r, usage, costMicros: spent ? costMicros(usage, pricesFor(r.model)) : r.costMicros, data: { ...r.data, sugestao: posProcessar(r.data.sugestao, nomes) } };
+      // A marca de material sai antes de tudo: não pode parecer texto embaralhado nem passar pelo acabamento.
+      const { texto, material } = separarMaterial(r.data.sugestao);
+      if (!pareceIlegivel(texto)) {
+        return { ...r, usage, costMicros: spent ? costMicros(usage, pricesFor(r.model)) : r.costMicros, data: { ...r.data, sugestao: posProcessar(texto, nomes), material } };
       }
       spent = usage;
     } catch (e) {

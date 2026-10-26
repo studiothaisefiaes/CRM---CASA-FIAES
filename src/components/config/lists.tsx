@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/toast";
 import { addListItemAction, setKeywordBoostAction, updateListItemAction } from "@/app/(app)/config/actions";
-import { attachQuickReplyFileAction, detachQuickReplyFileAction, setQuickReplyFolderAction } from "@/app/(app)/config/respostas/actions";
+import { attachQuickReplyFileAction, detachQuickReplyFileAction, setQuickReplyFolderAction, setQuickReplyIaQuandoAction } from "@/app/(app)/config/respostas/actions";
 import { createQuickReplyAction, makeQuickReplyUniversalAction } from "@/app/(app)/conversa/actions";
 import { VarButtons } from "@/components/lead/var-buttons";
 import { renderReply, type ReplyVars } from "@/lib/quick-reply";
@@ -15,16 +15,18 @@ import { SPRING_UI } from "@/lib/motion";
 type Item = { id: string; kind: "objection" | "lost_reason" | "quick_reply" | "origin" | "service" | "keyword"; label: string; body: string | null; active: boolean; cycleDays: number | null; boost?: boolean;
   /** Serviços: preço (centavos), duração e folga depois (min) e categoria; null = não informado. */ priceCents?: number | null; durationMin?: number | null; category?: string | null; bufferMin?: number | null;
   /** Respostas prontas: anexo (Lote 5); a pasta usa `category`. */ attachment?: { name: string; kind: string } | null;
-  /** Resposta pronta pessoal: nome de quem criou (só ela vê). null/ausente = universal. */ ownerName?: string | null };
+  /** Resposta pronta pessoal: nome de quem criou (só ela vê). null/ausente = universal. */ ownerName?: string | null;
+  /** Resposta pronta universal com foto/vídeo: quando a IA indica mandar junto (meta.iaQuando, 24/10). */ iaQuando?: string | null };
 /** Dados de exemplo da prévia em Configurações (na conversa, a prévia usa os dados da cliente). */
 const EXEMPLO: ReplyVars = { primeiroNome: "Ana", dataHorario: "quinta-feira, 22/10 às 15h", profissional: "Paula", servico: "Corte", meuNome: "Joana" };
-const TABS = [["quick_reply", "Respostas prontas", "Aparecem ao digitar / na conversa. Universais: todas usam. Pessoais: só quem criou vê (a equipe cria as suas pela conversa). Variáveis pelos botões; data, profissional e serviço vêm do próximo horário: sem horário, o campo pede para preencher antes de enviar."], ["objection", "Objeções", "O que a cliente diz quando hesita. Viram relatório."], ["lost_reason", "Motivos de perda", "Pedidos ao marcar uma conversa como perdida."], ["keyword", "Palavras-chave", "Palavras ou frases que a cliente escreve e viram etiqueta na Fila (uma por linha). Ex.: etiqueta “Mega hair” para “mega hair” e “aplique”. Sem acento, maiúscula ou pontuação: tanto faz."]] as const;
+const TABS = [["quick_reply", "Respostas prontas", "Aparecem ao digitar / na conversa. Universais: todas usam. Pessoais: só quem criou vê (a equipe cria as suas pela conversa). Variáveis pelos botões; data, profissional e serviço vêm do próximo horário: sem horário, o campo pede para preencher antes de enviar. Anexo: Foto e vídeo vão com o texto como legenda, embaixo (numa mensagem só); PDF e áudio vão depois do texto. Vídeo é comprimido ao anexar para ocupar pouco espaço."], ["objection", "Objeções", "O que a cliente diz quando hesita. Viram relatório."], ["lost_reason", "Motivos de perda", "Pedidos ao marcar uma conversa como perdida."], ["keyword", "Palavras-chave", "Palavras ou frases que a cliente escreve e viram etiqueta na Fila (uma por linha). Ex.: etiqueta “Mega hair” para “mega hair” e “aplique”. Sem acento, maiúscula ou pontuação: tanto faz."]] as const;
 
 /**
  * `initialTab`: aba aberta ao chegar (ex.: `?aba=keyword`). Serviços saiu daqui (16/10): é a aba Serviços do menu (/servicos).
  * `single`: cada lista é um item de Configurações (F5): sem a fileira de abas, só a lista pedida.
  */
-export function ListsEditor({ items, initialTab = "quick_reply", single = false }: { items: Item[]; initialTab?: Item["kind"]; single?: boolean }) {
+export function ListsEditor({ items, initialTab = "quick_reply", single = false, canManageIa = false }: { items: Item[]; initialTab?: Item["kind"]; single?: boolean;
+  /** Gestão (config.sistema): escolhe quando a IA indica a resposta pronta com foto/vídeo. */ canManageIa?: boolean }) {
   const [tab, setTab] = useState<Item["kind"]>(initialTab);
   const [label, setLabel] = useState(""); const [body, setBody] = useState("");
   const [scope, setScope] = useState<"universal" | "minha">("universal");
@@ -54,7 +56,7 @@ export function ListsEditor({ items, initialTab = "quick_reply", single = false 
               {tab === "quick_reply" && (idx === 0 || (shown[idx - 1].category ?? "") !== (i.category ?? "")) && (
                 <p className="px-4 pt-3 text-xs font-semibold text-gold-ink">{i.category ?? "Sem pasta"}</p>
               )}
-              <Row i={i} />
+              <Row i={i} canManageIa={canManageIa} />
             </motion.li>
           ))}</AnimatePresence>
           {shown.length === 0 && <li className="px-4 py-8 text-center text-muted text-sm">Nada aqui ainda.</li>}
@@ -87,7 +89,7 @@ export function ListsEditor({ items, initialTab = "quick_reply", single = false 
   );
 }
 
-function Row({ i }: { i: Item }) {
+function Row({ i, canManageIa = false }: { i: Item; canManageIa?: boolean }) {
   const [label, setLabel] = useState(i.label); const [body, setBody] = useState(i.body ?? "");
   const [editingBody, setEditingBody] = useState(false);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
@@ -101,6 +103,7 @@ function Row({ i }: { i: Item }) {
         {i.kind === "quick_reply" && editingBody && <VarButtons target={bodyRef} value={body} onChange={setBody} />}
         {i.kind === "quick_reply" && <textarea ref={bodyRef} value={body} onChange={(e) => setBody(e.target.value)} onFocus={() => setEditingBody(true)} onBlur={() => { setEditingBody(false); if (body !== (i.body ?? "")) save(); }} rows={2} className="text-sm text-graphite bg-transparent outline-none resize-none rounded px-1 -mx-1 focus:bg-paper-2" aria-label="Texto" />}
         {i.kind === "quick_reply" && <QuickReplyExtras i={i} />}
+        {i.kind === "quick_reply" && canManageIa && !i.ownerName && (i.attachment?.kind === "image" || i.attachment?.kind === "video") && <IaQuando i={i} />}
         {i.kind === "keyword" && <textarea value={body} onChange={(e) => setBody(e.target.value)} onBlur={() => body !== (i.body ?? "") && save()} rows={2} className="text-sm text-graphite bg-transparent outline-none resize-none rounded px-1 -mx-1 focus:bg-paper-2" aria-label={`Frases de ${i.label}`} />}
         {i.kind === "keyword" && <Boost i={i} />}
       </div>
@@ -122,10 +125,34 @@ function Boost({ i }: { i: Item }) {
   );
 }
 
-/** Resposta pronta: pasta (agrupa no "/") e um anexo opcional (foto, PDF, vídeo ou áudio que vai junto, depois do texto). */
+/**
+ * "A IA indica quando…" (24/10, o vídeo do Método Fiaes): na resposta universal com foto/vídeo, a gestão diz em que situação a IA sugere
+ * mandar o arquivo junto. A sugestão traz o anexo preso; quem envia é a atendente. Vazio = a IA não indica.
+ */
+function IaQuando({ i }: { i: Item }) {
+  const [text, setText] = useState(i.iaQuando ?? "");
+  const [pending, start] = useTransition(); const toast = useToast();
+  const save = () => {
+    if (text.trim() === (i.iaQuando ?? "")) return;
+    start(async () => { const r = await setQuickReplyIaQuandoAction(i.id, text.trim() || null); toast(r.ok ? (text.trim() ? "A IA vai indicar esta resposta" : "A IA não indica mais esta resposta") : r.error, r.ok ? "ok" : "error"); });
+  };
+  return (
+    <input value={text} onChange={(e) => setText(e.target.value)} onBlur={save} disabled={pending} maxLength={200} aria-label={`A IA indica /${i.label} quando…`}
+      placeholder="A IA indica quando… (ex.: a cliente perguntar sobre o Método Fiaes®)"
+      className="h-8 w-full rounded-[var(--radius-control)] border border-line bg-paper px-2 text-sm" />
+  );
+}
+
+/** Limites conferidos antes de subir (o servidor confere de novo): vídeo bruto até 64 MB (é comprimido lá), o resto até 16 MB. */
+const MAX_VIDEO_BYTES = 64 * 1024 * 1024, MAX_FILE_BYTES = 16 * 1024 * 1024;
+const isVideoFile = (f: File) => f.type.startsWith("video/") || /\.(mp4|m4v|mov)$/i.test(f.name);
+
+/** Resposta pronta: pasta (agrupa no "/") e um anexo opcional (foto/vídeo vão com o texto como legenda; PDF/áudio, depois do texto). */
 function QuickReplyExtras({ i }: { i: Item }) {
   const [folder, setFolder] = useState(i.category ?? "");
   const [pending, start] = useTransition(); const toast = useToast();
+  /** Subindo agora (vídeo de 50 MB no Wi-Fi do balcão + compressão leva 1 ou 2 minutos): a tela diz o que está acontecendo. */
+  const [subindo, setSubindo] = useState<"video" | "arquivo" | null>(null);
   const file = useRef<HTMLInputElement>(null);
   const saveFolder = () => {
     if (folder.trim() === (i.category ?? "")) return;
@@ -133,7 +160,20 @@ function QuickReplyExtras({ i }: { i: Item }) {
   };
   const upload = (f: File | undefined) => {
     if (!f) return;
-    start(async () => { const fd = new FormData(); fd.set("id", i.id); fd.set("file", f); const r = await attachQuickReplyFileAction(fd); toast(r.ok ? "Anexo salvo" : r.error, r.ok ? "ok" : "error"); });
+    const video = isVideoFile(f);
+    // Recusa na hora, antes de mandar 70 MB pela internet do salão só para ouvir "não".
+    if (f.size > (video ? MAX_VIDEO_BYTES : MAX_FILE_BYTES)) { toast(video ? "O vídeo passa de 64 MB. Corte um pedaço e tente de novo." : "O arquivo passa de 16 MB. Escolha um menor.", "error"); return; }
+    setSubindo(video ? "video" : "arquivo");
+    start(async () => {
+      try {
+        const fd = new FormData(); fd.set("id", i.id); fd.set("file", f);
+        const r = await attachQuickReplyFileAction(fd);
+        toast(r.ok ? "Anexo salvo" : r.error, r.ok ? "ok" : "error");
+      } catch {
+        // A ação nem respondeu (internet caiu, arquivo cortado no caminho): mensagem clara em vez de a tela quebrar.
+        toast("Não deu para subir o arquivo. Confira a internet e tente de novo.", "error");
+      } finally { setSubindo(null); }
+    });
   };
   const remove = () => start(async () => { const r = await detachQuickReplyFileAction(i.id); toast(r.ok ? "Anexo tirado" : r.error, r.ok ? "ok" : "error"); });
   return (
@@ -149,8 +189,13 @@ function QuickReplyExtras({ i }: { i: Item }) {
       ) : (
         <button type="button" disabled={pending} onClick={() => file.current?.click()} className="font-medium text-gold-ink">Anexar arquivo</button>
       )}
-      <input ref={file} type="file" hidden accept="image/*,application/pdf,audio/*,video/mp4" aria-label={`Arquivo de /${i.label}`}
+      <input ref={file} type="file" hidden accept="image/*,application/pdf,audio/*,video/mp4,video/quicktime" aria-label={`Arquivo de /${i.label}`}
         onChange={(e) => { upload(e.target.files?.[0]); e.target.value = ""; }} />
+      {subindo && (
+        <p role="status" className="w-full text-sm text-graphite">
+          {subindo === "video" ? "Enviando o vídeo e deixando mais leve… Pode levar 1 ou 2 minutos. Não feche esta tela." : "Enviando o arquivo…"}
+        </p>
+      )}
     </div>
   );
 }

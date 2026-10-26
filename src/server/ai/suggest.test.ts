@@ -780,3 +780,73 @@ describe("cancelou sem nova data (Cati 17/10): a sugestão propõe quando retoma
     expect((await pronta(plus(270)))!.retomarEm).toBeNull();
   });
 });
+
+describe("a IA indica um material (resposta pronta com vídeo, 24/10): nada sai sozinho", () => {
+  const video = { path: "resposta-x.mp4", mime: "video/mp4", name: "metodo.mp4", kind: "video" };
+  const material = async (label: string, meta: Record<string, unknown>, active = true) =>
+    (await db.insert(lists).values({ kind: "quick_reply", label, body: "O Método Fiaes® é a técnica exclusiva da Casa. Assista!", active, meta }).returning())[0].id;
+  const comMarca = (atalho: string) => caller({ ...good, sugestao: `O Método Fiaes® é exclusivo da Casa, assista ao vídeo! 💛\n[[material:/${atalho}]]` });
+
+  it("só as universais com foto/vídeo e \"A IA indica quando…\" entram na lista de materiais do bloco fixo", async () => {
+    await ligar();
+    await material("metodo-fiaes", { attachment: video, iaQuando: "a cliente perguntar sobre o Método Fiaes" });
+    await material("sem-quando", { attachment: video });
+    await material("pessoal", { attachment: video, iaQuando: "x", ownerId: sara });
+    await material("pdf", { attachment: { ...video, kind: "document", mime: "application/pdf" }, iaQuando: "y" });
+    await material("desligada", { attachment: video, iaQuando: "z" }, false);
+    await generateForDeal(dealId, { now: plus(120), caller: caller() });
+    expect(calls[0].system).toContain("- /metodo-fiaes (vídeo): quando a cliente perguntar sobre o Método Fiaes.");
+    expect(calls[0].system).not.toMatch(/\/(sem-quando|pessoal|pdf|desligada) /);
+  });
+
+  it("sem nenhum material: o bloco fixo é o mesmo de antes (sem a seção)", async () => {
+    await ligar();
+    await generateForDeal(dealId, { now: plus(120), caller: caller() });
+    expect(calls[0].system).not.toContain("Materiais para enviar");
+  });
+
+  it("com a marca: o texto sai limpo, a sugestão guarda a resposta pronta e a tela mostra o anexo que vai junto", async () => {
+    await ligar();
+    const id = await material("metodo-fiaes", { attachment: video, iaQuando: "a cliente perguntar sobre o Método Fiaes" });
+    const outBefore = (await db.select().from(messages).where(eq(messages.direction, "out"))).length;
+    await generateForDeal(dealId, { now: plus(120), caller: comMarca("metodo-fiaes") });
+    const [s] = await rows();
+    expect(s.sugestao).toBe("O Método Fiaes® é exclusivo da Casa, assista ao vídeo! 💛");
+    expect(s.quickReplyId).toBe(id);
+    expect((await pronta())?.material).toEqual({ replyId: id, name: "metodo.mp4", kind: "video" });
+    // Nada saiu: a atendente confere e aperta Enviar.
+    expect((await db.select().from(messages).where(eq(messages.direction, "out"))).length).toBe(outBefore);
+    expect(await db.select().from(outbox)).toHaveLength(0);
+  });
+
+  it("marca inválida (atalho que não existe, pessoal, sem anexo, PDF ou desativada) é ignorada sem quebrar", async () => {
+    await ligar();
+    await material("pessoal", { attachment: video, iaQuando: "x", ownerId: sara });
+    await material("sem-anexo", { iaQuando: "x" });
+    await material("pdf", { attachment: { ...video, kind: "document", mime: "application/pdf" }, iaQuando: "x" });
+    await material("desligada", { attachment: video, iaQuando: "x" }, false);
+    // Universal com vídeo, mas a gestão não preencheu "A IA indica quando…": a IA não pode prender (nem adivinhando o atalho).
+    await material("sem-quando", { attachment: video });
+    for (const atalho of ["nao-existe", "pessoal", "sem-anexo", "pdf", "desligada", "sem-quando"]) {
+      await db.delete(aiSuggestions);
+      expect((await generateForDeal(dealId, { now: plus(120), caller: comMarca(atalho) })).status).toBe("gerada");
+      const [s] = await rows();
+      expect(s.quickReplyId).toBeNull();
+      expect(s.sugestao).not.toContain("[[");
+      expect((await pronta())?.material).toBeNull();
+    }
+  });
+
+  it("a resposta pronta foi desativada ou perdeu o anexo depois: a tela não oferece mais o anexo", async () => {
+    await ligar();
+    const id = await material("metodo-fiaes", { attachment: video, iaQuando: "q" });
+    await generateForDeal(dealId, { now: plus(120), caller: comMarca("metodo-fiaes") });
+    await db.update(lists).set({ active: false }).where(eq(lists.id, id));
+    expect((await pronta())?.material).toBeNull();
+    await db.update(lists).set({ active: true, meta: { iaQuando: "q" } }).where(eq(lists.id, id));
+    expect((await pronta())?.material).toBeNull();
+    // A gestão apagou o "A IA indica quando…": a sugestão antiga também não oferece mais.
+    await db.update(lists).set({ meta: { attachment: video } }).where(eq(lists.id, id));
+    expect((await pronta())?.material).toBeNull();
+  });
+});

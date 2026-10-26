@@ -137,6 +137,77 @@ function mergedFields(keep: Contact, drop: Contact): { patch: Partial<typeof con
  * dia e ficar com uma "pessoa a mais" quando a outra tem número de WhatsApp (a tela troca a ordem). Depois do commit recalcula os
  * números das clientes e avisa as telas.
  */
+/**
+ * Passa para K tudo o que é da cliente D (visitas, fichas, agenda, comandas, créditos, pacotes, vendas, pontos, fotos, notas, tarefas,
+ * etiquetas, campanhas, pessoas a mais do número). Conversas e mensagens ficam com quem chama, que tem regras próprias para a conversa aberta.
+ * Usada na junção de cadastros e na do número oculto (@lid): a do @lid levava só parte e o banco recusava apagar o oculto que tinha
+ * horário na agenda (prod 24–26/10, ~1000 falhas por dia); as tabelas em cascata (fotos, notas, fichas) se perderiam.
+ */
+export async function moveContactDataTx(tx: Tx, D: string, K: string, now: Date) {
+  // Visitas do mesmo dia: os horários (e a comanda, o link, as fotos e a consultoria) passam para a visita da que fica.
+  const visitMap = new Map<string, string>();
+  for (const v of await tx.select().from(visits).where(eq(visits.contactId, D))) {
+    const [kv] = await tx.select().from(visits).where(and(eq(visits.contactId, K), eq(visits.day, v.day))).orderBy(asc(visits.createdAt)).limit(1);
+    if (!kv) continue;
+    visitMap.set(v.id, kv.id);
+    const vNotes = v.notes?.trim();
+    const notes = !vNotes || (kv.notes ?? "").includes(vNotes) ? kv.notes : [kv.notes?.trim(), vNotes].filter(Boolean).join("\n");
+    await tx.update(visits).set({ notes, dealId: kv.dealId ?? v.dealId, updatedAt: now }).where(eq(visits.id, kv.id));
+    await tx.update(appointments).set({ visitId: kv.id }).where(eq(appointments.visitId, v.id));
+    await tx.update(comandas).set({ visitId: kv.id }).where(eq(comandas.visitId, v.id));
+    await tx.update(clientLinks).set({ visitId: kv.id }).where(eq(clientLinks.visitId, v.id));
+    await tx.update(clientPhotos).set({ visitId: kv.id }).where(eq(clientPhotos.visitId, v.id));
+  }
+
+  // Fichas (chave composta): a resposta da que fica vence; a da outra vai para o snapshot. A "limpa" (vazia) conta como sem resposta.
+  const lostAnswers: { de: "fica" | "sai"; questionId: string; visitId: string | null; value: unknown; source: string; externalKey: string | null }[] = [];
+  const keepAnswers = await tx.select().from(formAnswers).where(eq(formAnswers.contactId, K));
+  for (const a of await tx.select().from(formAnswers).where(eq(formAnswers.contactId, D))) {
+    const visitId = a.visitId ? (visitMap.get(a.visitId) ?? a.visitId) : null;
+    const k = keepAnswers.find((x) => x.questionId === a.questionId && x.visitId === visitId);
+    if (k && !(blankAnswer(k.value) && !blankAnswer(a.value))) {
+      lostAnswers.push({ de: "sai", questionId: a.questionId, visitId, value: a.value, source: a.source, externalKey: a.externalKey });
+      await tx.delete(formAnswers).where(eq(formAnswers.id, a.id));
+      continue;
+    }
+    if (k) {
+      lostAnswers.push({ de: "fica", questionId: k.questionId, visitId, value: k.value, source: k.source, externalKey: k.externalKey });
+      await tx.delete(formAnswers).where(eq(formAnswers.id, k.id));
+    }
+    // A chave do Avec (`avec:ficha:<que saiu>:…`) fica: a próxima importação acha a resposta pela mesma linha do Avec.
+    await tx.update(formAnswers).set({ contactId: K, visitId }).where(eq(formAnswers.id, a.id));
+  }
+  if (visitMap.size) await tx.delete(visits).where(inArray(visits.id, [...visitMap.keys()]));
+  await tx.update(visits).set({ contactId: K }).where(eq(visits.contactId, D));
+
+  // O resto muda de dono. Pontos: a linha do saldo do Avec da outra fica com a chave dela (`avec:fid:<que saiu>`), ao lado da da que fica.
+  await tx.update(appointments).set({ contactId: K }).where(eq(appointments.contactId, D));
+  await tx.update(comandas).set({ contactId: K }).where(eq(comandas.contactId, D));
+  await tx.update(clientCreditEntries).set({ contactId: K }).where(eq(clientCreditEntries.contactId, D));
+  await tx.update(clientDebtEntries).set({ contactId: K }).where(eq(clientDebtEntries.contactId, D));
+  await tx.update(satisfactionAnswers).set({ contactId: K }).where(eq(satisfactionAnswers.contactId, D));
+  await tx.update(clientPackages).set({ contactId: K }).where(eq(clientPackages.contactId, D));
+  await tx.update(packageUses).set({ contactId: K }).where(eq(packageUses.contactId, D));
+  await tx.update(salesItems).set({ contactId: K }).where(eq(salesItems.contactId, D));
+  await tx.update(salesPayments).set({ contactId: K }).where(eq(salesPayments.contactId, D));
+  await tx.update(loyaltyEntries).set({ contactId: K }).where(eq(loyaltyEntries.contactId, D));
+  await tx.update(clientPhotos).set({ contactId: K }).where(eq(clientPhotos.contactId, D));
+  await tx.update(clientNotes).set({ contactId: K }).where(eq(clientNotes.contactId, D));
+  await tx.update(contactNotes).set({ contactId: K }).where(eq(contactNotes.contactId, D));
+  await tx.update(tasks).set({ contactId: K }).where(eq(tasks.contactId, D));
+  await tx.update(leadSources).set({ referrerContactId: K }).where(eq(leadSources.referrerContactId, D));
+  await tx.update(avecRejectedRows).set({ contactId: K }).where(eq(avecRejectedRows.contactId, D));
+  await tx.execute(sql`insert into contact_tags (contact_id, tag_id, created_by, created_at)
+    select ${K}::uuid, tag_id, created_by, created_at from contact_tags where contact_id = ${D}::uuid on conflict do nothing`);
+  await tx.execute(sql`delete from contact_tags where contact_id = ${D}::uuid`);
+  await tx.execute(sql`insert into campaign_recipients (campaign_id, contact_id, status, message_id, error, sent_at)
+    select campaign_id, ${K}::uuid, status, message_id, error, sent_at from campaign_recipients where contact_id = ${D}::uuid on conflict do nothing`);
+  await tx.execute(sql`delete from campaign_recipients where contact_id = ${D}::uuid`);
+  // Pessoas a mais do número da que sai passam para a que fica.
+  await tx.update(contacts).set({ sharesPhoneWith: K }).where(and(eq(contacts.sharesPhoneWith, D), ne(contacts.id, K)));
+  return { lostAnswers };
+}
+
 export async function mergeContacts(i: { keepId: string; dropId: string }, userId: string, now: Date = new Date()): Promise<{ moved: MergeMoving }> {
   const r = await db.transaction(async (tx) => {
     await assertFuncao("unir", tx);
@@ -168,67 +239,7 @@ export async function mergeContacts(i: { keepId: string; dropId: string }, userI
       and exists (select 1 from messages k where k.contact_id = ${K} and k.import_key = m.import_key)`);
     await tx.update(messages).set({ contactId: K }).where(eq(messages.contactId, D));
 
-    // Visitas do mesmo dia: os horários (e a comanda, o link, as fotos e a consultoria) passam para a visita da que fica.
-    const visitMap = new Map<string, string>();
-    for (const v of await tx.select().from(visits).where(eq(visits.contactId, D))) {
-      const [kv] = await tx.select().from(visits).where(and(eq(visits.contactId, K), eq(visits.day, v.day))).orderBy(asc(visits.createdAt)).limit(1);
-      if (!kv) continue;
-      visitMap.set(v.id, kv.id);
-      const vNotes = v.notes?.trim();
-      const notes = !vNotes || (kv.notes ?? "").includes(vNotes) ? kv.notes : [kv.notes?.trim(), vNotes].filter(Boolean).join("\n");
-      await tx.update(visits).set({ notes, dealId: kv.dealId ?? v.dealId, updatedAt: now }).where(eq(visits.id, kv.id));
-      await tx.update(appointments).set({ visitId: kv.id }).where(eq(appointments.visitId, v.id));
-      await tx.update(comandas).set({ visitId: kv.id }).where(eq(comandas.visitId, v.id));
-      await tx.update(clientLinks).set({ visitId: kv.id }).where(eq(clientLinks.visitId, v.id));
-      await tx.update(clientPhotos).set({ visitId: kv.id }).where(eq(clientPhotos.visitId, v.id));
-    }
-
-    // Fichas (chave composta): a resposta da que fica vence; a da outra vai para o snapshot. A "limpa" (vazia) conta como sem resposta.
-    const lostAnswers: { de: "fica" | "sai"; questionId: string; visitId: string | null; value: unknown; source: string; externalKey: string | null }[] = [];
-    const keepAnswers = await tx.select().from(formAnswers).where(eq(formAnswers.contactId, K));
-    for (const a of await tx.select().from(formAnswers).where(eq(formAnswers.contactId, D))) {
-      const visitId = a.visitId ? (visitMap.get(a.visitId) ?? a.visitId) : null;
-      const k = keepAnswers.find((x) => x.questionId === a.questionId && x.visitId === visitId);
-      if (k && !(blankAnswer(k.value) && !blankAnswer(a.value))) {
-        lostAnswers.push({ de: "sai", questionId: a.questionId, visitId, value: a.value, source: a.source, externalKey: a.externalKey });
-        await tx.delete(formAnswers).where(eq(formAnswers.id, a.id));
-        continue;
-      }
-      if (k) {
-        lostAnswers.push({ de: "fica", questionId: k.questionId, visitId, value: k.value, source: k.source, externalKey: k.externalKey });
-        await tx.delete(formAnswers).where(eq(formAnswers.id, k.id));
-      }
-      // A chave do Avec (`avec:ficha:<que saiu>:…`) fica: a próxima importação acha a resposta pela mesma linha do Avec.
-      await tx.update(formAnswers).set({ contactId: K, visitId }).where(eq(formAnswers.id, a.id));
-    }
-    if (visitMap.size) await tx.delete(visits).where(inArray(visits.id, [...visitMap.keys()]));
-    await tx.update(visits).set({ contactId: K }).where(eq(visits.contactId, D));
-
-    // O resto muda de dono. Pontos: a linha do saldo do Avec da outra fica com a chave dela (`avec:fid:<que saiu>`), ao lado da da que fica.
-    await tx.update(appointments).set({ contactId: K }).where(eq(appointments.contactId, D));
-    await tx.update(comandas).set({ contactId: K }).where(eq(comandas.contactId, D));
-    await tx.update(clientCreditEntries).set({ contactId: K }).where(eq(clientCreditEntries.contactId, D));
-    await tx.update(clientDebtEntries).set({ contactId: K }).where(eq(clientDebtEntries.contactId, D));
-    await tx.update(satisfactionAnswers).set({ contactId: K }).where(eq(satisfactionAnswers.contactId, D));
-    await tx.update(clientPackages).set({ contactId: K }).where(eq(clientPackages.contactId, D));
-    await tx.update(packageUses).set({ contactId: K }).where(eq(packageUses.contactId, D));
-    await tx.update(salesItems).set({ contactId: K }).where(eq(salesItems.contactId, D));
-    await tx.update(salesPayments).set({ contactId: K }).where(eq(salesPayments.contactId, D));
-    await tx.update(loyaltyEntries).set({ contactId: K }).where(eq(loyaltyEntries.contactId, D));
-    await tx.update(clientPhotos).set({ contactId: K }).where(eq(clientPhotos.contactId, D));
-    await tx.update(clientNotes).set({ contactId: K }).where(eq(clientNotes.contactId, D));
-    await tx.update(contactNotes).set({ contactId: K }).where(eq(contactNotes.contactId, D));
-    await tx.update(tasks).set({ contactId: K }).where(eq(tasks.contactId, D));
-    await tx.update(leadSources).set({ referrerContactId: K }).where(eq(leadSources.referrerContactId, D));
-    await tx.update(avecRejectedRows).set({ contactId: K }).where(eq(avecRejectedRows.contactId, D));
-    await tx.execute(sql`insert into contact_tags (contact_id, tag_id, created_by, created_at)
-      select ${K}::uuid, tag_id, created_by, created_at from contact_tags where contact_id = ${D}::uuid on conflict do nothing`);
-    await tx.execute(sql`delete from contact_tags where contact_id = ${D}::uuid`);
-    await tx.execute(sql`insert into campaign_recipients (campaign_id, contact_id, status, message_id, error, sent_at)
-      select campaign_id, ${K}::uuid, status, message_id, error, sent_at from campaign_recipients where contact_id = ${D}::uuid on conflict do nothing`);
-    await tx.execute(sql`delete from campaign_recipients where contact_id = ${D}::uuid`);
-    // Pessoas a mais do número da que sai passam para a que fica.
-    await tx.update(contacts).set({ sharesPhoneWith: K }).where(and(eq(contacts.sharesPhoneWith, D), ne(contacts.id, K)));
+    const { lostAnswers } = await moveContactDataTx(tx, D, K, now);
 
     const { patch } = mergedFields(keep, drop);
     await tx.insert(contactMerges).values({

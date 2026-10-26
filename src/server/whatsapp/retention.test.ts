@@ -96,3 +96,10 @@ it("mídia vencida apaga também as miniaturas dela (thumbs/), e só as dela", a
   expect(existsSync(path.join(DIR, "thumbs", "foto.jpg.abc123.720.webp"))).toBe(false);
   expect(existsSync(path.join(DIR, "thumbs", "foto.jpg2.abc123.720.webp"))).toBe(true);
 });
+it("o arquivo de uma resposta pronta (resposta-*) nunca é apagado: várias mensagens apontam para ele", async () => {
+  const c = await mk(); writeFileSync(path.join(DIR, "resposta-abc.mp4"), "v");
+  await db.insert(messages).values({ contactId: c.id, direction: "out", kind: "video", mediaPath: "resposta-abc.mp4", createdAt: new Date("2020-01-01T12:00:00Z") });
+  expect(await purgeExpiredMedia(NOW, 12)).toEqual({ purged: 0 });
+  expect(existsSync(path.join(DIR, "resposta-abc.mp4"))).toBe(true);
+  expect((await db.select().from(messages).where(eq(messages.contactId, c.id)))[0]).toMatchObject({ mediaPath: "resposta-abc.mp4", mediaPurgedAt: null });
+});

@@ -192,6 +192,20 @@ describe("mídia do WhatsApp", () => {
     expect(res.headers.get("content-disposition")).toMatch(/^attachment/);
   });
 
+  it("caminho do banco que sai da pasta de mídia (../) nunca é servido: o arquivo da resposta pronta/Biblioteca é compartilhado, mas sempre dentro de MEDIA_DIR", async () => {
+    await ingestEvolution(photo("IMG8"));
+    const [m] = await db.select().from(messages);
+    const { writeFileSync } = await import("node:fs");
+    const fora = mkdtempSync(path.join(tmpdir(), "cf-fora-"));
+    writeFileSync(path.join(fora, "segredo.jpg"), JPEG);
+    await db.update(messages).set({ mediaPath: path.relative(DIR, path.join(fora, "segredo.jpg")), mediaMime: "image/jpeg" });
+    expect(await ensureMedia(m.id)).toBeNull();
+    const [u] = await db.insert(users).values({ name: "Ana", email: "ana8@t.local", role: "atendente", passwordHash: "x" }).returning();
+    const { token } = await insertSession(u.id);
+    const res = await getMedia(new NextRequest(`http://localhost/api/media/${m.id}`, { headers: { cookie: `cf_session=${token}` } }), { params: Promise.resolve({ id: m.id }) });
+    expect(res.status).toBe(404);
+  });
+
   it("mídia expirada pela retenção responde 410 e não baixa de novo", async () => {
     await ingestEvolution(photo("IMG6"));
     let calls = 0;

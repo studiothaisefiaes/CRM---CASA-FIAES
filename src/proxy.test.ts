@@ -43,3 +43,28 @@ describe("proxy no host dos links da cliente", () => {
     expect(proxy(req("https://agenda.casafiaes.com.br/agenda")).headers.get("location")).toBe("https://agenda.casafiaes.com.br/login?voltar=%2Fagenda");
   });
 });
+
+describe("corpo grande de Server Action (vídeo de até 64 MB, 24/10): só nas telas que sobem vídeo", () => {
+  const MB = 1024 * 1024;
+  const post = (url: string, bytes: number | null, cookie?: string) => new NextRequest(url, { method: "POST", headers: {
+    host: new URL(url).host, "next-action": "abc123", ...(bytes == null ? {} : { "content-length": String(bytes) }), ...(cookie ? { cookie } : {}) } });
+
+  it("mais de 20 MB numa ação de outra tela (inclusive as sem login: /login, /c, /agendar) é recusado com 413", () => {
+    for (const p of ["/login", "/c/K7mPq2Xa", "/agendar", "/convite/abc", "/conversa/123", "/config/sistema"]) {
+      const r = proxy(post(`${CRM}${p}`, 30 * MB, "cf_session=x"));
+      expect(r.status, p).toBe(413);
+    }
+  });
+
+  it("Respostas prontas e Biblioteca aceitam até o limite do next.config; até 20 MB nada muda em lugar nenhum", () => {
+    for (const p of ["/config/listas", "/config/biblioteca"]) expect(proxy(post(`${CRM}${p}`, 65 * MB, "cf_session=x")).headers.get("x-middleware-next"), p).toBe("1");
+    expect(proxy(post(`${CRM}/conversa/123`, 18 * MB, "cf_session=x")).headers.get("x-middleware-next")).toBe("1");
+    expect(proxy(post(`${CRM}/login`, 1000)).headers.get("x-middleware-next")).toBe("1");
+  });
+
+  it("POST comum (sem next-action) e pedido sem tamanho declarado seguem como antes", () => {
+    const plain = new NextRequest(`${CRM}/login`, { method: "POST", headers: { host: new URL(CRM).host, "content-length": String(30 * MB) } });
+    expect(proxy(plain).status).not.toBe(413);
+    expect(proxy(post(`${CRM}/conversa/123`, null, "cf_session=x")).status).not.toBe(413);
+  });
+});

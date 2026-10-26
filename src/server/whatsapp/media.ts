@@ -27,6 +27,13 @@ function originalFileName(node: unknown, depth = 0): string | null {
   return null;
 }
 
+/** Caminho do arquivo só se ficar DENTRO de MEDIA_DIR (nada de `..` nem caminho absoluto vindo do banco). */
+export function safeMediaFile(rel: string): string | null {
+  const root = path.resolve(mediaDir());
+  const full = path.resolve(root, rel);
+  return !path.isAbsolute(rel) && full.startsWith(root + path.sep) ? full : null;
+}
+
 export async function save(name: string, data: Buffer) {
   const full = path.join(mediaDir(), name);
   await mkdir(path.dirname(full), { recursive: true }); // `name` pode ter subpasta (biblioteca/<id>.<ext>)
@@ -44,7 +51,12 @@ export async function ensureMedia(messageId: string): Promise<{ file: string; mi
   // Nome para o download: o nome original do documento, senão a legenda, senão o do arquivo salvo.
   // A extensão certa (pelo tipo detectado) é garantida em mediaHeaders.
   const nameFor = (saved: string) => (m.kind === "document" && (originalFileName(m.media?.message) || m.body)) || saved;
-  if (m.mediaPath) return { file: path.join(mediaDir(), m.mediaPath), mime: m.mediaMime ?? "application/octet-stream", name: nameFor(m.mediaPath) };
+  // Várias mensagens podem apontar para o mesmo arquivo (resposta pronta, Biblioteca: 24/10); fora de MEDIA_DIR nunca é servido.
+  if (m.mediaPath) {
+    const file = safeMediaFile(m.mediaPath);
+    if (!file) { console.error("[mídia] caminho fora de MEDIA_DIR: não servido", m.id); return null; }
+    return { file, mime: m.mediaMime ?? "application/octet-stream", name: nameFor(m.mediaPath) };
+  }
   if (!m.media) return null;
   // Canal removido/desconectado: tenta por qualquer número conectado (a chave da mídia é o que importa).
   const instance = row.chStatus === "conectado" ? row.instance

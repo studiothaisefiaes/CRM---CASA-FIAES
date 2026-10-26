@@ -44,7 +44,9 @@ export async function generateProgramada(input: {
   const base = { dealId: null, lastMessageId: null, resumo: "", model, origin: "programada" as const, requestedBy: input.userId ?? null, createdAt: now };
   try {
     // Texto embaralhado: pede de novo 1 vez; o texto que fica já vem pós-processado (src/server/ai/pos.ts).
-    const r = await callLegivel(() => (input.caller ?? callSuggestion)({ system: buildSystem(casa), user }, { apiKey, model, baseUrl }), casa.nomes);
+    // Sem "Materiais para enviar" (24/10): a programada sai só como texto, não leva o vídeo/foto da resposta pronta; com a lista, a IA
+    // escreveria como legenda de um vídeo que não vai. Se uma marca vier mesmo assim, callLegivel já a tira do texto.
+    const r = await callLegivel(() => (input.caller ?? callSuggestion)({ system: buildSystem({ ...casa, materiais: [] }), user }, { apiKey, model, baseUrl }), casa.nomes);
     const texto = r.data.sugestao.trim();
     await db.insert(aiSuggestions).values({ ...base, sugestao: texto, model: r.model, inputTokens: r.usage.inputTokens, cachedTokens: r.usage.cachedTokens,
       cacheWriteTokens: r.usage.cacheWriteTokens, outputTokens: r.usage.outputTokens, costUsdMicros: r.costMicros, dismissedAt: texto ? null : now });

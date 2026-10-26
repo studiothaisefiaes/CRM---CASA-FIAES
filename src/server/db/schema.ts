@@ -1581,6 +1581,9 @@ export const aiSuggestions = pgTable("ai_suggestions", {
   horario: jsonb("horario").$type<import("../../lib/proposed-slot").ProposedSlot>(),
   /** Quando retomar o contato (0091): a cliente cancelou sem nova data. Só proposta: a retomada só nasce no toque "Programar retomada". */
   retomarEm: timestamp("retomar_em", { withTimezone: true }),
+  /** A resposta pronta (universal, com foto/vídeo) que a IA indicou para ir junto (0094): o "Usar" prende o anexo na caixa e o texto vai
+   *  como legenda. Só proposta: nada sai sem a atendente apertar Enviar. Vazio = nenhuma. */
+  quickReplyId: uuid("quick_reply_id").references(() => lists.id, { onDelete: "set null" }),
   requestedBy: uuid("requested_by").references(() => users.id, { onDelete: "set null" }),
   createdAt: createdAt(),
   usedAt: timestamp("used_at", { withTimezone: true }),
@@ -1881,3 +1884,26 @@ export const fiscalSequences = pgTable("fiscal_sequences", {
 }, (t) => [primaryKey({ columns: [t.kind, t.environment, t.series] })]);
 
 export type FiscalDocument = typeof fiscalDocuments.$inferSelect;
+
+/**
+ * Chaves da API v1 (0094, pedido do dono 26/10): scripts e integrações agem EM NOME de uma pessoa da equipe (`userId`), com as permissões
+ * do perfil dela E os escopos da chave ("ler" | "escrever" | "enviar"). Só o sha256 do segredo fica guardado; `prefix` (8 primeiros
+ * caracteres) serve para reconhecer a chave na lista. Revogar = `revokedAt` (a linha fica, para a auditoria).
+ */
+export const apiKeys = pgTable("api_keys", {
+  id: id(),
+  name: text("name").notNull(),
+  prefix: text("prefix").notNull(),
+  keyHash: text("key_hash").notNull(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  scopes: text("scopes").array().$type<("ler" | "escrever" | "enviar")[]>().notNull(),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: createdAt(),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+}, (t) => [
+  uniqueIndex("api_keys_hash_uq").on(t.keyHash),
+  index("api_keys_user_idx").on(t.userId),
+  check("api_keys_scopes_check", sql`${t.scopes} <@ ARRAY['ler','escrever','enviar']::text[] AND cardinality(${t.scopes}) > 0`),
+]);

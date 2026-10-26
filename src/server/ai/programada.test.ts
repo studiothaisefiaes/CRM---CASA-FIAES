@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "../db";
-import { aiSuggestions, contacts, deals, messages, outbox, tasks, users } from "../db/schema";
+import { aiSuggestions, contacts, deals, lists, messages, outbox, tasks, users } from "../db/schema";
 import { resetDb } from "../../../test/db";
 import { eq } from "drizzle-orm";
 import { recordInbound, recordOutbound } from "../domain/deals";
@@ -141,5 +141,17 @@ describe("Escrever com IA: pós-processamento", () => {
     expect(await gerar()).toEqual({ status: "pulada", motivo: "sem_consentimento_ia" });
     expect(calls).toHaveLength(0);
     expect(await db.select().from(aiSuggestions)).toHaveLength(0);
+  });
+});
+
+describe("material da resposta pronta (vídeo do Método Fiaes, 24/10) não entra na mensagem programada", () => {
+  it("a lista de materiais não vai para a IA (a programada sai só como texto) e uma marca que venha mesmo assim não vaza", async () => {
+    await ligar();
+    await db.insert(lists).values({ kind: "quick_reply", label: "metodo-fiaes", body: "O Método Fiaes® é exclusivo da Casa.",
+      meta: { attachment: { path: "resposta-x.mp4", mime: "video/mp4", name: "metodo.mp4", kind: "video" }, iaQuando: "a cliente perguntar sobre o Método Fiaes" } });
+    const r = await gerar({ caller: caller("Oi, Paula! Quer conhecer o Método Fiaes®?\n[[material:/metodo-fiaes]]") });
+    expect(calls[0].system).not.toContain("Materiais para enviar");
+    expect(calls[0].system).not.toContain("[[material:");
+    expect(r).toMatchObject({ status: "gerada", texto: "Oi, Paula! Quer conhecer o Método Fiaes®?" });
   });
 });

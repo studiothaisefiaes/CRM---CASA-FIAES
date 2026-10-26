@@ -38,7 +38,13 @@ const ROUTE_EXCEPTIONS: Record<string, string> = {
   "api/stream/poll/route.ts": "o mesmo tempo real do /api/stream por long-polling (túnel/proxy que segura stream); exige sessão",
   "api/sessao/renovar/route.ts": "renova a própria sessão (exige sessão; não devolve dado de cliente)",
   "c/[token]/agenda.ics/route.ts": "calendário da visita: só com o token do link (32 bytes, só o hash no banco), sem o nome da cliente",
+  "api/v1/openapi.json/route.ts": "documentação da API v1: só a descrição das rotas (OpenAPI), sem dado nenhum",
 };
+/**
+ * API v1: o route.ts só reexporta o handler de `rotaApi` (src/server/api/rotas/*), que exige a chave, o escopo e a permissão do perfil
+ * declarada na rota (`perm`; `perm: null` só com motivo, conferido em src/server/api/api.test.ts).
+ */
+const API_V1 = /from "@\/server\/api\/rotas\/\w+";\s*$/m;
 /** Server actions que só exigem sessão, com o motivo. */
 const ACTION_SESSION_ONLY: Record<string, string> = {
   markAlertsReadAction: "marca como lidos os alertas da própria pessoa",
@@ -71,7 +77,7 @@ describe("todo acesso passa por permissão", () => {
   });
 
   it("rotas /api: assertPerm/can na rota, ou exceção justificada", () => {
-    const missing = files.filter((p) => p.endsWith("route.ts")).filter((p) => !ROUTE_EXCEPTIONS[rel(p)] && !/\bcan\(user\.perms,|\bcanSeeAvecReports\(user\.perms\)|\bassertPerm\(|\brouteUser\(req, "/.test(src(p))).map(rel);
+    const missing = files.filter((p) => p.endsWith("route.ts")).filter((p) => !ROUTE_EXCEPTIONS[rel(p)] && !(rel(p).startsWith("api/v1/") && API_V1.test(src(p))) && !/\bcan\(user\.perms,|\bcanSeeAvecReports\(user\.perms\)|\bassertPerm\(|\brouteUser\(req, "/.test(src(p))).map(rel);
     expect(missing).toEqual([]);
   });
 

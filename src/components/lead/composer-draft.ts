@@ -2,9 +2,11 @@
  * Rascunho da caixa de mensagem, por conversa (Lote 7B). O painel da cliente oferece um texto ("Enviar link de confirmação") e o Composer
  * mostra no campo. NADA é enviado: quem envia é a atendente, no botão Enviar (seção 9.3). Fica em memória e some ao recarregar.
  */
-type Listener = (text: string) => void;
+/** O anexo de uma resposta pronta que vai preso ao texto (sugestão da IA que indicou o vídeo, 24/10). Também só sai no Enviar. */
+export type DraftExtra = { replyFile?: { replyId: string; name: string; kind: string } };
+type Listener = (text: string, extra?: DraftExtra) => void;
 const current = new Map<string, string>();
-const waiting = new Map<string, string>();
+const waiting = new Map<string, { text: string; extra?: DraftExtra }>();
 const listeners = new Map<string, Set<Listener>>();
 
 /** O Composer conta o que está escrito, para o painel perguntar "Trocar o que você estava escrevendo?". */
@@ -13,11 +15,11 @@ export function reportComposerText(dealId: string, text: string) {
 }
 export const composerHasText = (dealId: string) => !!current.get(dealId)?.trim();
 
-/** Oferece o texto ao Composer da conversa. Sem o Composer aberto (no celular, aba Dados), guarda até ele abrir. */
-export function offerDraft(dealId: string, text: string): void {
+/** Oferece o texto (e o anexo, se houver) ao Composer da conversa. Sem o Composer aberto (no celular, aba Dados), guarda até ele abrir. */
+export function offerDraft(dealId: string, text: string, extra?: DraftExtra): void {
   const ls = listeners.get(dealId);
-  if (ls?.size) { ls.forEach((l) => l(text)); return; }
-  waiting.set(dealId, text);
+  if (ls?.size) { ls.forEach((l) => (extra ? l(text, extra) : l(text))); return; }
+  waiting.set(dealId, { text, extra });
 }
 
 /** O Composer assina; se havia texto esperando, recebe na hora. Devolve o cancelar da assinatura. */
@@ -26,7 +28,7 @@ export function onDraft(dealId: string, l: Listener): () => void {
   set.add(l);
   listeners.set(dealId, set);
   const w = waiting.get(dealId);
-  if (w !== undefined) { waiting.delete(dealId); l(w); }
+  if (w !== undefined) { waiting.delete(dealId); if (w.extra) l(w.text, w.extra); else l(w.text); }
   return () => { set.delete(l); if (!set.size) listeners.delete(dealId); };
 }
 

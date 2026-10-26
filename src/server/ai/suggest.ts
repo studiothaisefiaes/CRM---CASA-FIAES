@@ -14,7 +14,8 @@ import { AiError, callLegivel, callSuggestion, type CallResult } from "./client"
 import { garantirHorario, pareceRobo, semCumprimento, vaiVerificar } from "./pos";
 import { getAiManual } from "./manual";
 import { listPackageDefs } from "../domain/caixa/packages";
-import { buildSystem, buildUser, greetState, MAX_EXAMPLES, MAX_MESSAGES, MAX_PEDIDO_CHARS, resumoAntes, type CasaData, type Combinado, type ConversationData, type PromptMessage } from "./prompt";
+import { iaPodeIndicar, normalizeReplyLabel, quickReplyAttachment, quickReplyIaQuando } from "../domain/quick-replies";
+import { buildSystem, buildUser, greetState, MAX_EXAMPLES, MAX_MESSAGES, MAX_PEDIDO_CHARS, resumoAntes, type CasaData, type Combinado, type ConversationData, type Material, type PromptMessage } from "./prompt";
 import { loadEquipeContext } from "./contexto";
 import { loadAusencias, loadClienteContext } from "./cliente";
 import { costMicros } from "./pricing";
@@ -57,9 +58,44 @@ export function pedidoKey(p: Pedido | null | undefined): string {
   return tema || q ? `${q}|${tema}` : "";
 }
 
-/** O bloco fixo: serviços ativos com preço e descrição, horário, endereço, o prazo de cancelamento do link e o Manual da Casa. */
+/** A resposta pronta pode ir como material: universal, com foto/vídeo E com "A IA indica quando…" (só o que a gestão liberou, como na lista do prompt). */
+const materialValido = (meta: unknown) => iaPodeIndicar(meta) && !!quickReplyIaQuando(meta);
+
+/** Materiais no bloco fixo (economia de tokens; a Casa tem poucos vídeos/fotos para indicar). */
+export const MAX_MATERIAIS = 12;
+/**
+ * "Materiais para enviar" (24/10, o vídeo do Método Fiaes): as respostas prontas ativas, universais, com foto ou vídeo e com "A IA indica
+ * quando…" preenchido, na ordem de Configurações. A IA pode indicar uma com a marca; quem decide enviar é a atendente.
+ */
+async function loadMateriais(): Promise<Material[]> {
+  const rows = await db.select({ label: lists.label, body: lists.body, meta: lists.meta }).from(lists)
+    .where(and(eq(lists.kind, "quick_reply"), eq(lists.active, true), sql`${lists.meta}->>'iaQuando' is not null`)).orderBy(asc(lists.position));
+  return rows.filter((r) => materialValido(r.meta)).slice(0, MAX_MATERIAIS)
+    .map((r) => ({ atalho: r.label, kind: quickReplyAttachment(r.meta)!.kind as Material["kind"], quando: quickReplyIaQuando(r.meta)!, inicio: r.body ?? "" }));
+}
+
+/**
+ * O atalho da marca `[[material:/atalho]]`, conferido: resposta pronta que existe, ativa e é material válido. Senão null (a marca é
+ * ignorada): a IA não prende um vídeo que a gestão não liberou, nem adivinhando um atalho que existe.
+ */
+async function materialReplyId(atalho: string | null | undefined): Promise<string | null> {
+  const l = atalho ? normalizeReplyLabel(atalho) : "";
+  if (!l) return null;
+  const [r] = await db.select({ id: lists.id, meta: lists.meta }).from(lists).where(and(eq(lists.kind, "quick_reply"), eq(lists.label, l), eq(lists.active, true))).limit(1);
+  return r && materialValido(r.meta) ? r.id : null;
+}
+
+/** O anexo que a sugestão indicou, se ainda vale (a resposta pode ter sido desativada, virado pessoal, perdido a foto/vídeo ou o "quando" depois). */
+async function materialOf(replyId: string | null): Promise<CurrentSuggestion["material"]> {
+  if (!replyId) return null;
+  const [r] = await db.select({ meta: lists.meta, active: lists.active }).from(lists).where(and(eq(lists.id, replyId), eq(lists.kind, "quick_reply")));
+  const a = r?.active && materialValido(r.meta) ? quickReplyAttachment(r.meta) : null;
+  return a ? { replyId, name: a.name, kind: a.kind as "image" | "video" } : null;
+}
+
+/** O bloco fixo: serviços ativos com preço e descrição, horário, endereço, o prazo de cancelamento do link, o Manual da Casa e os materiais. */
 export async function loadCasaData(): Promise<CasaData> {
-  const [services, hours, casa, link, manual, packages, pros, team, assistants] = await Promise.all([
+  const [services, hours, casa, link, manual, packages, pros, team, assistants, materiais] = await Promise.all([
     // Só o que a cliente pode saber: nunca o custo do serviço (0084).
     db.select({ label: lists.label, priceCents: lists.priceCents, priceKind: lists.priceKind, durationMin: lists.durationMin, category: lists.category, description: lists.description })
       .from(lists).where(and(eq(lists.kind, "service"), eq(lists.active, true), eq(lists.aiCitavel, true))).orderBy(asc(lists.position), asc(lists.label)),
@@ -67,12 +103,14 @@ export async function loadCasaData(): Promise<CasaData> {
     db.select({ name: professionals.name }).from(professionals).where(eq(professionals.active, true)),
     db.select({ name: users.name }).from(users).where(eq(users.active, true)),
     db.select({ name: professionals.name }).from(professionals).where(and(eq(professionals.active, true), isNotNull(professionals.assistantOf))),
+    loadMateriais(),
   ]);
   return {
     services, hours: summarizeHours(hours), address: casa.endereco, cancelUntilHours: link.cancelarAteHoras, manual: manual.secoes,
     nomes: [...pros, ...team].map((p) => p.name.trim().split(/\s+/)[0] ?? "").filter(Boolean),
     assistentes: assistants.map((a) => a.name),
     packages: packages.map((p) => ({ name: p.name, priceCents: p.priceCents, sessions: Math.max(1, ...p.items.map((i) => i.sessions)), services: p.serviceLabels, validityDays: p.validityDays, description: p.description })),
+    materiais,
   };
 }
 
@@ -457,8 +495,10 @@ export async function fillSuggestion(claim: Claim, opts: { caller?: Caller; now?
     const usedAgenda = !!req.free?.options.length && mentionsTime(sugestao);
     // Cancelou sem nova data: quando retomar (proposta; nada é criado aqui).
     const retomarEm = robo ? null : await retomadaProposta(conv.deal, data, r.data.retomar_dias, horario, now);
+    // Material indicado pela IA (a marca já saiu do texto em callLegivel): só se a resposta pronta existe e vale; senão é ignorado.
+    const quickReplyId = robo ? null : await materialReplyId(r.data.material);
     await db.update(aiSuggestions).set({
-      resumo: r.data.resumo, sugestao, precisaHumano: r.data.precisa_humano, motivo: usedAgenda ? `${AGENDA_TAG}${motivo ?? ""}` : motivo, model: r.model, horario, retomarEm,
+      resumo: r.data.resumo, sugestao, precisaHumano: r.data.precisa_humano, motivo: usedAgenda ? `${AGENDA_TAG}${motivo ?? ""}` : motivo, model: r.model, horario, retomarEm, quickReplyId,
       inputTokens: r.usage.inputTokens, cachedTokens: r.usage.cachedTokens, cacheWriteTokens: r.usage.cacheWriteTokens, outputTokens: r.usage.outputTokens, costUsdMicros: r.costMicros,
       // Resposta vazia (não devia acontecer): fica registrada e descartada.
       dismissedAt: sugestao ? null : now,
@@ -497,7 +537,9 @@ export type CurrentSuggestion = { id: string; resumo: string; sugestao: string; 
   /** O horário que a sugestão propôs (botão "Marcar este horário"). */
   horario: ProposedSlot | null;
   /** Cancelou sem nova data: quando retomar (botão "Programar retomada"). */
-  retomarEm: Date | null };
+  retomarEm: Date | null;
+  /** A resposta pronta com foto/vídeo que a IA indicou: o "Usar" prende o anexo na caixa (o texto vai como legenda). */
+  material: { replyId: string; name: string; kind: "image" | "video" } | null };
 /**
  * O que a tela mostra para a ÚLTIMA mensagem da conversa (seja da cliente ou da Casa):
  * - "pronta": a sugestão mais nova dessa mensagem (de qualquer pedido; com `pedido`, só desse), se não foi usada nem fechada;
@@ -529,7 +571,7 @@ async function pedidoState(dealId: string, pedido: Pedido | null, now = new Date
   // Retomada proposta: some quando a conversa já tem retomada aberta (a atendente já programou, por aqui ou pelo Retomar…).
   const retomarEm = s.retomarEm && !(await db.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.dealId, dealId), eq(tasks.kind, "proxima_acao"), isNull(tasks.doneAt))).limit(1)).length ? s.retomarEm : null;
   const motivo = agenda ? s.motivo!.slice(AGENDA_TAG.length) || null : s.motivo;
-  return { state: "pronta", suggestion: { id: s.id, resumo: s.resumo, sugestao: s.sugestao, precisaHumano: s.precisaHumano, motivo, lastMessageId: s.lastMessageId ?? last.id, createdAt: s.createdAt, agendaAt: agenda ? s.createdAt : null, horario: s.horario ?? null, retomarEm } };
+  return { state: "pronta", suggestion: { id: s.id, resumo: s.resumo, sugestao: s.sugestao, precisaHumano: s.precisaHumano, motivo, lastMessageId: s.lastMessageId ?? last.id, createdAt: s.createdAt, agendaAt: agenda ? s.createdAt : null, horario: s.horario ?? null, retomarEm, material: await materialOf(s.quickReplyId) } };
 }
 
 /** "Usar" (o texto foi para a caixa de mensagem) ou fechar (X). Só marca; nada é enviado. */

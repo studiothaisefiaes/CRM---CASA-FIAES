@@ -3,9 +3,10 @@ import path from "node:path";
 import { readFile, unlink } from "node:fs/promises";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { db } from "../db";
-import { auditLog, lists } from "../db/schema";
-import { mediaDir, save as saveMediaFile } from "../whatsapp/media";
-import { MAX_MEDIA_BYTES, SendError, planMedia, sendFromCrm, sendMediaFromCrm, type Upload } from "./send";
+import { auditLog, lists, messages } from "../db/schema";
+import { safeMediaFile, save as saveMediaFile } from "../whatsapp/media";
+import { shrinkVideo } from "../whatsapp/video";
+import { MAX_MEDIA_BYTES, SendError, WHATSAPP_CAPTION_MAX, planMedia, signAs, sendFromCrm, sendMediaFromCrm, type Upload } from "./send";
 import { UserFacingError } from "./errors";
 
 export type QuickReplyAttachment = { path: string; mime: string; name: string; kind: "image" | "video" | "audio" | "document" };
@@ -113,7 +114,16 @@ export async function quickRepliesFor(userId: string | null): Promise<QuickReply
     .sort((a, b) => (a.folder ?? "").localeCompare(b.folder ?? "", "pt-BR"));
 }
 
-const removeFile = (rel: string) => unlink(path.join(mediaDir(), rel)).catch(() => {});
+/**
+ * Apaga o arquivo do anexo antigo, MENOS quando alguma mensagem já enviada aponta para ele (o envio não copia o arquivo: a conversa mostra
+ * o da resposta pronta). Esse fica no disco para as mensagens antigas continuarem abrindo; a retenção também nunca apaga `resposta-*`.
+ */
+async function removeFile(rel: string) {
+  const [used] = await db.select({ id: messages.id }).from(messages).where(eq(messages.mediaPath, rel)).limit(1);
+  if (used) return;
+  const file = safeMediaFile(rel);
+  if (file) await unlink(file).catch(() => {});
+}
 
 /** Pasta da resposta pronta (agrupa a lista do "/" e a tela de Configurações). Vazio = sem pasta. */
 export async function setQuickReplyFolder(id: string, folder: string | null, userId: string): Promise<void> {
@@ -124,15 +134,22 @@ export async function setQuickReplyFolder(id: string, folder: string | null, use
   await audit(userId, "editou", id, { pasta: f });
 }
 
-/** Anexo da resposta pronta: foto, PDF, vídeo ou áudio até 16 MB, tipo conferido pelos bytes. Troca o anterior (e apaga o arquivo velho). */
+/**
+ * Anexo da resposta pronta: foto, PDF, vídeo ou áudio até 16 MB, tipo conferido pelos bytes. Troca o anterior (e apaga o arquivo velho, se
+ * nenhuma mensagem enviada aponta para ele). Vídeo (24/10, "sem gastar tanto espaço"): aceita até 64 MB bruto e é guardado comprimido
+ * (whatsapp/video.ts); os 16 MB valem depois de comprimir. O arquivo fica no disco; o banco só guarda o caminho (lists.meta.attachment).
+ */
 export async function attachToQuickReply(id: string, file: Upload, userId: string): Promise<QuickReplyAttachment> {
   const row = await replyRow(id);
   if (!file.data.length) throw new UserFacingError("O arquivo está vazio.");
-  if (file.data.length > MAX_MEDIA_BYTES) throw new UserFacingError("O arquivo passa de 16 MB. Escolha um menor.");
   const plan = planMedia(file);
+  if (plan?.kind !== "video" && file.data.length > MAX_MEDIA_BYTES) throw new UserFacingError("O arquivo passa de 16 MB. Escolha um menor.");
   if (!plan) throw new UserFacingError("Esse tipo de arquivo não pode ser enviado. Use foto, PDF, vídeo ou áudio.");
-  const name = path.basename(file.name).replace(/[\u0000-\u001f\u007f"\\]/g, "").trim().slice(0, 120) || `arquivo.${plan.ext}`;
-  const stored = await saveMediaFile(`resposta-${randomUUID()}.${plan.ext}`, file.data);
+  const data = plan.kind === "video" ? await shrinkVideo(file.data, MAX_MEDIA_BYTES) : file.data;
+  const clean = path.basename(file.name).replace(/[\u0000-\u001f\u007f"\\]/g, "").trim().slice(0, 120);
+  // Vídeo é guardado como .mp4 (comprimido): o .mov do iPhone muda de extensão no nome também.
+  const name = (plan.kind === "video" ? clean.replace(/\.(mov|m4v|qt)$/i, ".mp4") : clean) || `arquivo.${plan.ext}`;
+  const stored = await saveMediaFile(`resposta-${randomUUID()}.${plan.ext}`, data);
   const att: QuickReplyAttachment = { path: stored, mime: plan.mime, name, kind: plan.kind };
   const old = quickReplyAttachment(row.meta);
   await db.update(lists).set({ meta: { ...((row.meta as Record<string, unknown> | null) ?? {}), attachment: att } }).where(eq(lists.id, id));
@@ -151,17 +168,56 @@ export async function detachFromQuickReply(id: string, userId: string): Promise<
   await audit(userId, "tirou_anexo", id, { arquivo: old.name });
 }
 
+/* ---------- "A IA indica quando…" (pedido do dono, 24/10: o vídeo do Método Fiaes) ---------- */
+export const IA_QUANDO_MAX = 200;
+/** Quando a IA pode indicar esta resposta (meta.iaQuando: "a cliente perguntar sobre o Método Fiaes"); null = a IA não indica. */
+export function quickReplyIaQuando(meta: unknown): string | null {
+  const q = (meta as { iaQuando?: unknown } | null)?.iaQuando;
+  return typeof q === "string" && q.trim() ? q.trim() : null;
+}
+/** A resposta pode ser indicada pela IA: universal, com foto ou vídeo (vai como legenda, numa mensagem só). */
+export function iaPodeIndicar(meta: unknown): boolean {
+  const a = quickReplyAttachment(meta);
+  return !quickReplyOwnerId(meta) && (a?.kind === "image" || a?.kind === "video");
+}
+
+/**
+ * Gestão: em que situação a IA sugere mandar esta resposta junto (a sugestão traz o anexo preso; a atendente confere e aperta Enviar,
+ * nada sai sozinho). Só na resposta universal com foto ou vídeo. Vazio = a IA não indica mais.
+ */
+export async function setQuickReplyIaQuando(id: string, text: string | null, actor: ReplyActor): Promise<void> {
+  if (!actor.canShare) throw new UserFacingError("Só a gestão escolhe quando a IA indica uma resposta pronta.");
+  const row = await replyRow(id);
+  const q = text?.trim().replace(/\s+/g, " ") || null;
+  if (q && q.length > IA_QUANDO_MAX) throw new UserFacingError(`Texto muito longo (máximo ${IA_QUANDO_MAX} caracteres).`);
+  if (q && quickReplyOwnerId(row.meta)) throw new UserFacingError("Só a resposta universal pode ser indicada pela IA. Transforme em universal antes.");
+  if (q && !iaPodeIndicar(row.meta)) throw new UserFacingError("Anexe uma foto ou um vídeo antes: é o que a IA indica para enviar.");
+  const { iaQuando: _drop, ...rest } = (row.meta as Record<string, unknown> | null) ?? {};
+  const meta = q ? { ...rest, iaQuando: q } : rest;
+  await db.update(lists).set({ meta: Object.keys(meta).length ? meta : null }).where(eq(lists.id, id));
+  await audit(actor.id, "editou", id, { iaQuando: q });
+}
+
 export async function readQuickReplyFile(id: string): Promise<{ data: Buffer; att: QuickReplyAttachment } | null> {
   const [r] = await db.select({ meta: lists.meta }).from(lists).where(and(eq(lists.id, id), eq(lists.kind, "quick_reply")));
   const att = quickReplyAttachment(r?.meta);
   if (!att) return null;
-  try { return { data: await readFile(path.join(mediaDir(), att.path)), att }; } catch { return null; }
+  const file = safeMediaFile(att.path);
+  if (!file) return null;
+  try { return { data: await readFile(file), att }; } catch { return null; }
 }
 
+/** Foto e vídeo levam o texto como legenda (embaixo, numa mensagem só); áudio e documento não (texto antes, arquivo depois). */
+const takesCaption = (kind: QuickReplyAttachment["kind"]) => kind === "image" || kind === "video";
+
 /**
- * Resposta pronta com anexo pelo campo da conversa: primeiro o texto (assinado, como toda mensagem do CRM), depois o arquivo (sem legenda).
- * Texto vazio: só o arquivo. Se o texto não sair, o arquivo não vai; se o arquivo falhar depois do texto, avisa que só o texto saiu.
- * Áudio vai como mensagem de voz (o "áudio pré-gravado" do ChatGuru).
+ * Resposta pronta com anexo pelo campo da conversa.
+ * - Foto ou vídeo com texto (pedido do dono, 24/10): UMA mensagem, o arquivo com o texto como legenda, assinada como toda mensagem do CRM.
+ *   Legenda que passa do limite do WhatsApp (1024 com a assinatura): volta ao jeito antigo.
+ * - Áudio e documento (e a legenda longa): primeiro o texto (assinado), depois o arquivo (sem legenda). Se o texto não sair, o arquivo não vai;
+ *   se o arquivo falhar depois do texto, avisa que só o texto saiu. Áudio vai como mensagem de voz (o "áudio pré-gravado" do ChatGuru).
+ * - Texto vazio: só o arquivo.
+ * O arquivo NÃO é copiado: a mensagem aponta para o da resposta pronta (`storedPath`), que fica uma vez só no disco.
  */
 export async function sendQuickReply(dealId: string, replyId: string, text: string, userId: string): Promise<{ textSent: boolean; fileSent: boolean }> {
   const owner = quickReplyOwnerId((await replyRow(replyId)).meta);
@@ -169,9 +225,15 @@ export async function sendQuickReply(dealId: string, replyId: string, text: stri
   const file = await readQuickReplyFile(replyId);
   if (!file) throw new UserFacingError("O anexo dessa resposta pronta não está mais disponível. Envie só o texto ou anexe de novo em Configurações.");
   const typed = text.trim();
+  const upload = { name: file.att.name, mime: file.att.mime, data: file.data };
+  const shared = { storedPath: file.att.path };
+  if (typed && takesCaption(file.att.kind) && (await signAs(userId, typed)).length <= WHATSAPP_CAPTION_MAX) {
+    await sendMediaFromCrm(dealId, upload, typed, userId, { ...shared, sign: true });
+    return { textSent: true, fileSent: true };
+  }
   if (typed) await sendFromCrm(dealId, typed, userId);
   try {
-    await sendMediaFromCrm(dealId, { name: file.att.name, mime: file.att.mime, data: file.data }, null, userId);
+    await sendMediaFromCrm(dealId, upload, null, userId, shared);
   } catch (e) {
     if (typed && e instanceof SendError) throw new SendError(`O texto saiu, mas o arquivo não: ${e.message.replace(/^Não foi possível enviar: /, "")}. Anexe e envie de novo.`);
     throw e;

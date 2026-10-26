@@ -10,8 +10,10 @@ const nextConfig: NextConfig = {
   // Só dev: o e2e abre o domínio dos links da cliente (CLIENT_LINK_URL) por 127.0.0.1 no mesmo servidor.
   allowedDevOrigins: ["127.0.0.1"],
   serverExternalPackages: ["pg", "pg-boss", "@node-rs/argon2"],
-  // 16 MB de arquivo (anexo/gravação) + folga do multipart; o proxy corta em 10 MB se não for elevado.
-  experimental: { proxyClientMaxBodySize: "20mb", serverActions: { bodySizeLimit: "20mb" } },
+  // Vídeo bruto da resposta pronta e da Biblioteca até 64 MB (comprimido no servidor, 24/10) + folga do multipart; o proxy corta em 10 MB
+  // se não for elevado. Cada ação confere o seu limite (envio pela conversa continua 16 MB em sendMediaFromCrm/sendMediaAction) e o
+  // src/proxy.ts recusa, pelo tamanho declarado, corpo acima de 20 MB fora de Respostas prontas e Biblioteca (inclusive nas telas sem login).
+  experimental: { proxyClientMaxBodySize: "70mb", serverActions: { bodySizeLimit: "70mb" } },
   // A CSP (com nonce por requisição) fica no src/proxy.ts; aqui só o que vale igual para tudo.
   // "Contatos" virou "Clientes" na tela: o endereço novo leva ao antigo (os links que já existem continuam valendo).
   async redirects() {

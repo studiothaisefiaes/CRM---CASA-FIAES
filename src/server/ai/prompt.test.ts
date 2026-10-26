@@ -254,3 +254,29 @@ describe("IA v3 (17/10): regras, seções novas do manual e o contexto da client
     expect(buildUser(base)).not.toMatch(/cliente nova|Já é cliente|Ausências/);
   });
 });
+
+describe("Materiais para enviar (respostas prontas com foto/vídeo que a IA pode indicar, 24/10)", () => {
+  const materiais = [
+    { atalho: "metodo-fiaes", kind: "video" as const, quando: "a cliente perguntar sobre o Método Fiaes", inicio: "Olha que lindo o resultado do nosso Método Fiaes®, assista ao vídeo e veja como funciona do começo ao fim, com todos os detalhes" },
+    { atalho: "antes-depois", kind: "image" as const, quando: "pedir foto de resultado", inicio: "Veja este antes e depois" },
+  ];
+  it("sem material: o bloco fixo não muda nada (nem a seção aparece)", () => {
+    expect(buildSystem({ ...casa, materiais: [] })).toBe(buildSystem(casa));
+    expect(buildSystem(casa)).not.toContain("Materiais para enviar");
+    expect(buildSystem(casa)).not.toContain("[[material");
+  });
+  it("com material: atalho, o quando, o começo do texto e a instrução da marca (no máximo uma, numa linha separada)", () => {
+    const s = buildSystem({ ...casa, materiais });
+    expect(s).toContain("## Materiais para enviar");
+    expect(s).toContain("- /metodo-fiaes (vídeo): quando a cliente perguntar sobre o Método Fiaes. Texto: \"Olha que lindo o resultado do nosso Método Fiaes®");
+    expect(s).toContain("- /antes-depois (foto): quando pedir foto de resultado. Texto: \"Veja este antes e depois\"");
+    expect(s).toContain("[[material:/atalho]]");
+    expect(s).toMatch(/no máximo um/i);
+    expect(s).toMatch(/linha separada/i);
+    // O começo do texto vai cortado (economia de tokens).
+    expect(s).not.toContain("com todos os detalhes");
+    // A seção vem antes do formato da resposta, e a ordem não muda o bloco (cache).
+    expect(s.indexOf("## Materiais para enviar")).toBeLessThan(s.indexOf("## Resposta"));
+    expect(buildSystem({ ...casa, materiais: [...materiais].reverse() })).toBe(s);
+  });
+});

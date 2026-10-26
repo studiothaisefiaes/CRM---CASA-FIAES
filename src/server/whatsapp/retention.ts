@@ -3,16 +3,12 @@ import path from "node:path";
 import { and, asc, eq, isNotNull, isNull, lt, notInArray, notLike } from "drizzle-orm";
 import { db } from "../db";
 import { messages } from "../db/schema";
-import { mediaDir } from "./media";
+import { safeMediaFile } from "./media";
 import { removeThumbs } from "./thumbs";
 import { getMediaRetentionMonths } from "../domain/messaging-settings";
 
-/** Caminho do arquivo só se ficar DENTRO de MEDIA_DIR (nada de `..` nem caminho absoluto vindo do banco). */
-export function safeMediaFile(rel: string): string | null {
-  const root = path.resolve(mediaDir());
-  const full = path.resolve(root, rel);
-  return !path.isAbsolute(rel) && full.startsWith(root + path.sep) ? full : null;
-}
+// A conferência do caminho mora em media.ts (a tela também usa ao servir a mídia); continua exportada daqui para quem já importava.
+export { safeMediaFile };
 
 const monthsBefore = (now: Date, months: number) => { const d = new Date(now); d.setUTCMonth(d.getUTCMonth() - months); return d; };
 
@@ -36,8 +32,9 @@ export async function purgeExpiredMedia(now: Date, months: number | null, opts: 
   for (let lot = 0; lot < maxBatches; lot++) {
     const rows = await db.select({ id: messages.id, path: messages.mediaPath, playback: messages.playbackPath }).from(messages)
       .where(and(isNotNull(messages.mediaPath), isNull(messages.mediaPurgedAt),
-        // A Biblioteca nunca é apagada pela retenção: a mensagem de uma conversa pode apontar para o arquivo dela (biblioteca/<id>.<ext>).
-        notLike(messages.mediaPath, "biblioteca/%"), lt(messages.createdAt, cutoff), failed.length ? notInArray(messages.id, failed) : undefined))
+        // A Biblioteca e o anexo das respostas prontas nunca são apagados pela retenção: várias mensagens apontam para o MESMO arquivo
+        // (biblioteca/<id>.<ext>, resposta-<id>.<ext>; o envio não copia, 24/10). Apagar pela mensagem velha quebraria as outras e a própria resposta.
+        notLike(messages.mediaPath, "biblioteca/%"), notLike(messages.mediaPath, "resposta-%"), lt(messages.createdAt, cutoff), failed.length ? notInArray(messages.id, failed) : undefined))
       .orderBy(asc(messages.createdAt)).limit(batch);
     if (!rows.length) break;
     const gone: string[] = [];

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "../db";
-import { alerts, clientNotes, contacts, dealEvents, deals, messages, stages, users } from "../db/schema";
+import { alerts, appointments, clientNotes, clientPhotos, contactNotes, contacts, dealEvents, deals, messages, stages, users } from "../db/schema";
 import { getContact } from "../queries/contact";
 import { resetDb } from "../../../test/db";
 import { recordInbound, recordOutbound } from "./deals";
@@ -32,6 +32,20 @@ describe("juntar número oculto (@lid) com o número de verdade", () => {
     expect(d.awaitingReplySince).toBeNull();
     expect((await db.select().from(messages).where(eq(messages.dealId, r.dealId))).map((m) => m.body)).toEqual(["oi, tem horário?", "Oi Rita! Tenho sim"]);
     expect(await db.select().from(alerts).where(and(eq(alerts.dealId, r.dealId), isNull(alerts.resolvedAt)))).toHaveLength(0);
+  });
+
+  it("horário na agenda, foto e nota interna do contato oculto passam para a cliente (prod 24–26/10: a junção travava ~1000x/dia no horário)", async () => {
+    await recordInbound({ channelId: null, externalId: "IN8", phoneRaw: "5571999990008", pushName: "Rita", body: "oi", at: t(30) });
+    await recordOutbound({ phoneRaw: "", lid: "888", channelId: null, externalId: "OUT8", body: "Oi Rita", fromPhone: true, at: t(25) });
+    const [hidden] = await db.select().from(contacts).where(eq(contacts.waLid, "888"));
+    await db.insert(appointments).values({ contactId: hidden.id, serviceLabel: "Corte", status: "agendado", origin: "crm", externalKey: "t:888", startsAt: new Date(Date.now() + 86_400_000), durationMin: 60 });
+    await db.insert(clientPhotos).values({ contactId: hidden.id, kind: "antes", mediaPath: "fotos/x.jpg", mediaMime: "image/jpeg" });
+    await db.insert(contactNotes).values({ contactId: hidden.id, body: "Prefere à tarde" });
+    expect(await mergeLidInto("888", "+5571999990008")).toMatchObject({ merged: true });
+    const [real] = await db.select().from(contacts).where(eq(contacts.phoneE164, "+5571999990008"));
+    expect((await db.select().from(appointments)).map((a) => a.contactId)).toEqual([real.id]);
+    expect((await db.select().from(clientPhotos)).map((a) => a.contactId)).toEqual([real.id]);
+    expect((await db.select().from(contactNotes)).map((a) => [a.contactId, a.body])).toEqual([[real.id, "Prefere à tarde"]]);
   });
 
   it("a ficha técnica (Lote 7A) anotada no contato oculto passa para a cliente", async () => {

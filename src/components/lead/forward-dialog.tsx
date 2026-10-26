@@ -4,19 +4,26 @@ import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
-import { forwardAction, forwardTargetsAction, type ForwardTo } from "@/app/(app)/conversa/actions";
+import { forwardMessagesAction, forwardTargetsAction, type ForwardTo } from "@/app/(app)/conversa/actions";
 import { formatPhoneClient } from "@/lib/phone-client";
 import type { ForwardTarget } from "@/server/queries/forward-targets";
 import type { Msg } from "./conversation";
 
-/** "Para quem?": busca a conversa por nome ou telefone, Equipe no topo, e encaminha para até `max` de uma vez. */
-export function ForwardDialog({ message, dealId, max, onClose }: { message: Msg | null; dealId: string | null; max: number; onClose: () => void }) {
+const conversas = (n: number) => `${n} conversa${n === 1 ? "" : "s"}`;
+
+/**
+ * "Para quem?": busca a conversa por nome ou telefone, Equipe no topo, e encaminha para até `max` de uma vez. Uma mensagem ou várias
+ * (selecionadas na conversa, 24/10): várias saem juntas, na ordem da conversa. `onClose(true)`: o servidor aceitou (a seleção acaba);
+ * `onClose(false)`: voltou sem encaminhar (a seleção continua, como no WhatsApp).
+ */
+export function ForwardDialog({ messages, dealId, max, onClose }: { messages: Msg[] | null; dealId: string | null; max: number; onClose: (sent: boolean) => void }) {
   const [q, setQ] = useState("");
   const [list, setList] = useState<ForwardTarget[]>([]);
   const [picked, setPicked] = useState<ForwardTarget[]>([]);
   const [pending, start] = useTransition();
   const toast = useToast();
-  const open = !!message;
+  const open = !!messages?.length;
+  const many = (messages?.length ?? 0) > 1;
   useEffect(() => {
     if (!open) return;
     let alive = true;
@@ -32,17 +39,19 @@ export function ForwardDialog({ message, dealId, max, onClose }: { message: Msg 
   const has = (t: ForwardTarget) => picked.some((p) => keyOf(p) === keyOf(t));
   const toggle = (t: ForwardTarget) => setPicked((cur) => (has(t) ? cur.filter((p) => keyOf(p) !== keyOf(t)) : cur.length >= max ? cur : [...cur, t]));
   const toOf = (t: ForwardTarget): ForwardTo => (t.dealId ? t.dealId : t.contactId.startsWith("numero:") ? { phone: t.phone } : { contactId: t.contactId });
-  const send = () => message && start(async () => {
-    const r = await forwardAction(message.id, picked.map(toOf));
+  // O servidor confere tudo e devolve na hora; os envios seguem depois da resposta (revisão 24/10: o diálogo ficava minutos no spinner com
+  // vídeos para várias conversas). Cada um aparece na conversa de destino como sempre; o que não sair vira aviso no sino.
+  const send = () => messages?.length && start(async () => {
+    const r = await forwardMessagesAction(messages.map((m) => m.id), picked.map(toOf));
     if (!r.ok) { toast(r.error, "error"); return; }
-    const { sent, failed } = r.data ?? { sent: 0, failed: [] };
-    if (failed.length) toast(`${sent} enviada${sent === 1 ? "" : "s"}. Não deu para ${failed.length}: ${failed[0].error}`, "error");
-    else toast(`Encaminhada para ${sent} conversa${sent === 1 ? "" : "s"}`, "ok");
-    onClose();
+    const n = r.data?.targets ?? picked.length;
+    toast(many ? `Encaminhando ${messages.length} mensagens para ${conversas(n)}. Se alguma não sair, aviso no sino.` : `Encaminhando para ${conversas(n)}. Se não sair, aviso no sino.`, "ok");
+    onClose(true);
   });
   return (
-    <Dialog open={open} onClose={() => !pending && onClose()} title="Para quem?" description={`Escolha até ${max} conversas. Para uma cliente vai só o conteúdo, sem o nome de quem estava na conversa.`}
-      footer={<><Button variant="ghost" onClick={onClose} disabled={pending}>Voltar</Button><Button loading={pending} disabled={!picked.length} onClick={send}>{picked.length > 1 ? `Encaminhar para ${picked.length}` : "Encaminhar"}</Button></>}>
+    <Dialog open={open} onClose={() => !pending && onClose(false)} title="Para quem?"
+      description={`${many ? `${messages!.length} mensagens, na ordem da conversa. ` : ""}Escolha até ${max} conversas. Para uma cliente vai só o conteúdo, sem o nome de quem estava na conversa.`}
+      footer={<><Button variant="ghost" onClick={() => onClose(false)} disabled={pending}>Voltar</Button><Button loading={pending} disabled={!picked.length} onClick={send}>{picked.length > 1 ? `Encaminhar para ${picked.length}` : "Encaminhar"}</Button></>}>
       <Input aria-label="Buscar conversa" placeholder="Nome, telefone ou um número novo com DDD" value={q} onChange={(e) => setQ(e.target.value)} />
       <ul className="mt-3 max-h-64 overflow-y-auto divide-y divide-line" aria-label="Conversas">
         {shown.map((t) => (

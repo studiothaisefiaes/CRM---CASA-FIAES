@@ -1,7 +1,7 @@
 "use client";
 import { createContext, Fragment, memo, useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { IconForward, IconMic, IconMore, IconPhone, IconReply } from "@/components/icons";
+import { IconCheck, IconForward, IconMic, IconMore, IconPhone, IconReply } from "@/components/icons";
 import { IconButton } from "@/components/ui/icon-button";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/field";
@@ -9,6 +9,7 @@ import { callLabel, type CallInfo } from "@/lib/calls";
 import { T, EASE, SPRING_UI } from "@/lib/motion";
 import { firstName, outVia, speakerOf } from "@/lib/authorship";
 import { Menu } from "@/components/ui/menu";
+import { topModal } from "@/components/ui/modal-stack";
 import { stripSignature } from "@/lib/signature";
 import { REACTION_CHOICES } from "@/lib/message-tools-state";
 import { isUncertainSend } from "@/lib/send-status";
@@ -31,7 +32,13 @@ export type Msg = { id: string; externalId?: string | null; direction: "in" | "o
  * Reagir e Editar (Task 12). Segurar a mensagem (celular) ou clicar com o botão direito abre a barra de reações; "Editar" só nas mensagens
  * de texto que a própria pessoa enviou pelo CRM, dentro do prazo. O servidor confere tudo de novo.
  */
-export type BubbleTools = { react?: (m: Msg, emoji: string) => void; edit?: (m: Msg) => void; canEdit?: (m: Msg) => boolean; forward?: (m: Msg) => void; canForward?: (m: Msg) => boolean };
+export type BubbleTools = { react?: (m: Msg, emoji: string) => void; edit?: (m: Msg) => void; canEdit?: (m: Msg) => boolean; forward?: (m: Msg) => void; canForward?: (m: Msg) => boolean;
+  /**
+   * Encaminhar várias (24/10, "selecionar como no WhatsApp"): recebe as marcadas na ordem da conversa e chama `done(true)` se encaminhou
+   * (a seleção acaba) ou `done(false)` se a atendente voltou (a seleção continua). Ausente = sem "Selecionar".
+   */
+  forwardMany?: (ms: Msg[], done: (sent: boolean) => void) => void;
+  /** Quantas dá para marcar de uma vez (Configurações › Recursos, `max_mensagens`). */ maxSelect?: number };
 const LONG_PRESS_MS = 450;
 const canReactTo = (m: Msg) => m.id !== "optimistic" && !!m.externalId && !m.deleted && !m.importedAt && m.status !== "pending" && m.status !== "failed" && m.status !== "simulado";
 
@@ -144,10 +151,13 @@ type BubbleProps = { m: Msg; /** Rótulo do dia, quando este balão abre um dia 
   /** "Apagar para todos" (17/10): só em mensagem enviada pela Casa que chegou ao WhatsApp. Quem chama pede a confirmação. */ onDelete?: (m: Msg) => void;
   /** "Apagar só aqui" (20/10): tira a mensagem da conversa no CRM, qualquer uma, sem mexer no WhatsApp. */ onHide?: (m: Msg) => void;
   /** Reagir e Editar; ausente = a pessoa não tem a permissão ou a função está desligada. */ tools?: BubbleTools;
-  /** Tocar na citação: rola até a mensagem original. */ onQuote?: (m: Msg) => void; /** Destaque de ~2 s (veio de uma citação). */ flash?: boolean; /** Entra com animação (mensagem que chegou depois da abertura). */ animateIn: boolean; /** Continuação do balão de cima (mesma pessoa, até 5 min). */ cont?: boolean };
+  /** Tocar na citação: rola até a mensagem original. */ onQuote?: (m: Msg) => void; /** Destaque de ~2 s (veio de uma citação). */ flash?: boolean; /** Entra com animação (mensagem que chegou depois da abertura). */ animateIn: boolean; /** Continuação do balão de cima (mesma pessoa, até 5 min). */ cont?: boolean;
+  /** Modo seleção (24/10): a conversa inteira está marcando mensagens; tocar no balão marca/desmarca. */ selecting?: boolean; /** Este balão está marcado. */ selected?: boolean;
+  /** Marca/desmarca (e, fora do modo, entra nele por "Selecionar"). Ausente = sem encaminhar várias. */ onSelect?: (m: Msg) => void };
 
 /** Dois conjuntos de props rendem o mesmo balão? (a lista recria os objetos a cada carga; o `memo` compara pelo conteúdo, não pela identidade) */
-export const bubblePropsEqual = (a: BubbleProps, b: BubbleProps) => a.day === b.day && (a.who ?? null) === (b.who ?? null) && a.cont === b.cont && a.onReply === b.onReply && a.onDelete === b.onDelete && a.onHide === b.onHide && a.tools === b.tools && a.onQuote === b.onQuote && !!a.flash === !!b.flash && a.animateIn === b.animateIn && sameMsg(a.m, b.m);
+export const bubblePropsEqual = (a: BubbleProps, b: BubbleProps) => a.day === b.day && (a.who ?? null) === (b.who ?? null) && a.cont === b.cont && a.onReply === b.onReply && a.onDelete === b.onDelete && a.onHide === b.onHide && a.tools === b.tools && a.onQuote === b.onQuote && !!a.flash === !!b.flash && a.animateIn === b.animateIn
+  && !!a.selecting === !!b.selecting && !!a.selected === !!b.selected && a.onSelect === b.onSelect && sameMsg(a.m, b.m);
 
 const NOTE_FROM: Record<NonNullable<Msg["note"]>, string> = { crm: "", chatguru: " · veio do ChatGuru", menu: " · menu de boas-vindas" };
 /** @Nome em negrito dentro da nota. */
@@ -280,7 +290,10 @@ const REACTION_WHO = { cliente: "da cliente", casa: "da Casa" } as const;
 export const canDeleteForEveryone = (m: Msg) => m.direction === "out" && m.kind !== "nota" && m.kind !== "call" && m.id !== "optimistic" && !!m.externalId
   && !m.deleted && !m.importedAt && m.status !== "pending" && m.status !== "failed" && m.status !== "simulado";
 
-export const Bubble = memo(function Bubble({ m, day, who = null, onReply, onDelete, onHide, tools, onQuote, flash = false, animateIn, cont = false }: BubbleProps) {
+/** O que o leitor de tela diz na caixa de marcar: o tipo da mídia e o texto. */
+const selectLabel = (m: Msg) => { const t = stripSignature(m.body).trim().slice(0, 80); const k = m.kind !== "text" ? KIND_LABEL[m.kind] ?? (m.kind === "audio" ? "Áudio" : "Mensagem") : ""; return [k, t].filter(Boolean).join(": ") || "Mensagem"; };
+
+export const Bubble = memo(function Bubble({ m, day, who = null, onReply, onDelete, onHide, tools, onQuote, flash = false, animateIn, cont = false, selecting = false, selected = false, onSelect }: BubbleProps) {
   const [bar, setBar] = useState(false);
   const press = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cancelPress = () => { if (press.current) { clearTimeout(press.current); press.current = null; } };
@@ -292,24 +305,26 @@ export const Bubble = memo(function Bubble({ m, day, who = null, onReply, onDele
   const canReact = !!tools?.react && canReactTo(m);
   const canEdit = !!tools?.edit && !!tools.canEdit?.(m);
   const canForward = !!tools?.forward && !!tools.canForward?.(m);
+  // Só o que dá para encaminhar entra na seleção (apagada, ligação, reação e mídia que não está mais guardada ficam de fora: canForward).
+  const selectable = canForward && !!onSelect;
+  const hasTools = !selecting && (canReact || canEdit || canForward);
   const myReaction = m.reactions?.casa ?? null;
   const toolItems = [
     ...(canReact ? REACTION_CHOICES.map((e) => ({ label: `Reagir ${e}`, onSelect: () => tools!.react!(m, e) })) : []),
     ...(canEdit ? [{ label: "Editar", onSelect: () => tools!.edit!(m) }] : []),
     ...(canForward ? [{ label: "Encaminhar", onSelect: () => tools!.forward!(m) }] : []),
+    ...(selectable ? [{ label: "Selecionar", onSelect: () => onSelect!(m) }] : []),
   ];
   const menuItems = [...toolItems, ...(onHide && m.id !== "optimistic" ? [{ label: "Apagar só aqui", danger: true, onSelect: () => onHide(m) }] : []),
     ...(onDelete && canDeleteForEveryone(m) ? [{ label: "Apagar para todos", danger: true, onSelect: () => onDelete(m) }] : [])];
   // Continuação: cola no balão de cima (sem a "pontinha" de quem fala).
   const shape = out ? (cont ? "rounded-tr-[5px]" : "rounded-br-[5px]") : (cont ? "rounded-tl-[5px]" : "rounded-bl-[5px]");
-  return (
-    <motion.div data-msg-id={m.id} initial={animateIn ? { opacity: 0, y: 10 } : false} animate={{ opacity: 1, y: 0 }} transition={SPRING_UI} className={`flex flex-col ${cont ? "-mt-1" : ""}`}>
-      {day && <p className="self-center my-2 text-xs font-medium text-muted bg-paper border border-line rounded-full px-2.5 py-0.5 first-letter:uppercase">{day}</p>}
+  const row = (
       <div className={`group flex items-center gap-1 ${out ? "flex-row-reverse self-end" : "self-start"} max-w-full`}>
         <div data-destaque={flash ? "" : undefined}
-          onPointerDown={(e) => { if (e.pointerType === "touch" && (canReact || canEdit || canForward)) { cancelPress(); press.current = setTimeout(() => { press.current = null; setBar(true); }, LONG_PRESS_MS); } }}
+          onPointerDown={(e) => { if (e.pointerType === "touch" && hasTools) { cancelPress(); press.current = setTimeout(() => { press.current = null; setBar(true); }, LONG_PRESS_MS); } }}
           onPointerUp={cancelPress} onPointerLeave={cancelPress} onPointerCancel={cancelPress} onPointerMove={cancelPress}
-          onContextMenu={(e) => { if (canReact || canEdit || canForward) { e.preventDefault(); setBar(true); } }}
+          onContextMenu={(e) => { if (hasTools) { e.preventDefault(); setBar(true); } }}
           className={`min-w-0 max-w-[78%] rounded-[var(--radius-card)] px-3.5 py-2 text-base leading-relaxed shadow-[var(--shadow-card)] transition-shadow duration-300 ${flash ? "ring-2 ring-gold ring-offset-2 ring-offset-paper" : ""} ${out ? "bg-[#f3ead9]" : "bg-paper border border-line"} ${shape} ${m.status === "pending" ? "opacity-60" : ""}`}>
           {who && <span data-quem="" className="block mb-0.5 text-xs font-semibold leading-tight text-gold-ink">{who}</span>}
           {m.quotedBody && !m.deleted && (onQuote ? (
@@ -355,7 +370,7 @@ export const Bubble = memo(function Bubble({ m, day, who = null, onReply, onDele
               ))}
             </span>
           )}
-          {bar && (canReact || canEdit || canForward) && (
+          {bar && hasTools && (
             <span role="group" aria-label="Ações da mensagem" data-testid="barra-mensagem" className={`mt-1.5 flex flex-wrap items-center gap-1 ${out ? "justify-end" : "justify-start"}`}>
               {canReact && REACTION_CHOICES.map((e) => (
                 <button key={e} type="button" aria-label={myReaction === e ? `Tirar reação ${e}` : `Reagir ${e}`} aria-pressed={myReaction === e}
@@ -364,27 +379,46 @@ export const Bubble = memo(function Bubble({ m, day, who = null, onReply, onDele
               ))}
               {canEdit && <button type="button" onClick={() => { setBar(false); tools!.edit!(m); }} className="h-10 rounded-full border border-line bg-paper px-3 text-sm font-medium text-ink hover:bg-paper-2">Editar</button>}
               {canForward && <button type="button" onClick={() => { setBar(false); tools!.forward!(m); }} className="h-10 rounded-full border border-line bg-paper px-3 text-sm font-medium text-ink hover:bg-paper-2">Encaminhar</button>}
+              {selectable && <button type="button" onClick={() => { setBar(false); onSelect!(m); }} className="h-10 rounded-full border border-line bg-paper px-3 text-sm font-medium text-ink hover:bg-paper-2">Selecionar</button>}
               <button type="button" aria-label="Fechar" onClick={() => setBar(false)} className="h-10 rounded-full px-2.5 text-sm text-muted hover:text-ink">Fechar</button>
             </span>
           )}
           {out && m.status === "failed" && <span className="block text-xs text-alert mt-1">{isUncertainSend(m)
             ? "Pode ter chegado. Confira no WhatsApp antes de enviar de novo." : "Não chegou na cliente. Copie o texto e envie de novo."}</span>}
         </div>
-        {onReply && m.id !== "optimistic" && m.externalId && m.status !== "pending" && m.status !== "failed" && !m.deleted && (
+        {!selecting && onReply && m.id !== "optimistic" && m.externalId && m.status !== "pending" && m.status !== "failed" && !m.deleted && (
           <IconButton label="Responder" onClick={() => onReply(m)}
             className="opacity-40 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-70 transition-opacity"><IconReply size={16} /></IconButton>
         )}
         {/* 20/10 (Cati): só no "…" ela não achava; 21/10 (dono): nem passando o mouse achou, então as setas ficam sempre à vista (clarinhas). */}
-        {canForward && (
+        {!selecting && canForward && (
           <IconButton label="Encaminhar" onClick={() => tools!.forward!(m)}
             className="opacity-40 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-70 transition-opacity"><IconForward size={16} /></IconButton>
         )}
-        {menuItems.length > 0 && (
+        {!selecting && menuItems.length > 0 && (
           <Menu label="Mais ações da mensagem" align={out ? "right" : "left"} items={menuItems}
             triggerClassName="grid size-9 place-items-center rounded-full text-muted hover:text-ink hover:bg-paper-2 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100 pointer-coarse:opacity-70 transition-opacity"
             trigger={<IconMore size={16} />} />
         )}
       </div>
+  );
+  return (
+    <motion.div data-msg-id={m.id} initial={animateIn ? { opacity: 0, y: 10 } : false} animate={{ opacity: 1, y: 0 }} transition={SPRING_UI} className={`flex flex-col ${cont ? "-mt-1" : ""}`}>
+      {day && <p className="self-center my-2 text-xs font-medium text-muted bg-paper border border-line rounded-full px-2.5 py-0.5 first-letter:uppercase">{day}</p>}
+      {selecting ? (
+        // Modo seleção: a caixa à esquerda (como no WhatsApp) e a linha inteira vira um alvo só, por cima do balão, para o toque marcar
+        // e não abrir foto, vídeo, link nem menu. A que não dá para marcar fica sem caixa (o espaço fica, para os balões não pularem).
+        <div className={`relative -mx-2 flex items-center gap-2 rounded-[var(--radius-card)] px-2 py-0.5 transition-colors ${selected ? "bg-selected/60" : ""}`}>
+          <span aria-hidden className={`grid size-6 shrink-0 place-items-center rounded-full border-2 ${selected ? "border-gold bg-gold text-paper" : "border-line-strong bg-paper"} ${selectable ? "" : "invisible"}`}>
+            {selected && <IconCheck size={14} />}
+          </span>
+          <div className={`flex min-w-0 flex-1 ${out ? "justify-end" : "justify-start"}`}>{row}</div>
+          {selectable && (
+            <button type="button" role="checkbox" aria-checked={selected} aria-label={`Selecionar mensagem: ${selectLabel(m)}`} onClick={() => onSelect!(m)}
+              className="absolute inset-0 z-10 min-h-11 w-full cursor-pointer rounded-[var(--radius-card)]" />
+          )}
+        </div>
+      ) : row}
     </motion.div>
   );
 }, bubblePropsEqual);
@@ -449,6 +483,66 @@ export function Conversation({ messages, onReply, onDelete, onHide, tools, label
     flashTimer.current = setTimeout(() => setFlash(null), 2000);
   }, []);
 
+  // Modo seleção (24/10, Cati: "selecionar como no WhatsApp para encaminhar várias"). Guarda os ids na ordem do toque; o que vai para o
+  // encaminhar sai na ordem da conversa (o servidor confere de novo pelo created_at). Desmarcar a última sai do modo, como no WhatsApp.
+  const [sel, setSel] = useState<string[]>([]);
+  const [limitHit, setLimitHit] = useState(false);
+  const selRef = useRef(sel);
+  useLayoutEffect(() => { selRef.current = sel; }, [sel]);
+  const maxSelect = tools?.maxSelect ?? 30;
+  const maxRef = useRef(maxSelect);
+  useLayoutEffect(() => { maxRef.current = maxSelect; }, [maxSelect]);
+  /** As marcadas que ainda dá para encaminhar (`chosen`, atualizado a cada render). */
+  const chosenRef = useRef<Set<string>>(new Set());
+  // Estável (refs): marcar um balão não re-renderiza os outros (memo dos balões).
+  const onSelect = useCallback((m: Msg) => {
+    const cur = selRef.current.filter((id) => chosenRef.current.has(id)); // a que deixou de ser encaminhável não conta para o limite
+    if (cur.includes(m.id)) { setSel(cur.filter((x) => x !== m.id)); setLimitHit(false); return; }
+    if (cur.length >= maxRef.current) { setLimitHit(true); return; }
+    setSel([...cur, m.id]);
+  }, []);
+  const clearSel = useCallback(() => { setSel([]); setLimitHit(false); }, []);
+  const selSet = new Set(sel);
+  // Reconfere a cada carga: a marcada que deixou de ser encaminhável (apagada para todos, mídia que saiu do sistema) perde a caixa, então
+  // sai da conta e do encaminhar em vez de travar o pedido inteiro sem dizer qual era.
+  const chosen = tools?.forwardMany ? messages.filter((m) => selSet.has(m.id) && (tools.canForward?.(m) ?? true)) : [];
+  const selecting = chosen.length > 0;
+  useLayoutEffect(() => { chosenRef.current = new Set(chosen.map((m) => m.id)); });
+  // Esc só cancela a seleção. Pela pilha de modais, como o sino: a seleção não entra na pilha (não é modal: a gaveta do Funil continua
+  // travando o Tab), mas guarda quem era o topo quando começou e só trata o Esc enquanto nada abriu por cima ("Para quem?", Agendar,
+  // dados da cliente: o Esc é deles e a seleção fica). Na captura e engolido: a gaveta do Funil ouve o document desde antes e fechava a
+  // conversa inteira junto.
+  useEffect(() => {
+    if (!selecting) return;
+    const base = topModal();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented || topModal() !== base) return;
+      e.preventDefault(); e.stopImmediatePropagation();
+      clearSel();
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [selecting, clearSel]);
+  // Foco (teclado): ao entrar, vai para a caixa da mensagem marcada (o "⋯" que abriu o menu some no modo seleção e o foco caía no body);
+  // ao sair (Cancelar, Esc, encaminhou), a barra some e o foco volta para a conversa, se não estiver em outro lugar.
+  const wasSelecting = useRef(false);
+  useEffect(() => {
+    if (selecting === wasSelecting.current) return;
+    wasSelecting.current = selecting;
+    const root = scroller.current;
+    const first = selRef.current[0];
+    const t = setTimeout(() => {
+      if (!root?.isConnected) return;
+      const a = document.activeElement;
+      if (selecting) {
+        if (a && a !== document.body && root.contains(a) && a.getAttribute("role") === "checkbox") return;
+        root.querySelector<HTMLElement>(`[data-msg-id="${CSS.escape(first ?? "")}"] [role=checkbox]`)?.focus({ preventScroll: true });
+      } else if (!a || a === document.body || !a.isConnected) root.focus({ preventScroll: true });
+    }, 0);
+    return () => clearTimeout(t);
+  }, [selecting]);
+  const forwardChosen = () => tools!.forwardMany!(chosen, (sent) => { if (sent) clearSel(); });
+
   const toEnd = useCallback(() => {
     const el = scroller.current;
     if (el) el.scrollTop = el.scrollHeight;
@@ -465,12 +559,12 @@ export function Conversation({ messages, onReply, onDelete, onHide, tools, label
     if (!prev) { toEnd(); return; } // abertura: direto no fim, antes da pintura
     const at = prev.lastId ? real.findIndex((m) => m.id === prev.lastId) : -1;
     // Outra conversa (a lista trocou por inteiro): abre sempre nas mais recentes, nunca onde a anterior estava.
-    if (prev.lastId && at < 0 && prev.lastId !== lastId) { toEnd(); setUnseen(0); return; }
+    if (prev.lastId && at < 0 && prev.lastId !== lastId) { toEnd(); setUnseen(0); clearSel(); return; } // a seleção era da outra conversa
     const fresh = at >= 0 ? real.slice(at + 1) : prev.lastId === lastId ? [] : real;
     const mine = optimistic && !prev.optimistic; // o balão provisório da própria atendente
     if (mine || (fresh.length && stuck.current)) { toEnd(); setUnseen(0); } // o aviso zera junto com a rolagem
     else if (fresh.length) setUnseen((n) => n + fresh.length);
-  }, [messages, toEnd]);
+  }, [messages, toEnd, clearSel]);
 
   // Envio de mídia (sem balão provisório): a própria atendente quer ver o que mandou.
   const endKey = useRef(forceEndKey);
@@ -510,6 +604,7 @@ export function Conversation({ messages, onReply, onDelete, onHide, tools, label
   const firstImported = rows.findIndex((r) => r.m.importedAt);
   return (
     <CallActionsCtx.Provider value={callActions ?? null}>
+    <div className="flex-1 min-h-0 flex flex-col">
     <div className="relative flex-1 min-h-0 flex flex-col">
       <div ref={scroller} onScroll={onScroll} role="log" aria-label={label} tabIndex={0}
         className={`flex-1 min-h-0 overflow-y-auto overscroll-contain scroll-thin px-4 py-4 outline-offset-[-2px] ${WRAP}`}>
@@ -520,7 +615,8 @@ export function Conversation({ messages, onReply, onDelete, onHide, tools, label
             {i === firstImported && (
               <p data-testid="historico-importado" className="self-center mt-2 mb-1 text-xs text-muted">Histórico importado do WhatsApp em {new Date(m.importedAt!).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "America/Bahia" })}</p>
             )}
-            <Bubble m={m} day={day} who={who} cont={cont} onReply={onReply} onDelete={onDelete} onHide={onHide} tools={tools} onQuote={onQuote} flash={flash === m.id} animateIn={!initialIds.has(m.id) && (m.direction === "in" || m.id === "optimistic" || m.kind === "nota")} />
+            <Bubble m={m} day={day} who={who} cont={cont} onReply={onReply} onDelete={onDelete} onHide={onHide} tools={tools} onQuote={onQuote} flash={flash === m.id} animateIn={!initialIds.has(m.id) && (m.direction === "in" || m.id === "optimistic" || m.kind === "nota")}
+              selecting={selecting} selected={selecting && selSet.has(m.id)} onSelect={tools?.forwardMany ? onSelect : undefined} />
             </Fragment>
           ))}
         </div>
@@ -547,6 +643,19 @@ export function Conversation({ messages, onReply, onDelete, onHide, tools, label
           </motion.button>
         )}
       </AnimatePresence>
+    </div>
+      {selecting && (
+        <div role="toolbar" aria-label="Mensagens selecionadas" className="shrink-0 flex flex-wrap items-center gap-2 border-t border-line bg-paper px-3 py-2">
+          <p aria-live="polite" className="mr-auto text-sm font-semibold text-ink">
+            {chosen.length === 1 ? "1 selecionada" : `${chosen.length} selecionadas`}
+            {limitHit && <span className="block text-xs font-normal text-muted">Dá para encaminhar até {maxSelect} de uma vez.</span>}
+          </p>
+          <Button type="button" variant="ghost" size="sm" aria-label="Cancelar seleção" onClick={clearSel} className="pointer-coarse:h-11">Cancelar</Button>
+          <Button type="button" size="sm" aria-label={`Encaminhar ${chosen.length} mensage${chosen.length === 1 ? "m" : "ns"}`} onClick={forwardChosen} className="pointer-coarse:h-11">
+            <IconForward size={15} aria-hidden />Encaminhar
+          </Button>
+        </div>
+      )}
     </div>
     </CallActionsCtx.Provider>
   );

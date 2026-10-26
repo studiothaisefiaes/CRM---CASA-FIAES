@@ -23,3 +23,16 @@ it("sabe se já tem texto escrito (para perguntar antes de trocar)", () => {
   reportComposerText("d3", "");
   expect(composerHasText("d3")).toBe(false);
 });
+
+it("o texto pode chegar com o anexo de uma resposta pronta preso (sugestão da IA com vídeo); também espera o campo abrir", () => {
+  const anexo = { replyFile: { replyId: "q9", name: "metodo.mp4", kind: "video" } };
+  const got: unknown[][] = [];
+  const off = onDraft("d7", (...a) => got.push(a));
+  offerDraft("d7", "Assista ao vídeo!", anexo);
+  expect(got).toEqual([["Assista ao vídeo!", anexo]]);
+  off();
+  offerDraft("d7", "guardado com anexo", anexo);
+  const later: unknown[][] = [];
+  onDraft("d7", (...a) => later.push(a))();
+  expect(later).toEqual([["guardado com anexo", anexo]]);
+});
