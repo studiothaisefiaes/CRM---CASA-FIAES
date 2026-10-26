@@ -5,7 +5,7 @@ import { pushOptInRemembered, rememberPushOptIn, resubscribeIfGranted, subscribe
 
 const supported = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 
-/** Convite único no Hoje para receber o aviso no celular. No iPhone só existe com o app instalado na tela inicial. */
+/** Convite único no Hoje para receber o aviso neste aparelho (computador ou celular). No iPhone só existe com o app instalado na tela inicial. */
 export function PushOptIn({ publicKey }: { publicKey: string }) {
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -46,7 +46,7 @@ export function PushOptIn({ publicKey }: { publicKey: string }) {
   return (
     <div role="region" aria-label="Avisos no celular" className="mt-5 rounded-[var(--radius-card)] border border-line bg-gold-soft px-4 py-3 flex flex-wrap items-center justify-between gap-3">
       <div>
-        <p className="text-sm text-ink">Receber aviso no celular quando uma conversa atrasar</p>
+        <p className="text-sm text-ink">Receber aviso neste aparelho quando uma cliente escrever</p>
         {error && <p role="alert" className="text-sm text-alert mt-1">{error}</p>}
       </div>
       <div className="flex items-center gap-2 shrink-0">

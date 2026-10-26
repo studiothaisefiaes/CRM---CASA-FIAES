@@ -254,14 +254,14 @@ export async function recordInbound(input: InboundInput): Promise<InboundResult>
   if ("dealId" in result && "created" in result) {
     // Toda mensagem da cliente avisa no sino e no celular, em qualquer etapa. Depois do commit e sem nunca derrubar a ingestão.
     // ANTES do evento: a tela que recebe o evento busca o sino na hora e já acha o aviso.
-    let noticed = false;
+    let noticed: string | null = null;
     if (!input.noWait && result.dealId && result.messageId) {
       try { const { noticeClientMessage } = await import("./client-message-alert"); noticed = await noticeClientMessage({ dealId: result.dealId, messageId: result.messageId, kind: input.kind ?? "text", body: input.body, at, now: input.now }); }
       catch (e) { console.error("[aviso de mensagem] não avisou", result.dealId, e instanceof Error ? e.message : e); }
     }
     // `aviso`: as telas tocam o som. A mesma regra do aviso no sino: mensagem de verdade da cliente, em qualquer etapa; nada para ligação atendida,
-    // reação, mensagem com mais de 6 h (reprocessada) nem canal em modo quieto (histórico importando).
-    await emit(result.created ? "lead_criado" : "mensagem_recebida", { dealId: result.dealId, ...(noticed ? { aviso: true } : {}) });
+    // reação, mensagem com mais de 6 h (reprocessada) nem canal em modo quieto (histórico importando). `texto`: a notificação do sistema na tela de toda a equipe.
+    await emit(result.created ? "lead_criado" : "mensagem_recebida", { dealId: result.dealId, ...(noticed ? { aviso: true, texto: noticed } : {}) });
     // Resposta fora do horário: depois do commit e sem nunca derrubar a ingestão da mensagem.
     try { if (result.dealId && !input.noWait) { const { maybeAutoReply } = await import("./auto-reply"); await maybeAutoReply(result.dealId, at, input.now); } }
     catch (e) { console.error("[auto-resposta] não enfileirou", result.dealId, e instanceof Error ? e.message : e); }

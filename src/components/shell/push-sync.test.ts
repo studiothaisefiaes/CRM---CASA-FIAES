@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { forgetPushOptIn, OPTIN_KEY, resubscribeIfGranted } from "./push-sync";
+import { forgetPushOptIn, OPTIN_KEY, resubscribeIfGranted, showClientNotice } from "./push-sync";
 
 type Sub = { endpoint: string; toJSON: () => { keys?: { p256dh?: string; auth?: string } } };
 const sub = (endpoint = "https://fcm.googleapis.com/x"): Sub => ({ endpoint, toJSON: () => ({ keys: { p256dh: "P", auth: "A" } }) });
@@ -65,4 +65,23 @@ describe("forgetPushOptIn (ao sair)", () => {
     expect(store.has(OPTIN_KEY)).toBe(false);
   });
   it("sem localStorage não lança", () => { expect(() => forgetPushOptIn()).not.toThrow(); });
+});
+
+describe("showClientNotice (Cati 24/10: 'não aparece notificação de mensagem')", () => {
+  const n = { title: "Mensagem de cliente", body: "Maria escreveu: “oi”", url: "/atendimento?lead=x", tag: "/atendimento?lead=x" };
+  const run = async (o: { permission?: string; focused?: boolean; hasPush?: boolean }) => {
+    const shown: unknown[] = [];
+    const r = await showClientNotice(n, { permission: o.permission ?? "granted", focused: o.focused ?? false, hasPush: async () => o.hasPush ?? false, show: (x) => shown.push(x) });
+    return { r, shown };
+  };
+  it("CRM aberto em outra janela (Avec na frente) e permissão concedida: mostra a notificação", async () => {
+    expect(await run({})).toEqual({ r: true, shown: [n] });
+  });
+  it("janela do CRM em foco: só o som (já está vendo); sem permissão: nada", async () => {
+    expect((await run({ focused: true })).shown).toEqual([]);
+    expect((await run({ permission: "default" })).shown).toEqual([]);
+  });
+  it("aparelho com push ativo: o push já mostra, a tela não repete", async () => {
+    expect((await run({ hasPush: true })).shown).toEqual([]);
+  });
 });

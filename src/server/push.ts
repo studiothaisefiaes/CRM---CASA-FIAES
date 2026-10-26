@@ -4,6 +4,8 @@ import { db } from "./db";
 import { alerts, profiles, pushSubscriptions, users } from "./db/schema";
 import { vapidConfig } from "./env";
 import { leadHref } from "../lib/lead-href";
+import { CLIENT_MESSAGE_ALERT } from "./domain/client-message-alert";
+import { CLIENT_MESSAGE_TITLE } from "../lib/client-notice";
 
 export type PushTarget = { endpoint: string; p256dh: string; auth: string };
 /** Envia um payload (JSON em texto) e devolve o status HTTP do serviço de push. Pode lançar em erro de rede. */
@@ -41,7 +43,7 @@ export function retryPush(sender: PushSender, delayMs = 1_500): PushSender {
 
 /** Avisos sem espera que também vão por push (o resto fica só no sino). */
 export const PUSH_ALSO: readonly string[] = ["mencao", "agendada_falhou", "mensagem_cliente", "link_remarcar"];
-const PUSH_TITLE: Record<string, string> = { mencao: "Te marcaram numa nota", agendada_falhou: "Mensagem agendada não saiu", mensagem_cliente: "Mensagem de cliente", link_remarcar: "Cliente pediu para remarcar" };
+const PUSH_TITLE: Record<string, string> = { mencao: "Te marcaram numa nota", agendada_falhou: "Mensagem agendada não saiu", mensagem_cliente: CLIENT_MESSAGE_TITLE, link_remarcar: "Cliente pediu para remarcar" };
 
 /** Envia o push dos alertas ainda não avisados. Marca `pushedAt` sempre, para não reprocessar. */
 export async function sendPushForPendingAlerts(sender: PushSender = webPushSender, opts: { retryDelayMs?: number } = {}): Promise<{ sent: number; failed: number }> {
@@ -57,7 +59,13 @@ export async function sendPushForPendingAlerts(sender: PushSender = webPushSende
   // Escalada (alerta da gestão) vai para quem tem "Receber escaladas" no perfil.
   const managers = (await db.select({ id: users.id }).from(users).innerJoin(profiles, eq(profiles.id, users.profileId))
     .where(and(eq(users.active, true), sql`${profiles.permissions} @> array['alertas.escalada']::text[]`))).map((u) => u.id);
-  const userIds = [...new Set([...managers, ...pending.map((a) => a.userId).filter((x): x is string => !!x)])];
+  // "Fulana escreveu" vai para toda a equipe que enxerga a conversa (Cati 24/10: só a dona recebia): quem vê as das outras e,
+  // na conversa sem dona, também quem vê só as suas e as sem dona.
+  const team = pending.some((a) => a.type === CLIENT_MESSAGE_ALERT)
+    ? await db.select({ id: users.id, todas: sql<boolean>`${profiles.permissions} @> array['atendimento.todas']::text[]` }).from(users).innerJoin(profiles, eq(profiles.id, users.profileId))
+      .where(and(eq(users.active, true), sql`${profiles.permissions} @> array['atendimento.ver']::text[]`))
+    : [];
+  const userIds = [...new Set([...managers, ...team.map((u) => u.id), ...pending.map((a) => a.userId).filter((x): x is string => !!x)])];
   const subs = userIds.length ? await db.select().from(pushSubscriptions).where(inArray(pushSubscriptions.userId, userIds)) : [];
   const byUser = new Map<string, typeof subs>();
   for (const s of subs) byUser.set(s.userId, [...(byUser.get(s.userId) ?? []), s]);
@@ -70,7 +78,9 @@ export async function sendPushForPendingAlerts(sender: PushSender = webPushSende
     if (!claimed.length) continue; // outra rodada já pegou
     if (Date.now() - (a.escalatedAt ?? a.createdAt).getTime() > FRESH_MS) continue;
     const toManagers = a.level >= 2 || (a.audience === "gestao" && !a.userId);
-    const targets = toManagers ? managers : a.userId ? [a.userId] : [];
+    const targets = a.type === CLIENT_MESSAGE_ALERT
+      ? [...new Set([...(a.userId ? [a.userId] : []), ...team.filter((u) => u.todas || !a.userId).map((u) => u.id)])]
+      : toManagers ? managers : a.userId ? [a.userId] : [];
     const title = PUSH_TITLE[a.type] ?? (a.level >= 2 ? "Atraso escalado para a gestão" : "Conversa esperando");
     const payload = JSON.stringify({ title, body: a.message, url: leadHref(a.dealId) });
     const subsOf = targets.flatMap((uid) => byUser.get(uid) ?? []).filter((s) => !gone.has(s.endpoint));

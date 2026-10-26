@@ -50,3 +50,20 @@ export async function resubscribeIfGranted(opts: {
     return "failed";
   }
 }
+
+type Notice = { title: string; body: string; url: string; tag: string };
+/**
+ * "A cliente escreveu" na tela de cada pessoa da equipe (Cati 24/10: só a dona recebia): mostra a notificação do sistema quando
+ * a janela do CRM não está em foco (Avec na frente, aba escondida). Com o push ativo neste aparelho o service worker já mostra:
+ * a tela não repete. Nunca lança.
+ */
+export async function showClientNotice(n: Notice, deps: { permission: string; focused: boolean; hasPush: () => Promise<boolean>; show: (n: Notice) => void }): Promise<boolean> {
+  if (deps.permission !== "granted" || deps.focused) return false;
+  try {
+    if (await deps.hasPush()) return false;
+    deps.show(n);
+    return true;
+  } catch {
+    return false;
+  }
+}

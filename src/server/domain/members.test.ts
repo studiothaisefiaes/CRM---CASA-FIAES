@@ -44,7 +44,7 @@ describe("criar acesso direto (sem convite)", () => {
 describe("assinatura (Configurações › Equipe)", () => {
   it("quem entra já nasce com a assinatura do 1º nome; repetida fica sem (a gestão escolhe)", async () => {
     const bruna = await createMember({ name: "Bruna Alves", email: "b@c.com", password: "12345678", profileId: recepcao }, g);
-    const outra = await createMember({ name: "Vera Barros", email: "b2@c.com", password: "12345678", profileId: recepcao }, g);
+    const outra = await createMember({ name: "Vera Freitas", email: "b2@c.com", password: "12345678", profileId: recepcao }, g);
     const sig = async (id: string) => (await db.select().from(users).where(eq(users.id, id)))[0].signature;
     expect(await sig(bruna.id)).toBe("BRUNA");
     expect(await sig(outra.id)).toBeNull();

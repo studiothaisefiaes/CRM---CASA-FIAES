@@ -10,6 +10,9 @@ import { Tabs } from "@/components/ui/tabs";
 import { ALERT_GROUP_ORDER, ALERT_GROUP_TITLE, BELL_LEGEND, HELP_HREF, alertGroupOf } from "@/lib/alert-copy";
 import type { AlertItem } from "@/server/queries/alerts";
 import { isMuted, lateSoundOn, muteFor, setLateSound, subscribeAudio, unmute } from "./sound";
+import { useLive } from "./live";
+import { showClientNotice } from "./push-sync";
+import { clientNotice } from "@/lib/client-notice";
 import { SPRING_UI, EASE, T } from "@/lib/motion";
 import { relTime } from "@/lib/format";
 import { contactHref, leadHref } from "@/lib/lead-href";
@@ -54,11 +57,27 @@ export function AlertsBell({ alerts, reload, gestao = false }: { alerts: AlertIt
     fresh.forEach((a) => seen.current!.add(a.id));
     if (!fresh.length) return;
     // Notificação do sistema (que toca som) só para o que pede ação agora: combinados e lembretes ficam no sino, em silêncio (fadiga de alerta, 20/10).
-    const loud = fresh.find((a) => !QUIET_GROUPS.has(alertGroupOf(a.type)));
+    // "A cliente escreveu" tem a notificação dela (abaixo, para toda a equipe): aqui não repete para a dona.
+    const loud = fresh.find((a) => !QUIET_GROUPS.has(alertGroupOf(a.type)) && a.type !== "mensagem_cliente");
     if (loud && typeof Notification !== "undefined" && Notification.permission === "granted" && document.visibilityState !== "visible") {
       new Notification("CRM Casa Fiaes", { body: loud.message, tag: loud.id });
     }
   }, [alerts]);
+
+  // Toda mensagem de cliente vira notificação do sistema para quem está com o CRM aberto, não só para a dona (Cati 24/10).
+  const live = useLive();
+  useEffect(() => live.subscribe((ev) => {
+    const n = clientNotice(ev);
+    if (!n || typeof Notification === "undefined") return;
+    void showClientNotice(n, {
+      permission: Notification.permission, focused: document.visibilityState === "visible" && document.hasFocus(),
+      hasPush: async () => !!(await (await navigator.serviceWorker?.getRegistration("/"))?.pushManager?.getSubscription()),
+      show: (x) => {
+        const note = new Notification(x.title, { body: x.body, tag: x.tag, icon: "/icon-192.png" });
+        note.onclick = () => { window.focus(); router.push(x.url); note.close(); };
+      },
+    });
+  }), [live, router]);
 
   // Tocar no alerta marca como lido e só então abre o lead (clique com Ctrl/Cmd ou botão do meio segue o link normal).
   const openAlert = (e: React.MouseEvent, a: AlertItem) => {

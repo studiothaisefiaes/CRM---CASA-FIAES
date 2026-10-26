@@ -24,7 +24,8 @@ it("mensagem que está na Evolution e não entrou no CRM é registrada com o hor
   const r = await reconcileMissedMessages(NOW, src([row("E1", 40)]));
   expect(r).toMatchObject({ checked: 1, replayed: 1 });
   const [m] = await db.select().from(messages);
-  expect([m.externalId, m.direction, m.body, m.createdAt.toISOString()]).toEqual(["E1", "in", "Oi, tem horário amanhã?", new Date(sec(40) * 1000).toISOString()]);
+  // O segundo da mensagem; o milésimo depende do relógio de verdade (chegou atrasada = fim do segundo, webhook.ts messageTime).
+  expect([m.externalId, m.direction, m.body, Math.floor(m.createdAt.getTime() / 1000)]).toEqual(["E1", "in", "Oi, tem horário amanhã?", sec(40)]);
   expect((await reconcileMissedMessages(NOW, src([row("E1", 40)]))).replayed).toBe(0);
   expect(await db.select().from(messages)).toHaveLength(1);
 });

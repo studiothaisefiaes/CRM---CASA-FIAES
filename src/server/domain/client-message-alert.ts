@@ -25,18 +25,19 @@ const preview = (kind: string, body: string | null | undefined) => {
  * cliente em Agendado escreveu e a Casa só soube pelo ChatGuru. Um aviso aberto por conversa (mensagens seguidas renovam o mesmo).
  * Vai para a dona; sem dona, para a gestão (a regra dos avisos de espera). Sem `wait_key`: não conta como atrasado.
  * Fica de fora: reação (não é mensagem), mensagem velha (reprocessada) e, com o canal em modo quieto, a de mais de 30 min (atrasada da reconexão).
+ * Devolve o texto do aviso (ou null quando não avisou): vai no evento para a tela de cada pessoa da equipe mostrar a notificação.
  */
-export async function noticeClientMessage(input: { dealId: string; messageId: string; kind: string; body: string | null | undefined; at: Date; now?: Date }): Promise<boolean> {
+export async function noticeClientMessage(input: { dealId: string; messageId: string; kind: string; body: string | null | undefined; at: Date; now?: Date }): Promise<string | null> {
   const now = input.now ?? new Date();
-  if (input.kind === "reaction" || now.getTime() - input.at.getTime() > CLIENT_MESSAGE_FRESH_MS) return false;
+  if (input.kind === "reaction" || now.getTime() - input.at.getTime() > CLIENT_MESSAGE_FRESH_MS) return null;
   const [d] = await db.select({ ownerId: deals.ownerId, lastOutboundAt: deals.lastOutboundAt, name: contacts.name, phone: contacts.phoneE164, quiet: sql<boolean>`(${channels.quietUntil} is not null and ${channels.quietUntil} > ${now.toISOString()}::timestamptz)` })
     .from(deals).innerJoin(contacts, eq(contacts.id, deals.contactId)).leftJoin(channels, eq(channels.id, deals.channelId))
     .where(eq(deals.id, input.dealId));
   // Modo quieto (número recém-pareado): a cliente escrevendo agora avisa; só as atrasadas da reconexão ficam caladas (23/10: calar
   // tudo deixou a recepção 48 h sem "escreveu" depois do QR de 21/10).
-  if (!d || (d.quiet && now.getTime() - input.at.getTime() > QUIET_FRESH_MS)) return false;
+  if (!d || (d.quiet && now.getTime() - input.at.getTime() > QUIET_FRESH_MS)) return null;
   // A Casa já respondeu depois dela (mensagem que chegou atrasada, resposta pelo celular): não é espera, como no awaitingReplySince.
-  if (d.lastOutboundAt && d.lastOutboundAt >= input.at) return false;
+  if (d.lastOutboundAt && d.lastOutboundAt >= input.at) return null;
   const message = alertText.clientMessage(clientLabel(d.name, d.phone), preview(input.kind, input.body));
   const target = { userId: d.ownerId, audience: d.ownerId ? "responsavel" : "gestao" };
   // Upsert numa instrução só, travado pelo índice único parcial (um aberto por conversa): o webhook processa em paralelo e o
@@ -50,7 +51,7 @@ export async function noticeClientMessage(input: { dealId: string; messageId: st
         pushedAt: sql`case when ${alerts.pushedAt} > ${new Date(now.getTime() - CLIENT_MESSAGE_PUSH_GAP_MS).toISOString()}::timestamptz then ${alerts.pushedAt} else null end` },
     });
   await emit("alerta", { dealId: input.dealId });
-  return true;
+  return message;
 }
 
 /** A conversa foi vista (aberta) ou respondida: o aviso "escreveu" sai do sino. */
