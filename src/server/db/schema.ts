@@ -1907,3 +1907,20 @@ export const apiKeys = pgTable("api_keys", {
   index("api_keys_user_idx").on(t.userId),
   check("api_keys_scopes_check", sql`${t.scopes} <@ ARRAY['ler','escrever','enviar']::text[] AND cardinality(${t.scopes}) > 0`),
 ]);
+
+/**
+ * Link de convite aberto (perfil Contador, 26/10): uso único, 7 dias, amarrado a um perfil e sem e-mail (quem abre põe nome, e-mail e senha).
+ * Só o sha256 do segredo fica no banco. Usado (`used_at`) ou revogado (`revoked_at`) deixa de valer; a história fica na auditoria.
+ */
+export const openInvites = pgTable("open_invites", {
+  id: id(),
+  profileId: uuid("profile_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: createdAt(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+  usedBy: uuid("used_by").references(() => users.id, { onDelete: "set null" }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  revokedBy: uuid("revoked_by").references(() => users.id, { onDelete: "set null" }),
+}, (t) => [uniqueIndex("open_invites_hash_uq").on(t.tokenHash)]);

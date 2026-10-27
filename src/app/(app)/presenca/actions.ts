@@ -4,12 +4,15 @@ import { revalidatePath } from "next/cache";
 import { assertUser } from "@/server/auth/session";
 import { setAvailability } from "@/server/domain/presence";
 import { userErrorMessage } from "@/server/user-error";
+import { can } from "@/lib/permissions";
 
 /** A própria pessoa muda o estado na distribuição (menu do nome). Pausa/ausente devolvem os leads ainda sem resposta. */
 export async function setAvailabilityAction(a: string): Promise<{ ok: true; returned: number } | { ok: false; error: string }> {
   try {
     const user = await assertUser();
     const v = z.enum(["disponivel", "pausa", "ausente"]).parse(a);
+    // Disponível é para quem atende: quem não abre as Conversas (o Contador, 26/10) não conta como alguém para a cliente nem para o setor.
+    if (v === "disponivel" && !can(user.perms, "atendimento.ver")) return { ok: false, error: "Seu perfil não atende conversas." };
     const r = await setAvailability(user.id, v);
     revalidatePath("/", "layout");
     return { ok: true, returned: r.returned };

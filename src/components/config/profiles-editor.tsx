@@ -6,7 +6,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { Field, Input } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
 import { IconPlus } from "@/components/icons";
-import { GESTAO_OPTIONAL, PERMS, PERM_GROUPS, PERM_GROUP, PERM_HELP, PERM_LABEL, PERM_OTHERS, type Perm } from "@/lib/permissions";
+import { GESTAO_OPTIONAL, PERMS, PERM_GROUPS, PERM_GROUP, PERM_HELP, PERM_LABEL, PERM_OTHERS, PROFILE_ABOUT, type Perm, type SystemProfileKey } from "@/lib/permissions";
 import { deleteProfileAction, duplicateProfileAction, saveProfileAction } from "@/app/(app)/config/actions";
 import { cn } from "@/lib/cn";
 
@@ -63,6 +63,7 @@ function ProfileForm({ profile, initial, onSaved, onRemoved, onDuplicated }: {
       <form onSubmit={(e) => { e.preventDefault(); save(); }} className="flex flex-col gap-5">
         <Field label="Nome do perfil" htmlFor="pf-name"><Input id="pf-name" value={name} onChange={(e) => setName(e.target.value)} disabled={profile?.isSystem && profile.key === "gestao"} /></Field>
         {locked && <p className="text-sm text-graphite rounded-[var(--radius-control)] bg-paper-2 px-3 py-2">Gestão sempre tem acesso a tudo, para ninguém ficar trancado para fora. Só dá para escolher se a gestão entra no rodízio de conversas.</p>}
+        {profile?.key && PROFILE_ABOUT[profile.key as SystemProfileKey] && <p role="note" className="text-sm text-graphite rounded-[var(--radius-control)] bg-paper-2 px-3 py-2">{PROFILE_ABOUT[profile.key as SystemProfileKey]}</p>}
         {PERM_GROUPS.map((g) => (
           <fieldset key={g} className="flex flex-col gap-1">
             <legend className="text-xs font-semibold text-muted mb-1.5">{g}</legend>

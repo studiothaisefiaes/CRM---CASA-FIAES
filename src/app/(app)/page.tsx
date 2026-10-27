@@ -1,4 +1,5 @@
-import { can } from "@/lib/permissions";
+import { redirect } from "next/navigation";
+import { can, firstAllowedPath, isReportsOnly } from "@/lib/permissions";
 import { CashClosedNotice } from "@/components/caixa/cash-closed-notice";
 import { requireUser } from "@/server/auth/session";
 import { getToday } from "@/server/queries/today";
@@ -42,6 +43,8 @@ function pageNow(agora: unknown): Date {
 
 export default async function HojePage({ searchParams }: PageProps<"/">) {
   const user = await requireUser();
+  // Quem só tem os relatórios (o Contador, 26/10) não tem nada no Hoje: entra direto em Relatórios (o login e o convite caem aqui).
+  if (isReportsOnly(user.perms)) redirect(firstAllowedPath(user.perms));
   const sp = await searchParams;
   const now = pageNow(sp.agora);
   const notice = sp.aviso === "sem-permissao"

@@ -41,6 +41,9 @@ export const PERMS = [
   "nota.configurar", "nota.emitir", "nota.ver", "nota.cancelar", "nota.resolver",
   // API v1 (26/10): criar, listar e revogar as chaves da API. Só a Gestão.
   "api.gerir",
+  // Perfil Contador (26/10): os relatórios do Avec saem de "ver Relatórios + toda a equipe + valores" e ganham permissão própria (o envio
+  // mexe em agenda, contatos e pacotes). Quem já via ganha uma vez pela migration 0096; o Contador não tem.
+  "relatorios.avec",
 ] as const;
 export type Perm = (typeof PERMS)[number];
 
@@ -134,6 +137,7 @@ export const PERM_LABEL: Record<Perm, string> = {
   "nota.cancelar": "Cancelar nota fiscal",
   "nota.resolver": "Resolver nota fora do CRM",
   "api.gerir": "Criar e revogar chaves da API",
+  "relatorios.avec": "Ver e enviar os relatórios do Avec",
 };
 
 export const PERM_HELP: Record<Perm, string> = {
@@ -220,6 +224,7 @@ export const PERM_HELP: Record<Perm, string> = {
   "nota.cancelar": "Cancela no governo uma nota fiscal autorizada, sempre com o motivo. Só depois disso a comanda pode ser reaberta ou cancelada.",
   "nota.resolver": "Registra, com o motivo, o que foi conferido no portal do governo quando o CRM não consegue resolver a nota sozinho (sem certificado, NFC-e fora do prazo de cancelamento, envio sem resposta). Depois disso a comanda pode ser reaberta ou cancelada.",
   "api.gerir": "Em Configurações › API, cria chaves para scripts e outros sistemas lerem e escreverem no CRM em nome de uma pessoa da equipe, e revoga as que não usa mais. A chave aparece uma vez só.",
+  "relatorios.avec": "Abre Relatórios › Relatórios do Avec, baixa as tabelas e envia os arquivos novos do Avec (o envio põe na agenda, nos contatos e nos pacotes o que vier neles). Pede também ver Relatórios, toda a equipe e ver valores.",
 };
 
 export const PERM_GROUP: Record<Perm, PermGroup> = {
@@ -235,7 +240,7 @@ export const PERM_GROUP: Record<Perm, PermGroup> = {
   "caixa.operar": "Caixa", "caixa.gerir": "Caixa", "servicos.editar": "Caixa", "caixa.dinheiro": "Caixa", "caixa.outros": "Caixa", "caixa.taxas": "Caixa",
   "caixa.assistente": "Caixa", "caixa.divida": "Caixa", "caixa.vale": "Caixa", "caixa.cancelar": "Caixa",
   "comissao.ver": "Comissão", "comissao.regras": "Comissão", "comissao.lancar": "Comissão", "comissao.pagar": "Comissão", "pro.ganhos": "Comissão",
-  "relatorios.excecoes": "Relatórios",
+  "relatorios.excecoes": "Relatórios", "relatorios.avec": "Relatórios",
   "agenda.marcador": "Agenda", "agenda.repetir": "Agenda", "agenda.passar_dia": "Agenda",
   "fidelidade.resgatar": "Agenda", "fidelidade.programas": "Agenda",
   "servicos.custo": "Caixa", "servicos.por_profissional": "Caixa",
@@ -254,7 +259,7 @@ export const PERM_GROUP: Record<Perm, PermGroup> = {
 export const GESTAO_OPTIONAL: Perm[] = ["distribuicao.receber", "mensagem.massa", "pro.app", "pro.ganhos"];
 export const GESTAO_REQUIRED: Perm[] = PERMS.filter((p) => !GESTAO_OPTIONAL.includes(p));
 
-export type SystemProfileKey = "gestao" | "atendente" | "recepcao" | "profissional";
+export type SystemProfileKey = "gestao" | "atendente" | "recepcao" | "profissional" | "contador";
 /**
  * Atendente e Recepção fazem o mesmo atendimento (pedido da Casa, 14/10): fecham venda, transferem, veem Quadro e Clientes, configuram
  * o dia a dia (Lote 4) e marcam e encaixam na Agenda (a recepção já "força encaixe" no Avec). Relatórios e o sistema, só a Gestão.
@@ -265,6 +270,8 @@ const RECEPCAO_FASE_C: readonly Perm[] = ["servicos.por_profissional", "contatos
 /** QA r66 (I-7): quem já fazia isso no dia a dia continua (migration 0087 concede uma vez; perfil novo já nasce com elas). */
 const EQUIPE_QA66: readonly Perm[] = ["contatos.editar", "contatos.importar", "mensagem.apagar_todos"];
 const EQUIPE: readonly Perm[] = ["atendimento.ver", "atendimento.transferir", "atendimento.fechar", "distribuicao.receber", "quadro.ver", "contatos.ver", "config.diaadia", "agenda.marcar", "agenda.encaixar", "atendimento.setor", "atendimento.pausar", "cliente.consentimento", "biblioteca.enviar", "mensagem.reagir", "mensagem.editar", "mensagem.localizacao", "mensagem.contato", "mensagem.encaminhar", "conversa.nao_lida", "conversa.acompanhar", "caixa.operar", "caixa.dinheiro", "caixa.assistente", "caixa.divida", "caixa.vale", "caixa.cancelar", "nota.emitir", "nota.ver", ...EQUIPE_FASE_C, ...EQUIPE_QA66];
+/** Contador: leitura de Relatórios (toda a equipe, valores, exportar, Exceções), da comissão, dos caixas e fechamentos e das notas fiscais. */
+const CONTADOR: readonly Perm[] = ["relatorios.ver", "relatorios.equipe", "relatorios.exportar", "valores.ver", "relatorios.excecoes", "comissao.ver", "caixa.dinheiro", "caixa.outros", "nota.ver"];
 export const SYSTEM_PROFILES: { key: SystemProfileKey; name: string; permissions: readonly Perm[] }[] = [
   { key: "gestao", name: "Gestão", permissions: GESTAO_REQUIRED },
   { key: "atendente", name: "Atendente", permissions: EQUIPE },
@@ -272,7 +279,15 @@ export const SYSTEM_PROFILES: { key: SystemProfileKey; name: string; permissions
   { key: "recepcao", name: "Recepção", permissions: [...EQUIPE, "servicos.editar", "biblioteca.gerir", "estoque.produtos", "estoque.movimentar", ...RECEPCAO_FASE_C] },
   // Lote 7A: só o app (a própria agenda) e os próprios ganhos. Nada da equipe.
   { key: "profissional", name: "Profissional", permissions: ["pro.app", "pro.ganhos"] },
+  // Pedido do dono (26/10): o contador só VÊ o dinheiro e o fiscal. Nada de conversas, clientes, agenda, configurações, equipe nem API, e
+  // nenhuma permissão de escrita. Nasce pela migration 0096 (e pelo seed num banco novo); entra pelo "Gerar link para o contador".
+  { key: "contador", name: "Contador", permissions: CONTADOR },
 ];
+
+/** Explicação de cada perfil padrão no editor de perfis (a Gestão tem a dela no próprio editor: "sempre tem acesso a tudo"). */
+export const PROFILE_ABOUT: Partial<Record<SystemProfileKey, string>> = {
+  contador: "Para o contador da Casa: só vê o dinheiro e o fiscal, sem mudar nada. Abre Relatórios › Financeiro (entradas, contas a pagar, resultado e notas fiscais, com Excel e XML), a comissão, as exceções e os caixas e fechamentos da equipe. Não vê Conversas, Clientes, Agenda nem Configurações e não entra na distribuição de conversas. Para dar acesso, use \"Gerar link para o contador\" em Configurações › Equipe › Pessoas.",
+};
 
 /**
  * Permissões novas que os perfis Atendente e Recepção JÁ EXISTENTES recebem uma única vez (o seed registra em
@@ -312,10 +327,11 @@ export const canSeeDealMoney = (perms: readonly string[] | null | undefined): bo
 
 /**
  * Relatórios do Avec (ver, enviar, baixar): só a gestão. Além de abrir Relatórios, pede "toda a equipe" e "ver valores", porque as tabelas
- * do Avec trazem valores e comissões de todo mundo e o envio mexe em contatos e na agenda.
+ * do Avec trazem valores e comissões de todo mundo, e a permissão própria `relatorios.avec` (26/10), porque o envio mexe em contatos e na
+ * agenda: quem só lê o dinheiro (o Contador) não envia nem vê as tabelas de clientes do Avec.
  */
 export const canSeeAvecReports = (perms: readonly string[] | null | undefined): boolean =>
-  can(perms, "relatorios.ver") && can(perms, "relatorios.equipe") && can(perms, "valores.ver");
+  can(perms, "relatorios.ver") && can(perms, "relatorios.equipe") && can(perms, "valores.ver") && can(perms, "relatorios.avec");
 
 /** Painel Salão (Relatórios): números do salão inteiro, então pede "toda a equipe" além de abrir Relatórios. Os R$, só com "ver valores". */
 export const canSeeSalon = (perms: readonly string[] | null | undefined): boolean => can(perms, "relatorios.ver") && can(perms, "relatorios.equipe");
@@ -323,8 +339,19 @@ export const canSeeSalon = (perms: readonly string[] | null | undefined): boolea
 /** Só o app da profissional: tem `pro.app` e não vê o Atendimento (seção 8.3). */
 export const isProOnly = (perms: readonly string[] | null | undefined): boolean => can(perms, "pro.app") && !can(perms, "atendimento.ver");
 
-/** Para onde mandar quem abriu uma tela sem permissão: o Hoje abre para todo mundo; quem só tem o app da profissional vai para /pro. */
-export const firstAllowedPath = (perms: readonly string[]): string => (isProOnly(perms) ? "/pro" : "/");
+/**
+ * Só os relatórios (o perfil Contador): abre Relatórios, mas não as Conversas, não opera o caixa e não tem o app da profissional. O Hoje
+ * dessa pessoa seria só o aviso "seu acesso não inclui as Conversas": ela entra direto em Relatórios.
+ */
+export const isReportsOnly = (perms: readonly string[] | null | undefined): boolean =>
+  can(perms, "relatorios.ver") && !can(perms, "atendimento.ver") && !can(perms, "caixa.operar") && !can(perms, "pro.app");
+
+/** Para onde mandar quem abriu uma tela sem permissão: o Hoje abre para todo mundo; quem só tem o app da profissional vai para /pro; quem só tem os relatórios, para Relatórios. */
+export const firstAllowedPath = (perms: readonly string[]): string => (isProOnly(perms) ? "/pro" : isReportsOnly(perms) ? "/relatorios" : "/");
+
+/** A aba de Relatórios sem `?aba=`: quem só tem os relatórios e vê valores (o Contador) abre no Financeiro; o resto, na Visão geral. */
+export const defaultReportTab = (perms: readonly string[] | null | undefined): "financeiro" | "visao" =>
+  isReportsOnly(perms) && can(perms, "valores.ver") ? "financeiro" : "visao";
 
 /** A permissão de antes do Lote 4 ("tudo ou nada"), que o seed troca por config.diaadia + config.sistema nos perfis guardados. */
 export const LEGACY_CONFIG_PERM = "config.editar";

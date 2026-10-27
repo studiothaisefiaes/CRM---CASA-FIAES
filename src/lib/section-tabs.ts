@@ -47,3 +47,15 @@ export function relatoriosTabs(perms: readonly string[]): SectionTab[] {
     ...(canSeeAvecReports(perms) ? [{ key: "avec", label: "Relatórios do Avec", href: "/relatorios/avec" }] : []),
   ];
 }
+
+/**
+ * Caixas e fechamentos da equipe, só para ver (Relatórios › Financeiro e Visão geral, em "Mais relatórios"): o Contador (caixa.outros, sem
+ * operar o caixa) abre a página Fechamentos própria; quem opera o caixa vê o histórico dentro de Fechar caixa / dia.
+ */
+export function caixaLeituraLinks(perms: readonly string[]): SectionTab[] {
+  if (!can(perms, "caixa.outros")) return [];
+  return [
+    { key: "caixas", label: "Caixas da equipe", href: "/caixa/equipe" },
+    { key: "fechamentos", label: "Fechamentos de caixa", href: can(perms, "caixa.operar") ? "/caixa/fechar-dia#historico" : "/caixa/fechamentos" },
+  ];
+}

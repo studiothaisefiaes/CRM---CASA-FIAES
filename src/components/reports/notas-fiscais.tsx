@@ -11,7 +11,8 @@ import { Muted, Section } from "./section";
 const monthName = (key: string) => new Date(`${key}-15T12:00:00Z`).toLocaleDateString("pt-BR", { month: "long", year: "numeric", timeZone: "America/Bahia" });
 
 /** Relatórios › Financeiro › Notas fiscais: "Que notas saíram?" As notas do período e o extrato de cada parceira, para a nota que ela emite. */
-export function NotasFiscaisTab({ range, notas, parceiras, aEmitir = [] }: { range: SalonRange; notas: NotaRow[]; parceiras: ParceiraExtrato[]; aEmitir?: AEmitirRow[] }) {
+/** `xml` (nota.ver): cada nota com o link para baixar o XML (o que o contador guarda). */
+export function NotasFiscaisTab({ range, notas, parceiras, aEmitir = [], xml = false }: { range: SalonRange; notas: NotaRow[]; parceiras: ParceiraExtrato[]; aEmitir?: AEmitirRow[]; xml?: boolean }) {
   const notaCols: Col<NotaRow>[] = [
     { key: "c", label: "Comanda", render: (r) => `Comanda ${r.comandaNumber}` },
     { key: "d", label: "Dia", render: (r) => brDay(r.day) },
@@ -19,6 +20,9 @@ export function NotasFiscaisTab({ range, notas, parceiras, aEmitir = [] }: { ran
     { key: "a", label: "Ambiente", render: (r) => FISCAL_ENV_LABEL[r.environment] ?? r.environment },
     { key: "s", label: "Situação", render: (r) => <span className={r.status === "rejeitada" || r.status === "erro_envio" ? "text-alert font-medium" : r.status === "cancelada" ? "text-muted" : ""}>{fiscalStatusLabel(r.status)}{r.rejectReason ? `: ${r.rejectReason}` : ""}</span> },
     { key: "v", label: "Valor", align: "right", render: (r) => money(r.amountCents) },
+    ...(xml ? [{ key: "x", label: "Arquivo", render: (r: NotaRow) => (
+      <a href={`/api/notas-fiscais/${r.id}?formato=xml`} download className="inline-flex items-center min-h-11 lg:min-h-0 text-gold-ink underline underline-offset-2 hover:text-ink" aria-label={`Baixar o XML da comanda ${r.comandaNumber}`}>XML</a>
+    ) }] : []),
   ];
   const parCols: Col<ParceiraExtrato>[] = [
     { key: "m", label: "Mês", render: (r) => monthName(r.month) },

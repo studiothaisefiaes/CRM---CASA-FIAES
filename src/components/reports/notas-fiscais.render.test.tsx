@@ -24,3 +24,11 @@ it("sem nada: frases vazias", () => {
   expect(container.textContent).toContain("Nenhuma nota neste período.");
   expect(container.textContent).toContain("Nenhuma cota de parceira neste período.");
 });
+it("com nota.ver (o Contador, 26/10): cada nota tem o link para baixar o XML; sem, não", () => {
+  const nota = { id: "n1", comandaNumber: 12, day: "2026-10-05", kind: "nfse" as const, environment: "producao" as const, status: "autorizada", amountCents: 12150, accessKey: "x", rejectReason: null };
+  render(<NotasFiscaisTab range={range} notas={[nota]} parceiras={[]} xml />);
+  for (const a of screen.getAllByRole("link", { name: "Baixar o XML da comanda 12" })) expect(a.getAttribute("href")).toBe("/api/notas-fiscais/n1?formato=xml");
+  cleanup();
+  render(<NotasFiscaisTab range={range} notas={[nota]} parceiras={[]} />);
+  expect(screen.queryByRole("link", { name: /XML/ })).toBeNull();
+});

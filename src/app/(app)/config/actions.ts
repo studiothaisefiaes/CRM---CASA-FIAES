@@ -2,6 +2,7 @@
 import { revalidatePath } from "next/cache";
 import * as distribution from "@/server/domain/distribution";
 import * as profiles from "@/server/domain/profiles";
+import { createContadorLink, revokeContadorLink } from "@/server/domain/contador-link";
 import type { Perm } from "@/lib/permissions";
 import { z } from "zod";
 import { setSuggestedReturnSetting } from "@/server/domain/suggested-return";
@@ -64,6 +65,10 @@ export const channelStateAction = async (id: string) => run(() => cfg.channelSta
 export const disconnectChannelAction = async (id: string, remove: boolean) => run((u) => cfg.disconnectChannel(id, remove, u), "/config/whatsapp", SIS);
 export const inviteMemberAction = async (v: { name: string; email: string; profileId: string }) =>
   run(async (u) => `${env().APP_URL}/convite/${await profiles.inviteWithProfile(v, u)}`, "/config/equipe", EQ);
+/** Link do contador (26/10): o endereço volta UMA vez (no banco, só o hash). Uso único, 7 dias, perfil Contador. */
+export const createContadorLinkAction = async () =>
+  run(async (u) => { const l = await createContadorLink(u); return { id: l.id, url: `${env().APP_URL}/convite/${l.token}`, expiresAt: l.expiresAt.toISOString() }; }, "/config/equipe", EQ);
+export const revokeContadorLinkAction = async (id: string) => run((u) => revokeContadorLink(id, u), "/config/equipe", EQ);
 export const setMemberProfileAction = async (id: string, profileId: string) => run((u) => profiles.setMemberProfile(id, profileId, u), "/config/equipe", EQ);
 export const setMemberActiveAction = async (id: string, active: boolean) => run((u) => profiles.setMemberActive(id, active, u), "/config/equipe", EQ);
 export const saveProfileAction = async (v: { id?: string; name: string; permissions: string[] }) => run((u) => profiles.saveProfile(v, u), "/config/equipe", EQ);

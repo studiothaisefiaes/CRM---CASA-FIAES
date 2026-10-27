@@ -5,7 +5,7 @@ import { listTeamCash } from "@/server/queries/caixa";
 import { getCaixaMode, getCaixaRules } from "@/server/domain/caixa/mode";
 import { listPaymentOptions } from "@/server/domain/caixa/payment-options";
 import Link from "next/link";
-import { PageHeader } from "@/components/page-header";
+import { PageBack, PageHeader } from "@/components/page-header";
 import { Empty } from "@/components/ui/empty";
 import { LiveRefresh } from "@/components/shell/live";
 import { CAIXA_OFF } from "@/lib/caixa-settings";
@@ -25,7 +25,9 @@ export default async function CaixasDaEquipePage() {
   return (
     <main className="pb-12">
       <LiveRefresh scopes={["caixa"]} />
+      {/* Quem não opera o caixa (o Contador, 26/10) chega por Relatórios › Financeiro e volta para lá: sem as abas do Caixa. */}
       <PageHeader title="Caixas da equipe" subtitle="Cada pessoa abre e fecha o seu caixa" tabs={<CaixaNav perms={user.perms} current="equipe" />}
+        back={can(user.perms, "caixa.operar") ? undefined : <PageBack href="/relatorios?aba=financeiro">Relatórios</PageBack>}
         actions={can(user.perms, "caixa.gerir") && can(user.perms, "config.sistema")
           ? <Link href="/config/caixa#regras-fechamento" className="inline-flex min-h-11 items-center text-sm font-medium text-gold-ink underline-offset-4 hover:underline lg:min-h-9">Regras do fechamento ›</Link> : undefined} />
       <div className="flex flex-col gap-8 px-5 lg:px-8">

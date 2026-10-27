@@ -23,3 +23,9 @@ it("dentro de Comissão não há falsa aba: só o link de volta", () => {
   expect(screen.queryAllByRole("tab")).toHaveLength(0);
   expect(screen.getByRole("link", { name: "← Relatórios" }).getAttribute("href")).toBe("/relatorios");
 });
+it("Contador (26/10): no Financeiro, Mais relatórios abre Caixas da equipe e Fechamentos de caixa, só para ver", () => {
+  render(<MoreReports perms={["relatorios.ver", "valores.ver", "caixa.outros", "caixa.dinheiro"]} aba="financeiro" />);
+  expect(screen.getByRole("link", { name: "Abrir Caixas da equipe" }).getAttribute("href")).toBe("/caixa/equipe");
+  expect(screen.getByRole("link", { name: "Abrir Fechamentos de caixa" }).getAttribute("href")).toBe("/caixa/fechamentos");
+  expect(screen.queryByRole("link", { name: "Abrir Jornada" })).toBeNull();
+});

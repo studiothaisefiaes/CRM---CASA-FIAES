@@ -10,7 +10,8 @@ import { defaultSignature, signatureLine } from "@/lib/signature";
 import { initials } from "@/lib/format";
 import { IconPlus } from "@/components/icons";
 
-type M = { id: string; name: string; email: string; profileId: string | null; active: boolean; pending: boolean; signature: string | null };
+/** `atende`: o perfil abre as Conversas. Quem não atende (o Contador) não manda mensagem: sem assinatura e fora do aviso. */
+type M = { id: string; name: string; email: string; profileId: string | null; active: boolean; pending: boolean; signature: string | null; atende?: boolean };
 
 /** Senha fácil de ditar: sem letras que se confundem (l/1, O/0). */
 const ALFA = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -22,7 +23,7 @@ export function TeamEditor({ me, members, profiles }: { me: string; members: M[]
   const [open, setOpen] = useState(false); const [done, setDone] = useState<{ email: string; password: string } | null>(null);
   const [v, setV] = useState({ name: "", email: "", password: "", profileId: defaultProfile }); const [err, setErr] = useState<string | null>(null);
   const [pending, start] = useTransition(); const toast = useToast();
-  const unsigned = members.filter((m) => m.active && !m.signature).length;
+  const unsigned = members.filter((m) => m.active && !m.signature && m.atende !== false).length;
   const [confirmOff, setConfirmOff] = useState<M | null>(null);
   const [resetFor, setResetFor] = useState<M | null>(null); const [newPw, setNewPw] = useState(""); const [myPw, setMyPw] = useState(""); const [resetDone, setResetDone] = useState(false);
   const [sigFor, setSigFor] = useState<M | null>(null); const [sigValue, setSigValue] = useState("");
@@ -54,9 +55,10 @@ export function TeamEditor({ me, members, profiles }: { me: string; members: M[]
             <Select className="col-start-2 sm:col-start-auto w-full h-9" aria-label={`Perfil de ${m.name}`} value={m.profileId ?? ""} disabled={pending} onChange={(e) => start(async () => { const r = await setMemberProfileAction(m.id, e.target.value); toast(r.ok ? "Perfil alterado" : r.error, r.ok ? "ok" : "error"); })}>
               {profiles.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </Select>
+            {m.atende === false ? <span className="col-start-2 sm:col-start-auto text-sm text-muted">Não conversa com clientes</span> : (
             <Button size="sm" variant="ghost" className={`col-start-2 sm:col-start-auto justify-self-start ${m.signature ? "" : "text-gold-ink"}`} disabled={pending}
               aria-label={`Assinatura de ${m.name}: ${m.signature ?? "sem assinatura"}`}
-              onClick={() => { setSigFor(m); setSigValue(m.signature ?? ""); setErr(null); }}>{m.signature ?? (defaultSignature(m.name) ? `${defaultSignature(m.name)} (padrão)` : "Sem assinatura")}</Button>
+              onClick={() => { setSigFor(m); setSigValue(m.signature ?? ""); setErr(null); }}>{m.signature ?? (defaultSignature(m.name) ? `${defaultSignature(m.name)} (padrão)` : "Sem assinatura")}</Button>)}
             <Button size="sm" variant="ghost" className="col-start-2 sm:col-start-auto justify-self-start" disabled={pending}
               onClick={() => { setResetFor(m); setNewPw(newPassword()); setMyPw(""); setResetDone(false); setErr(null); }}>Trocar senha</Button>
             <Button size="sm" variant={m.active ? "ghost" : "secondary"} className={m.active ? "text-alert" : ""} disabled={pending || m.id === me}

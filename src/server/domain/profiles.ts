@@ -55,7 +55,7 @@ function assertCanGrant(actor: Actor, granted: readonly string[]) {
 }
 function assertGestao(actor: Actor) { if (!actor.isGestao) throw new UserFacingError(GESTAO_ONLY); }
 /** A dona e as gestoras: perfil Gestão ou quem gere a equipe. */
-const isPrivileged = (p: { key: string | null; permissions: string[] } | null | undefined) => !!p && (p.key === "gestao" || p.permissions.includes("equipe.gerir"));
+export const isPrivileged = (p: { key: string | null; permissions: string[] } | null | undefined) => !!p && (p.key === "gestao" || p.permissions.includes("equipe.gerir"));
 async function assertCanTouchMember(tx: Tx | typeof db, actor: Actor, userId: string) {
   if (actor.isGestao) return;
   const [t] = await tx.select({ key: profiles.key, permissions: profiles.permissions }).from(users).leftJoin(profiles, eq(profiles.id, users.profileId)).where(eq(users.id, userId));
@@ -69,6 +69,10 @@ export async function assertActorCanTouchMember(actorId: string, userId: string)
 function assertCanAssignProfile(actor: Actor, p: { key: string | null; permissions: string[] }) {
   if (p.key === "gestao") assertGestao(actor);
   assertCanGrant(actor, p.permissions);
+}
+/** Para quem põe alguém num perfil fora daqui (link do contador): a mesma regra de convidar e criar acesso. */
+export async function assertActorCanAssignProfile(actorId: string, p: { key: string | null; permissions: string[] }): Promise<void> {
+  assertCanAssignProfile(await actorOf(db, actorId), p);
 }
 
 const nameSchema = z.string().trim().min(2, "O nome do perfil precisa de pelo menos 2 letras.").max(40, "Nome de perfil muito longo (máx. 40).");

@@ -303,14 +303,14 @@ export async function getBulkOptions(user: Who): Promise<BulkOptions> {
 
 /**
  * Opções do painel "Filtros" da Fila: as etapas que podem estar na Fila (a Casa tem um funil só; fechado e perdido não ficam na Fila)
- * e, para quem vê as conversas de todas, as pessoas ativas da equipe (filtro por dona).
+ * e, para quem vê as conversas de todas, as pessoas ativas da equipe que atendem (filtro por dona; o Contador não é dona de conversa).
  */
 export async function getQueueFilterOptions(user: Who): Promise<{ stages: { key: string; name: string; color: string | null; kind: string }[]; owners: { id: string; name: string }[] }> {
   const [stageRows, owners] = await Promise.all([
     db.select({ key: stages.key, name: stages.name, color: stages.color, kind: stages.kind }).from(stages)
       .where(and(eq(stages.active, true), sql`${stages.kind} not in ('fechado', 'perdido')`)).orderBy(asc(stages.position)),
     can(user.perms, "atendimento.todas")
-      ? db.select({ id: users.id, name: users.name }).from(users).where(and(eq(users.active, true), isNotNull(users.passwordHash))).orderBy(asc(users.name))
+      ? db.select({ id: users.id, name: users.name }).from(users).where(and(eq(users.active, true), isNotNull(users.passwordHash), canReceiveConversation())).orderBy(asc(users.name))
       : Promise.resolve([] as { id: string; name: string }[]),
   ]);
   return { stages: stageRows, owners };

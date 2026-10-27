@@ -68,7 +68,7 @@ export async function editSentMessage(messageId: string, text: string, userId: s
   if (msg.direction !== "out" || msg.sentVia !== "crm" || !msg.sentByUserId || msg.kind !== "text" || msg.deletedAt || msg.importedAt)
     throw new UserFacingError("Só dá para editar mensagens que a Casa enviou pelo CRM.");
   if (msg.sentByUserId !== userId) throw new UserFacingError("Só dá para editar as mensagens que você mesma enviou.");
-  if (msg.status !== "sent" || !msg.externalId) throw new UserFacingError("Essa mensagem não chegou ao WhatsApp: não dá para editar.");
+  if (!["sent", "delivered", "read"].includes(msg.status) || !msg.externalId) throw new UserFacingError("Essa mensagem não chegou ao WhatsApp: não dá para editar.");
   const janela = await funcaoParam("editar_mensagem", "janela_min");
   if (now.getTime() - msg.createdAt.getTime() > janela * 60_000) throw new UserFacingError(`Só dá para editar até ${janela} minutos depois de enviar.`);
   const sig = parseSignature(msg.body);

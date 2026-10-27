@@ -22,7 +22,7 @@ export default async function FunilPage({ searchParams }: PageProps<"/funil">) {
   const [board, people, origins] = await Promise.all([
     // O escopo é o da Fila: a atendente vê os leads dela e os sem dono (com filtro de relatório, só os dela); a gestão vê todos.
     getBoard({ ownerId: str("dono"), origin: str("origem"), q: str("q"), filtro, etapa: filtro ? str("etapa") : null, source: filtro ? str("fonte") : null }, user),
-    activeUsers(), getOrigins(),
+    activeUsers({ atendem: true }), getOrigins(),
   ]);
   const open = board.filter((s) => !["fechado", "perdido"].includes(s.kind)).reduce((n, s) => n + s.cards.length, 0);
   return (

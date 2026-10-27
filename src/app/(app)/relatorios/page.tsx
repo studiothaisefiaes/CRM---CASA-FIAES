@@ -3,7 +3,7 @@ import { desc, eq } from "drizzle-orm";
 import { db } from "@/server/db";
 import { reportFiles } from "@/server/db/schema";
 import { PdfMenu } from "@/components/reports/pdf-menu";
-import { can, canSeeSalon } from "@/lib/permissions";
+import { can, canSeeSalon, defaultReportTab } from "@/lib/permissions";
 import { PERIOD_LABEL, type Period } from "@/server/reports/common";
 import { reportSources } from "@/server/reports/queries";
 import { loadAnalysis, loadOverview } from "@/server/reports/screen";
@@ -52,7 +52,9 @@ export default async function RelatoriosPage({ searchParams }: PageProps<"/relat
   const period = (["hoje", "7d", "mes", "ano"].includes(raw) ? raw : "mes") as Period;
   const salon = canSeeSalon(user.perms);
   // Financeiro (plano 4): só quem vê valores; sem isso, a URL cai na Visão geral.
-  const aba: ReportTab = sp.aba === "analise" ? "analise" : sp.aba === "salao" && salon ? "salao" : sp.aba === "financeiro" && money ? "financeiro" : "visao";
+  // Sem ?aba=, quem só tem os relatórios e vê valores (o Contador, 26/10) abre no Financeiro; o resto, na Visão geral.
+  const pedida = typeof sp.aba === "string" ? sp.aba : defaultReportTab(user.perms);
+  const aba: ReportTab = pedida === "analise" ? "analise" : pedida === "salao" && salon ? "salao" : pedida === "financeiro" && money ? "financeiro" : "visao";
   const dated = aba === "salao" || aba === "financeiro";
   const one = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : null);
   const dono = gestor && typeof sp.dono === "string" && sp.dono ? sp.dono : null;
@@ -72,7 +74,7 @@ export default async function RelatoriosPage({ searchParams }: PageProps<"/relat
   const salonVista: SalonVista = relCfg?.ocupacao && sp.vista === "ocupacao" ? "ocupacao" : "resumo";
   const now = new Date();
   const [people, sources, data, salonView, ocupacao, finView, contas, resultado, notasView, satisfaction, excecoesOn] = await Promise.all([
-    gestor ? activeUsers() : Promise.resolve([]), reportSources(gestor ? null : user.id),
+    gestor ? activeUsers({ atendem: true }) : Promise.resolve([]), reportSources(gestor ? null : user.id),
     dated ? Promise.resolve(null) : aba === "analise" ? loadAnalysis(user, filter) : loadOverview(user, filter),
     aba === "salao" && salonVista === "resumo" ? loadSalon(user, range) : Promise.resolve(null),
     aba === "salao" && salonVista === "ocupacao" ? loadOcupacao(user, range, { professionalId: one("prof"), medida: one("medida") === "valor" ? "valor" : "horarios" }) : Promise.resolve(null),
@@ -105,6 +107,7 @@ export default async function RelatoriosPage({ searchParams }: PageProps<"/relat
           {!dated && exportar && <div className="flex items-center gap-2 lg:ml-auto"><ExportMenu qs={qs} team={gestor} money={money} /><PdfMenu periodo={period} team={gestor} /></div>}
         </>} />
       <div className="px-5 lg:px-8 flex flex-col gap-8 max-w-[1480px]">
+        {sp.aviso === "sem-permissao" && <p role="status" className="text-sm bg-gold-soft text-gold-ink rounded-[var(--radius-control)] px-3 py-2">Você não tem acesso a essa tela. Se precisar, peça para a gestão liberar no seu perfil.</p>}
         <div role="tabpanel" id="rel-panel" aria-labelledby={`rel-tab-${aba}`} className="min-w-0">
           {contas && finCfg ? (
             <div className="flex flex-col gap-8">
@@ -112,7 +115,7 @@ export default async function RelatoriosPage({ searchParams }: PageProps<"/relat
                 can={{ lancar: can(user.perms, "financeiro.lancar"), pagar: can(user.perms, "financeiro.pagar"), cancelar: can(user.perms, "financeiro.cancelar"), cadastros: can(user.perms, "financeiro.cadastros") }} />
             </div>
           ) : notasView ? (
-            <NotasFiscaisTab range={range} notas={notasView.notas} parceiras={notasView.parceiras} aEmitir={notasView.aEmitir} />
+            <NotasFiscaisTab range={range} notas={notasView.notas} parceiras={notasView.parceiras} aEmitir={notasView.aEmitir} xml={can(user.perms, "nota.ver")} />
           ) : resultado ? (
             <ResultadoTab v={resultado} />
           ) : finView ? <FinanceTab d={finView} excelHref={exportar ? `/api/relatorios/excel-financeiro?${finQs}` : null} canCommission={can(user.perms, "comissao.ver")} canExcecoes={can(user.perms, "relatorios.excecoes") && excecoesOn} />
@@ -122,7 +125,7 @@ export default async function RelatoriosPage({ searchParams }: PageProps<"/relat
               ? <AnalysisTab data={data} qs={qs} />
               : <OverviewTab data={data} period={period} qs={qs} gestor={money} scope={{ dono, fonte: source }} />)}
         </div>
-        {aba === "visao" && <MoreReports perms={user.perms} />}
+        {(aba === "visao" || aba === "financeiro") && <MoreReports perms={user.perms} aba={aba} />}
         {exportar && gestor && money && monthly.length > 0 && (
           <section aria-labelledby="fechamentos-t" className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
             <h2 id="fechamentos-t" className="text-sm font-semibold text-graphite">Fechamentos do mês (PDF)</h2>

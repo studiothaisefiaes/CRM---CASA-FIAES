@@ -29,3 +29,11 @@ it("sem assinatura cadastrada: avisa e mostra a padrão (1º nome) que vai nas m
   expect(screen.getByRole("button", { name: "Assinatura de Sara Lima: sem assinatura" }).textContent).toBe("SARA (padrão)");
   expect(screen.getByRole("note").textContent).toContain("1 pessoa sem assinatura cadastrada");
 });
+
+it("quem não atende conversas (o Contador) não conta no aviso de assinatura e não tem assinatura para escolher", () => {
+  render(<TeamEditor me="g" profiles={[{ id: "p", name: "Atendente", key: "atendente" }, { id: "c", name: "Contador", key: "contador" }]}
+    members={[{ id: "u2", name: "Carlos Contador", email: "c@contabil.com", profileId: "c", active: true, pending: false, signature: null, atende: false }]} />);
+  expect(screen.queryByRole("note")).toBeNull();
+  expect(screen.queryByRole("button", { name: /Assinatura de Carlos Contador/ })).toBeNull();
+  expect(screen.getByText("Não conversa com clientes")).toBeTruthy();
+});

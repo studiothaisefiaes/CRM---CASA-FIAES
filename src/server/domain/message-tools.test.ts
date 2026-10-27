@@ -64,6 +64,14 @@ describe("reagir", () => {
 });
 
 describe("editar", () => {
+  it("mensagem já entregue ou lida também edita (quase toda mensagem vira 'entregue' em segundos; 27/10)", async () => {
+    for (const status of ["delivered", "read"] as const) {
+      const m = await sentByCrm(`Texto ${status}`);
+      await db.update(messages).set({ status }).where(eq(messages.id, m.id));
+      await editSentMessage(m.id, "Texto novo", uid, plusMin(m.createdAt, 5));
+      expect((await reload(m.id)).body).toContain("Texto novo");
+    }
+  });
   it("editar guarda o texto antigo na auditoria e marca 'Editada'", async () => {
     const m = await sentByCrm("Texto velho");
     await editSentMessage(m.id, "Texto novo", uid, plusMin(m.createdAt, 5));

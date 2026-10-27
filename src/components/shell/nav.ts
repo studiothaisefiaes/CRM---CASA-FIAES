@@ -1,5 +1,5 @@
 import { IconCalendar, IconChart, IconChat, IconContacts, IconMoney, IconScissors, IconSettings, IconToday } from "@/components/icons";
-import { can, canConfigure, type Perm } from "@/lib/permissions";
+import { can, canConfigure, isReportsOnly, type Perm } from "@/lib/permissions";
 
 type Icon = typeof IconToday;
 export type NavKey = "hoje" | "conversas" | "agenda" | "caixa" | "clientes" | "relatorios" | "servicos" | "config";
@@ -26,10 +26,17 @@ export const NAV: NavItem[] = [
   { key: "config", href: "/config", label: "Configurações", icon: IconSettings, perm: null, group: "gestao", mobile: "mais" },
 ];
 
-/** O menu de quem entrou: itens sem permissão somem. Com o caixa no Avec, o Caixa aponta para "Fechar o dia" e vai para o "Mais" do celular. */
+/**
+ * O menu de quem entrou: itens sem permissão somem. Com o caixa no Avec, o Caixa aponta para "Fechar o dia" e vai para o "Mais" do celular.
+ * Quem só tem os relatórios (o Contador, 26/10) não vê o Hoje (seria só um aviso) e tem Relatórios na barra do celular; sem operar o caixa,
+ * Caixas da equipe e Fechamentos (que ele abre por Relatórios) acendem Relatórios.
+ */
 export function navFor(perms: readonly string[], opts: { caixaOn: boolean; estoqueOn?: boolean }): { dia: NavItem[]; gestao: NavItem[] } {
-  const items = NAV.filter((it) => (it.key === "config" ? canConfigure(perms) : !it.perm || can(perms, it.perm)))
-    .map((it) => (it.key === "caixa" && !opts.caixaOn ? { ...it, href: "/caixa/fechar-dia", mobile: "mais" as const } : it));
+  const reportsOnly = isReportsOnly(perms);
+  const items = NAV.filter((it) => (it.key === "config" ? canConfigure(perms) : it.key === "hoje" ? !reportsOnly : !it.perm || can(perms, it.perm)))
+    .map((it) => (it.key === "caixa" && !opts.caixaOn ? { ...it, href: "/caixa/fechar-dia", mobile: "mais" as const } : it))
+    .map((it) => (it.key === "relatorios" && !can(perms, "caixa.operar")
+      ? { ...it, match: [...(it.match ?? [it.href]), "/caixa/equipe", "/caixa/fechamentos"], ...(reportsOnly ? { mobile: "bar" as const } : {}) } : it));
   return { dia: items.filter((it) => it.group === "dia"), gestao: items.filter((it) => it.group === "gestao") };
 }
 

@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, inArray, isNotNull, isNull, notInArray, notLike, or, sql } from "drizzle-orm";
+import { canReceiveConversation } from "./team-scope";
 import { routeNewLead } from "./distribution";
 import { db, type Tx } from "../db";
 import { alerts, auditLog, contacts, deals, messages, stages, users, type Stage } from "../db/schema";
@@ -493,9 +494,10 @@ export async function moveDeal(dealId: string, stageKey: string, userId: string 
   return d;
 }
 
-export async function activeUsers() {
+/** Pessoas ativas com senha. `atendem`: só quem abre as Conversas (filtro por dona em Relatórios e no Quadro; o Contador fica de fora). */
+export async function activeUsers(opts: { atendem?: boolean } = {}) {
   return db.select({ id: users.id, name: users.name, role: users.role }).from(users)
-    .where(and(eq(users.active, true), sql`${users.passwordHash} is not null`)).orderBy(asc(users.name));
+    .where(and(eq(users.active, true), sql`${users.passwordHash} is not null`, opts.atendem ? canReceiveConversation() : undefined)).orderBy(asc(users.name));
 }
 
 export type HistoryMessage = { externalId: string; fromMe: boolean; at: Date; kind: string; body: string | null; pushName?: string | null; media?: MediaNode | null; quotedBody?: string | null };

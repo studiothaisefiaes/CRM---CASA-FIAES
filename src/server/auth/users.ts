@@ -1,7 +1,7 @@
 import { and, eq, gt, sql } from "drizzle-orm";
 import { db } from "../db";
 import { auditLog, profiles, users } from "../db/schema";
-import { isProOnly } from "@/lib/permissions";
+import { firstAllowedPath, isProOnly } from "@/lib/permissions";
 import { hashPassword, isValidPassword, verifyPassword } from "./password";
 import { hashToken, newToken } from "./tokens";
 
@@ -54,8 +54,12 @@ export async function acceptInvite(token: string, password: string) {
   return u;
 }
 
-/** Depois de criar a senha: quem só tem o app da profissional cai no passo a passo de instalação; os demais, no Hoje. */
+/**
+ * Depois de criar a senha: quem só tem o app da profissional cai no passo a passo de instalação; quem só tem os relatórios (o Contador),
+ * em Relatórios; os demais, no Hoje.
+ */
 export async function inviteLanding(userId: string): Promise<string> {
   const [r] = await db.select({ permissions: profiles.permissions }).from(users).leftJoin(profiles, eq(profiles.id, users.profileId)).where(eq(users.id, userId));
-  return isProOnly(r?.permissions ?? []) ? "/pro/instalar" : "/";
+  const perms = r?.permissions ?? [];
+  return isProOnly(perms) ? "/pro/instalar" : firstAllowedPath(perms);
 }

@@ -116,7 +116,7 @@ describe("Retomada: uma ação só (lembrete ou mensagem programada)", () => {
   });
 
   it("em lote: a mesma retomada para várias, 1º nome de cada, 1 a cada 20 s; quem falha não derruba as outras", async () => {
-    const b = await conversa("71999990032", "Larissa Andrade");
+    const b = await conversa("71999990032", "Fabiana Henriques");
     const r = await bulkResume([dealId, b, "00000000-0000-0000-0000-000000000000"], { dueAt: AT, texto: "Oi, {primeiro_nome}!" }, sara, T0);
     expect(r.ok).toBe(2);
     expect(r.failed).toHaveLength(1);

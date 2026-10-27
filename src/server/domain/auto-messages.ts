@@ -1,4 +1,5 @@
 import { and, eq, sql } from "drizzle-orm";
+import { canReceiveConversation } from "./team-scope";
 import { db } from "../db";
 import { contacts, deals, messages, users } from "../db/schema";
 import { isOpen } from "../../lib/business-hours";
@@ -49,7 +50,8 @@ export async function afterInbound(input: { dealId: string; created: boolean; at
     if (n === 1) return (await claimAndEnqueue("boas_vindas", welcome.text, row, input.at, now)) ? "boas_vindas" : null;
   }
   if (awayOn) {
-    const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(users).where(and(eq(users.active, true), eq(users.availability, "disponivel")));
+    // Só conta quem atende (abre as Conversas): o Contador nunca é "alguém Disponível" para a cliente (26/10).
+    const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(users).where(and(eq(users.active, true), eq(users.availability, "disponivel"), canReceiveConversation()));
     if (n === 0) return (await claimAndEnqueue("ausencia", away.text, row, input.at, now)) ? "ausencia" : null;
   }
   return null;

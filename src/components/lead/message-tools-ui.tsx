@@ -36,7 +36,7 @@ export function useMessageTools(state: MessageToolsState | undefined, viewerId: 
       } : {}),
       ...(state.editar ? {
         edit,
-        canEdit: (m: Msg) => m.direction === "out" && m.kind === "text" && m.sentVia === "crm" && m.status === "sent" && !m.deleted && !!m.externalId && !!viewerId && m.byId === viewerId
+        canEdit: (m: Msg) => m.direction === "out" && m.kind === "text" && m.sentVia === "crm" && ["sent", "delivered", "read"].includes(m.status) && !m.deleted && !!m.externalId && !!viewerId && m.byId === viewerId
           && Date.now() - new Date(m.createdAt).getTime() <= windowMs,
       } : {}),
     };

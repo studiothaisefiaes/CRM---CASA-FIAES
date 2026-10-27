@@ -201,9 +201,11 @@ describe("legacyRoleOf", () => {
 });
 
 describe("firstAllowedPath", () => {
-  it("vai para o Hoje, que todo mundo abre", () => {
+  it("vai para o Hoje, que todo mundo abre; quem só tem os relatórios (Contador, 26/10) vai para Relatórios", () => {
     expect(firstAllowedPath([])).toBe("/");
-    expect(firstAllowedPath(["relatorios.ver"])).toBe("/");
+    expect(firstAllowedPath(["relatorios.ver", "atendimento.ver"])).toBe("/");
+    expect(firstAllowedPath(["relatorios.ver", "caixa.operar"])).toBe("/");
+    expect(firstAllowedPath(["relatorios.ver"])).toBe("/relatorios");
   });
 });
 
