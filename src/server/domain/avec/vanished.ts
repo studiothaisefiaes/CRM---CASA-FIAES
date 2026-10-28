@@ -14,6 +14,8 @@ import { colOf } from "./formats";
  *
  * Grupo = cliente + dia + profissional que o relatório traz. A reserva ativa do Avec desse grupo que não veio no relatório é cancelada
  * (motivo `remarcado`, via `avec`); mexida no CRM, só ganha `avec_status = 'cancelado'` (aparece em "Conferir com o Avec").
+ * Remarcada para OUTRO dia (28/10, Milena: 29/10 virou 27/10 e o lembrete da véspera saiu para o 29/10): sem ninguém dela no dia antigo,
+ * vale a mesma cliente com a mesma profissional em outro dia do relatório.
  * Relatório filtrado por uma profissional não toca as outras; cliente que não está no relatório não é tocada.
  */
 export const SWEEP_SIGNATURES = new Set(["f18900ac"]);
@@ -38,10 +40,13 @@ export async function sweepVanished(tx: Tx, input: { rows: SweepRow[]; now: Date
   Promise<{ cancelled: number; flagged: number }> {
   const present = new Set(input.rows.map((r) => r.key));
   const groups = new Map<string, string[]>();
+  const otherDays = new Map<string, { day: string; hm: string }[]>();
   for (const r of input.rows) {
     if (!r.professionalId) continue;
     const g = `${r.day}|${r.clientKey}|${r.professionalId}`;
     groups.set(g, [...(groups.get(g) ?? []), r.hm]);
+    const c = `${r.clientKey}|${r.professionalId}`;
+    otherDays.set(c, [...(otherDays.get(c) ?? []), { day: r.day, hm: r.hm }]);
   }
   if (!groups.size) return { cancelled: 0, flagged: 0 };
   const days = [...new Set(input.rows.map((r) => r.day))].sort();
@@ -56,8 +61,11 @@ export async function sweepVanished(tx: Tx, input: { rows: SweepRow[]; now: Date
   for (const a of cands) {
     if (present.has(a.key) || !a.professionalId) continue;
     const k = parseReservationKey(a.key);
-    const hours = k && groups.get(`${k.day}|${k.clientKey}|${a.professionalId}`);
-    if (!k || !hours) continue;
+    if (!k) continue;
+    const sameDay = groups.get(`${k.day}|${k.clientKey}|${a.professionalId}`);
+    const elsewhere = (otherDays.get(`${k.clientKey}|${a.professionalId}`) ?? []).filter((o) => o.day !== k.day);
+    const hours = sameDay ?? (elsewhere.length ? elsewhere.map((o) => `${o.day.slice(8, 10)}/${o.day.slice(5, 7)} às ${o.hm}`) : null);
+    if (!hours) continue;
     if (a.crmTouchedAt) {
       if (a.avecStatus === "cancelado") continue;
       await tx.update(appointments).set({ avecStatus: "cancelado", updatedAt: input.now }).where(eq(appointments.id, a.id));

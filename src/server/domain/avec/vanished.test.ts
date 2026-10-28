@@ -38,6 +38,20 @@ describe("varredura: reserva que sumiu do relatório Reservas", () => {
     expect((await rows()).map((r) => r.status)).toEqual(["agendado", "agendado", "agendado"]);
   });
 
+  it("remarcada para outro dia (Milena 28/10: 29/10 virou 27/10) → a antiga é cancelada e o lembrete da véspera não sai", async () => {
+    await importa("r1.xlsx", AVEC_H.reservas, [reserva({ dia: "29/10/2026", hora: "12:00", cliente: "Milena Teste", servico: "Corte", pro: "JACKSON" })], { now: NOW });
+    await importa("r2.xlsx", AVEC_H.reservas, [reserva({ dia: "27/10/2026", hora: "12:00", cliente: "Milena Teste", servico: "Corte", pro: "JACKSON", status: "Pago" }),
+      reserva({ dia: "30/10/2026", hora: "10:00", cliente: "Outra Teste", pro: "JACKSON" })], { now: NOW });
+    expect((await rows()).filter((r) => r.clientName === "Milena Teste").map((r) => [hm(r.startsAt), r.status, r.cancelNote])).toEqual([
+      ["12:00", "compareceu", null], ["12:00", "cancelado", "Sumiu do Avec (remarcado para 27/10 às 12:00)."]]);
+  });
+
+  it("outro dia com OUTRA profissional não conta: a reserva fica", async () => {
+    await importa("r1.xlsx", AVEC_H.reservas, [reserva({ dia: "29/10/2026", hora: "12:00", cliente: "Milena Teste", pro: "JACKSON" })], { now: NOW });
+    await importa("r2.xlsx", AVEC_H.reservas, [reserva({ dia: "27/10/2026", hora: "12:00", cliente: "Milena Teste", pro: "LOANA", status: "Pago" })], { now: NOW });
+    expect((await rows()).map((r) => r.status)).toEqual(["compareceu", "agendado"]);
+  });
+
   it("'Reservas (quem cadastrou)' é filtrado pela data de cadastro: nunca varre", async () => {
     await importa("r1.xlsx", AVEC_H.reservas, [reserva({ dia: "20/10/2026", hora: "09:00", cliente: "Ana Teste" })], { now: NOW });
     await importa("r2.xlsx", AVEC_H.reservasCadastro, [["16/10/2026", "20/10/2026", "11:00", "Ana Teste", "MAIARA", "Corte", "Agendado", "Recepção"]], { now: NOW });

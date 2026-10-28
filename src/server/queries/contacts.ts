@@ -44,13 +44,14 @@ const isoOf = (v: unknown): string | null => (v == null ? null : new Date(v as s
  * maiúsculas ou não), ou a etiqueta manual "Método Fiaes". O resto das clientes é "Serviços gerais".
  */
 const METODO_RE = "m[eéÉ]todo[[:space:]]*fiaes";
-const metodoSql = sql`exists (
-    select 1 from sales_items mi where mi.contact_id = c.id and mi.item ~* ${METODO_RE}
-    union all select 1 from appointments ma where ma.contact_id = c.id and ma.service_label ~* ${METODO_RE}
-    union all select 1 from client_packages mp where mp.contact_id = c.id and (mp.package_name ~* ${METODO_RE} or coalesce(mp.service_label, '') ~* ${METODO_RE})
-    union all select 1 from package_uses mu where mu.contact_id = c.id and mu.item ~* ${METODO_RE}
-    union all select 1 from deals md join lists ml on ml.id = md.service_id where md.contact_id = c.id and ml.label ~* ${METODO_RE}
-    union all select 1 from contact_tags mct join tags mt on mt.id = mct.tag_id where mct.contact_id = c.id and mt.name ~* ${METODO_RE})`;
+// Um conjunto só, varrido uma vez por consulta (28/10: o `exists` por contato, com 6 regex cada, deixava a contagem das abas em ~1,5 s).
+const metodoSql = sql`c.id in (
+    select mi.contact_id from sales_items mi where mi.item ~* ${METODO_RE}
+    union select ma.contact_id from appointments ma where ma.service_label ~* ${METODO_RE}
+    union select mp.contact_id from client_packages mp where mp.package_name ~* ${METODO_RE} or coalesce(mp.service_label, '') ~* ${METODO_RE}
+    union select mu.contact_id from package_uses mu where mu.item ~* ${METODO_RE}
+    union select md.contact_id from deals md join lists ml on ml.id = md.service_id where ml.label ~* ${METODO_RE}
+    union select mct.contact_id from contact_tags mct join tags mt on mt.id = mct.tag_id where mt.name ~* ${METODO_RE})`;
 const tabSql = (tab: ContactTab): SQL => (tab === "metodo" ? metodoSql : sql`(c.is_client and not ${metodoSql})`);
 
 /** Busca e filtros em lista: o "onde" comum à lista, à contagem dos botões e ao CSV. */
@@ -120,7 +121,12 @@ function base(opts: ContactListOpts) {
   const order = term
     ? sql`greatest(similarity(coalesce(c.name, ''), ${term}), case when coalesce(c.name, '') ilike ${like} then 0.7 else 0 end, case when ${byPhone} then 0.9 else 0 end, case when h.contact_id is not null then 0.2 else 0 end) desc, c.created_at desc, c.id`
     : sql`c.created_at desc, c.id`;
-  return { now, today, term, where: sql.join(conds, sql` and `), hits, from, vipCut, order };
+  // Para contar sem botão de filtro: o "onde" só usa c, s e h; as junções laterais (próximo horário, conversa, pacote) seriam feitas à toa.
+  const lightFrom = sql`
+    from contacts c
+    left join contact_stats s on s.contact_id = c.id
+    left join hits h on h.contact_id = c.id`;
+  return { now, today, term, where: sql.join(conds, sql` and `), hits, from, lightFrom, vipCut, order };
 }
 
 /** O que cada botão de filtro quer dizer, em SQL (as mesmas comparações de `returnInfo`, em src/lib/client-rhythm.ts). */
@@ -179,7 +185,7 @@ export async function listContacts(opts: ContactListOpts) {
     left join professionals cp on cp.id = c.preferred_professional_id
     where ${where}
     order by ${order} limit ${size} offset ${(page - 1) * size}`)).rows as Record<string, unknown>[];
-  const [{ total }] = (await db.execute(sql`with ${b.hits} select count(*)::int as total ${b.from} where ${where}`)).rows as { total: number }[];
+  const [{ total }] = (await db.execute(sql`with ${b.hits} select count(*)::int as total ${opts.filter ? b.from : b.lightFrom} where ${where}`)).rows as { total: number }[];
 
   const nowMs = b.now.getTime();
   return {
@@ -227,7 +233,7 @@ export async function contactTabCounts(opts: ContactListOpts): Promise<{ todas: 
   const b = base(o);
   const where = o.filter ? sql`${b.where} and ${filterSql(o.filter, b.today, b.vipCut)}` : b.where;
   const [row] = (await db.execute(sql`with ${b.hits} select count(*)::int as todas, count(*) filter (where ${tabSql("metodo")})::int as metodo,
-    count(*) filter (where ${tabSql("gerais")})::int as gerais ${b.from} where ${where}`)).rows as { todas: number; metodo: number; gerais: number }[];
+    count(*) filter (where ${tabSql("gerais")})::int as gerais ${o.filter ? b.from : b.lightFrom} where ${where}`)).rows as { todas: number; metodo: number; gerais: number }[];
   return row;
 }
 

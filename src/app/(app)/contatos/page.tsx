@@ -51,7 +51,10 @@ export default async function ContatosPage({ searchParams }: PageProps<"/contato
     );
   }
   const p = parseContactListParams(raw);
-  const [data, counts, opts, tabCounts] = await Promise.all([listContacts(p), contactFilterCounts({ ...p, filter: null }), contactListOptions(), contactTabCounts(p)]);
+  // Possíveis duplicadas (Fase C, item 25a): só com a permissão de unir e a função ligada. Junto com as outras consultas (28/10: em fila, somava ~1 s).
+  const dupOn = can(user.perms, "contatos.unir") && (await isFuncaoOn("unir"));
+  const [data, counts, opts, tabCounts, suspects] = await Promise.all([listContacts(p), contactFilterCounts({ ...p, filter: null }), contactListOptions(), contactTabCounts(p),
+    dupOn ? listDuplicateSuspects() : Promise.resolve([])]);
   // Mensagem em massa (Lote 5): só com a chave ligada em Configurações e a permissão.
   const massOn = can(user.perms, "mensagem.massa") && (await getMassSettings()).enabled;
   const tagNames = massOn ? (await listTags()).map((t) => t.name) : [];
@@ -61,9 +64,6 @@ export default async function ContatosPage({ searchParams }: PageProps<"/contato
   const pages = Math.max(1, Math.ceil(data.total / data.size));
   const href = (over: Parameters<typeof contactListQuery>[1]) => `/contatos${contactListQuery(p, { page: 1, ...over })}`;
   const canExport = can(user.perms, "relatorios.exportar");
-  // Possíveis duplicadas (Fase C, item 25a): só com a permissão de unir e a função ligada.
-  const dupOn = can(user.perms, "contatos.unir") && (await isFuncaoOn("unir"));
-  const suspects = dupOn ? await listDuplicateSuspects() : [];
   const showDup = dupOn && raw.duplicadas === "1";
   // Os filtros extras ficam em "Mais filtros" (abre quando algum está em uso), para a lista aparecer logo.
   const listFilterOn = !!(p.professionalId || p.service || p.tagId || p.origin || p.sort);
