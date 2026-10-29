@@ -1,4 +1,5 @@
 "use client";
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { EmojiButton } from "./emoji-picker";
 import { insertAt } from "@/lib/emojis";
@@ -26,6 +27,9 @@ import { useLive } from "@/components/shell/live";
 import { NEW_WHILE_TYPING, typingText } from "@/lib/collision";
 import { useTeamTyping } from "./use-team-typing";
 import { UNCERTAIN_SEND_MESSAGE } from "@/lib/send-status";
+
+/** Orçamento do Método em PDF: carregado só quando abre (puxa as ações do servidor). */
+const OrcamentoDialog = dynamic(() => import("./orcamento-dialog").then((m) => m.OrcamentoDialog), { ssr: false });
 
 type Reply = { id: string; label: string; body: string | null; folder?: string | null; attachment?: { name: string; kind: string } | null; /** Resposta pessoal de quem vê (selo "Minha"). */ mine?: boolean };
 export type QuoteTarget = { id: string; text: string };
@@ -95,8 +99,9 @@ export function Composer({ dealId, firstName, quickReplies, onOptimistic, onSent
   const noteMode = mode === "nota";
   const [scheduling, setScheduling] = useState(false);
   const [library, setLibrary] = useState(false);
-  const [toolDialog, setToolDialog] = useState<"local" | "contato" | null>(null);
+  const [toolDialog, setToolDialog] = useState<"local" | "contato" | "orcamento" | null>(null);
   const toolItems = [
+    { label: "Orçamento do Método (PDF)", onSelect: () => setToolDialog("orcamento") },
     ...(tools?.localizacao ? [{ label: "Como chegar", onSelect: () => setToolDialog("local") }] : []),
     ...(tools?.contato ? [{ label: "Mandar contato", onSelect: () => setToolDialog("contato") }] : []),
   ];
@@ -459,6 +464,7 @@ export function Composer({ dealId, firstName, quickReplies, onOptimistic, onSent
           onDone={(at) => { setText(""); toast(`Agendada para ${dueLabel(Date.parse(at), Date.now())}`, "ok"); onScheduled?.(); }} />
       )}
       {tools?.localizacao && <LocationDialog dealId={dealId} open={toolDialog === "local"} onClose={() => setToolDialog(null)} onSent={() => { onSent?.(); }} />}
+      {toolDialog === "orcamento" && <OrcamentoDialog dealId={dealId} open onClose={() => setToolDialog(null)} onSent={() => { onSent?.(); }} />}
       {tools?.contato && <ContactDialog dealId={dealId} open={toolDialog === "contato"} onClose={() => setToolDialog(null)} onSent={() => { onSent?.(); }} />}
       {libraryEnabled && <LibraryPicker dealId={dealId} open={library} onClose={() => setLibrary(false)} onSent={() => { onSent?.(); }} />}
       {replyDialog && (

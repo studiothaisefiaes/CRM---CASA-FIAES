@@ -20,6 +20,7 @@ import { displayName } from "@/lib/client-rhythm";
 import { cn } from "@/lib/cn";
 import { isFuncaoOn } from "@/server/domain/funcoes";
 import { listDuplicateSuspects } from "@/server/queries/duplicate-suspects";
+import { cached } from "@/server/queries/ttl-cache";
 import { SIGNAL_LABEL } from "@/lib/merge-signals";
 import { SectionTabs } from "@/components/shell/section-tabs";
 import { clientesTabs } from "@/lib/section-tabs";
@@ -53,8 +54,13 @@ export default async function ContatosPage({ searchParams }: PageProps<"/contato
   const p = parseContactListParams(raw);
   // Possíveis duplicadas (Fase C, item 25a): só com a permissão de unir e a função ligada. Junto com as outras consultas (28/10: em fila, somava ~1 s).
   const dupOn = can(user.perms, "contatos.unir") && (await isFuncaoOn("unir"));
-  const [data, counts, opts, tabCounts, suspects] = await Promise.all([listContacts(p), contactFilterCounts({ ...p, filter: null }), contactListOptions(), contactTabCounts(p),
-    dupOn ? listDuplicateSuspects() : Promise.resolve([])]);
+  // Contagens e opções valem por 60 s / 5 min (29/10, lentidão): a lista em si é sempre consultada na hora.
+  const { now: _now, ...key } = p as typeof p & { now?: Date };
+  const [data, counts, opts, tabCounts, suspects] = await Promise.all([listContacts(p),
+    cached(`contatos:filtros:${JSON.stringify({ ...key, filter: null })}`, 60_000, () => contactFilterCounts({ ...p, filter: null })),
+    cached("contatos:opcoes", 300_000, () => contactListOptions()),
+    cached(`contatos:abas:${JSON.stringify(key)}`, 60_000, () => contactTabCounts(p)),
+    dupOn ? cached("contatos:duplicadas", 60_000, () => listDuplicateSuspects()) : Promise.resolve([])]);
   // Mensagem em massa (Lote 5): só com a chave ligada em Configurações e a permissão.
   const massOn = can(user.perms, "mensagem.massa") && (await getMassSettings()).enabled;
   const tagNames = massOn ? (await listTags()).map((t) => t.name) : [];
