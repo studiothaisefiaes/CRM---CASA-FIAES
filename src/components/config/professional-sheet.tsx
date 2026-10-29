@@ -22,6 +22,7 @@ export type Pro = {
   id: string; name: string; fullName: string | null; role: string | null; active: boolean; serviceIds: string[];
   workHours: WorkHours | null; color: string | null; agendaPosition: number | null; photoVersion: string | null;
   /** De quem é assistente (17/10); vazio = atende em nome próprio. */ assistantOf?: string | null;
+  /** Assistente só quando atende junto (29/10). */ assistsWith?: string | null;
   /** Dados fiscais (Fase D). */ bond?: "parceira" | "clt" | "outro" | null; cnpj?: string | null; legalName?: string | null;
   /** Período do repasse da comissão (Fase A); vazio = mensal. */ payoutPeriod?: PayoutPeriod;
 };
@@ -74,6 +75,7 @@ export function ProfessionalPanel({ pro, services, casa, suggestions, team = [],
   const [position, setPosition] = useState(pro.agendaPosition ? String(pro.agendaPosition) : "");
   const [ids, setIds] = useState(pro.serviceIds);
   const [assistantOf, setAssistantOf] = useState(pro.assistantOf ?? "");
+  const [assistsWith, setAssistsWith] = useState(pro.assistsWith ?? "");
   const [bond, setBond] = useState<"parceira" | "clt" | "outro" | null>(pro.bond ?? null);
   const [cnpj, setCnpj] = useState(formatCnpj(pro.cnpj));
   const [legalName, setLegalName] = useState(pro.legalName ?? "");
@@ -83,18 +85,19 @@ export function ProfessionalPanel({ pro, services, casa, suggestions, team = [],
   const router = useRouter();
   const pos = position.trim() === "" ? null : Number(position);
   const dirtyAssistant = (assistantOf || null) !== (pro.assistantOf ?? null);
+  const dirtyJunto = (assistsWith || null) !== (pro.assistsWith ?? null);
   const dirtyBond = bond !== (pro.bond ?? null);
   const dirtyCnpj = cnpj.replace(/\D/g, "") !== (pro.cnpj ?? "");
   const dirtyLegal = !same(legalName, pro.legalName ?? null);
   const dirtyPayout = canPayout && payout !== (pro.payoutPeriod ?? "mensal");
-  const dirtyData = !same(name, pro.name) || !same(fullName, pro.fullName) || !same(role, pro.role) || dirtyAssistant || dirtyBond || dirtyCnpj || dirtyLegal || dirtyPayout;
+  const dirtyData = !same(name, pro.name) || !same(fullName, pro.fullName) || !same(role, pro.role) || dirtyAssistant || dirtyJunto || dirtyBond || dirtyCnpj || dirtyLegal || dirtyPayout;
   const dirtyLook = color !== pro.color || pos !== pro.agendaPosition;
 
   const save = () => start(async () => {
     if (pos !== null && (!Number.isInteger(pos) || pos < 1 || pos > 999)) { toast("Use um número de 1 a 999 na ordem.", "error"); return; }
     if (dirtyData) {
       const r = await updateProfessionalAction(pro.id, {
-        name, fullName, role, ...(dirtyAssistant ? { assistantOf: assistantOf || null } : {}),
+        name, fullName, role, ...(dirtyAssistant ? { assistantOf: assistantOf || null } : {}), ...(dirtyJunto ? { assistsWith: assistsWith || null } : {}),
         ...(dirtyBond ? { bond } : {}), ...(dirtyCnpj ? { cnpj: cnpj.replace(/\D/g, "") || null } : {}), ...(dirtyLegal ? { legalName: legalName.trim() || null } : {}),
         ...(dirtyPayout ? { payoutPeriod: payout } : {}),
       });
@@ -152,6 +155,16 @@ export function ProfessionalPanel({ pro, services, casa, suggestions, team = [],
             </Select>
             <span className="font-normal text-muted">Para a cliente, quem atende é a principal: o lembrete, a página da cliente e a IA usam o nome dela.</span>
           </label>
+          {!assistantOf && (
+            <label className={cn(label, "sm:col-span-2")}>Quando atende junto, é assistente de
+              <Select value={assistsWith} onChange={(e) => setAssistsWith(e.target.value)}>
+                <option value="">Ninguém</option>
+                {(pro.assistsWith && !team.some((t) => t.id === pro.assistsWith) ? [{ id: pro.assistsWith, name: "a principal atual" }, ...team] : team)
+                  .map((t) => <option key={t.id} value={t.id}>{displayName(t.name)}</option>)}
+              </Select>
+              <span className="font-normal text-muted">Atende em nome próprio, mas na mesma visita com ela, a cliente vê só a principal (ex.: Maiara com Thaise).</span>
+            </label>
+          )}
           {canPayout && (
             <div className="flex flex-col gap-1.5 text-sm sm:col-span-2">
               <label className={label}>Repasse

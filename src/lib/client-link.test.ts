@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { changedNotice, hourText, linkExpiry, linkPageState, longDay, onlyFirstName, renderLinkText, servicesText, shortDay, waLink, whenLine, type LinkAppt } from "./client-link";
+import { changedNotice, hourText, linkExpiry, linkPageState, longDay, onlyFirstName, renderLinkText, serviceParts, servicesText, shortDay, waLink, whenLine, type LinkAppt } from "./client-link";
 
 /** Instante de Salvador escrito à mão: o teste não depende do fuso do processo (rode também com TZ=UTC e TZ=Asia/Tokyo). */
 const bahia = (day: string, hm: string) => new Date(`${day}T${hm}:00-03:00`);
@@ -23,7 +23,7 @@ describe("link da cliente (seção 9.4)", () => {
   it("agendado: os três botões; a visita inteira numa frase", () => {
     const st = linkPageState([ap(), ap({ startsAt: bahia("2026-10-16", "11:20"), durationMin: 40, service: "Escova", pro: "BIA" })], bahia("2026-10-16", "10:00"), NOW, 24);
     expect(st).toMatchObject({ state: "agendado", canAct: true, canCancel: true, changed: false });
-    expect(servicesText(st.items)).toBe("Corte feminino com Ana e Escova com Bia");
+    expect(servicesText(st.items)).toBe("10h · Corte feminino com Ana e 11h20 · Escova com Bia");
     // sem artigo antes do nome (Jackson e Gilvan são homens) e o que vem do Avec em MAIÚSCULAS sai em Título
     expect(servicesText([{ service: "AVALIAÇÃO", pro: "GILVAN" }, { service: "Corte Masculino", pro: "Jackson" }])).toBe("Avaliação com Gilvan e Corte Masculino com Jackson");
     expect(whenLine(st.start, st.end)).toBe("sexta, 16 de outubro · 10:00 às 12:00");
@@ -70,6 +70,13 @@ describe("serviços da mesma profissional numa frase só (17/10)", () => {
   it("junta os serviços de quem atende, na ordem em que aparecem", () => {
     expect(servicesText([{ service: "Luzes e Mechas", pro: "THAISE" }, { service: "Coloração ou Tonalização", pro: "THAISE" }])).toBe("Luzes e Mechas e Coloração ou Tonalização com Thaise");
     expect(servicesText([{ service: "Corte", pro: "Ana" }, { service: "Unha", pro: "Bia" }, { service: "Escova", pro: "Ana" }])).toBe("Corte e Escova com Ana e Unha com Bia");
+  });
+
+  it("Luciana 29/10: serviços em horas diferentes levam cada um a sua hora; mesma hora fica como antes", () => {
+    const at11 = bahia("2026-10-30", "11:00"), at13 = bahia("2026-10-30", "13:00");
+    expect(serviceParts([{ service: "Ritual de Tratamento", pro: "THAISE", start: at11 }, { service: "Ritual de Tratamento", pro: "JACKSON", start: at13 }]))
+      .toEqual(["11h · Ritual de Tratamento com Thaise", "13h · Ritual de Tratamento com Jackson"]);
+    expect(serviceParts([{ service: "Corte", pro: "Ana", start: at11 }, { service: "Escova", pro: "Ana", start: at11 }])).toEqual(["Corte e Escova com Ana"]);
   });
 });
 

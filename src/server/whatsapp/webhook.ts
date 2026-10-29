@@ -340,10 +340,18 @@ const CALL_FINAL = new Set(["accept", "terminate", "timeout", "reject"]);
 async function handleCall(c: EvoCallData | undefined, channelId: string | null, instance?: string) {
   const status = String(c?.status ?? "").toLowerCase();
   if (!c?.id || c.isGroup || !CALL_FINAL.has(status)) return { ok: true, ignored: `ligacao_${status || "sem_status"}` };
-  const jid = c.chatId ?? c.from ?? "";
-  const lid = jid.endsWith("@lid") ? jid.split("@")[0] : null;
-  if (!lid && !jid.endsWith("@s.whatsapp.net")) return { ok: true, ignored: "ligacao_sem_numero" };
-  if (!lid && await isSelfChat(instance, jid)) return { ok: true, ignored: "ligacao_da_casa" };
+  // Quem ligou: o chatId ou o from que NÃO é a própria Casa. Atendida no celular (29/10), o evento vem com o @lid do próprio número da Casa
+  // e toda ligação atendida caía no contato que tinha esse número (16 de 17 numa cliente só). Os dois lados da Casa: não entra.
+  let jid = "", lid: string | null = null, known: string | null = null;
+  for (const cand of [c.chatId, c.from]) {
+    if (!cand || (!cand.endsWith("@lid") && !cand.endsWith("@s.whatsapp.net"))) continue;
+    const l = cand.endsWith("@lid") ? cand.split("@")[0] : null;
+    const k = l ? await lidLookup.phoneForLid(l).catch(() => null) : null;
+    if (await isSelfChat(instance, l ? k ?? "" : cand)) continue;
+    jid = cand; lid = l; known = k;
+    break;
+  }
+  if (!jid) return { ok: true, ignored: c.chatId || c.from ? "ligacao_da_casa" : "ligacao_sem_numero" };
   const raw = typeof c.date === "number" ? new Date(c.date < 1e12 ? c.date * 1000 : c.date) : c.date ? new Date(c.date) : new Date();
   const at = Number.isNaN(raw.getTime()) ? new Date() : raw;
   const externalId = `call:${c.id}`;
@@ -363,7 +371,6 @@ async function handleCall(c: EvoCallData | undefined, channelId: string | null, 
     : { video, status: status === "reject" ? "recusada" : status === "terminate" ? "recebida" : "perdida" };
   // Ligação que chega só com o @lid: se a Evolution já sabe o número, a ligação entra na conversa da cliente cadastrada em vez de abrir uma
   // "não identificada" (20/10: cliente com cadastro ligou e apareceu sem número, com duas conversas).
-  const known = lid ? await lidLookup.phoneForLid(lid).catch(() => null) : null;
   return recordCall({ channelId, externalId, jid: lid ? known ?? "" : jid, lid, direction: "in", info, at, final: status !== "accept" });
 }
 

@@ -66,16 +66,16 @@ describe("autoria pela assinatura", () => {
     expect(resp.userId).toBe(cati.id);
   });
 
-  it("com dona: a dona não muda, fica quem respondeu e a dona recebe UM aviso por dia", async () => {
+  it("com dona (29/10): quem responde assume a conversa e a antiga dona recebe UM aviso", async () => {
     const { dealId, phone } = await conversa(sara.id);
     await pelocelular(phone, "*CATI - CASA FIAES:*\nOi", min(2));
     await recordInbound({ channelId: null, externalId: "IN-X", phoneRaw: phone, body: "e aí?", at: min(3) });
     await pelocelular(phone, "*CATI - CASA FIAES:*\nJá vejo", min(4));
-    expect(await deal(dealId)).toMatchObject({ ownerId: sara.id, lastReplyById: cati.id, lastReplyVia: "celular" });
+    expect(await deal(dealId)).toMatchObject({ ownerId: cati.id, lastReplyById: cati.id, lastReplyVia: "celular" });
     const a = await avisos();
     expect(a).toHaveLength(1);
     expect(a[0]).toMatchObject({ userId: sara.id, audience: "responsavel", dealId });
-    expect(a[0].message).toBe("Cati respondeu a conversa de Cliente 1. Ela continua sua; se for para passar, use Transferir.");
+    expect(a[0].message).toBe("Cati respondeu a conversa de Cliente 1. A conversa passou para ela (quem responde assume).");
   });
 
   it("a dona respondendo a própria conversa (pelo celular e depois pelo CRM) não gera aviso", async () => {

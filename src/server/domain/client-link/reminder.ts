@@ -82,7 +82,7 @@ async function visitText(visitId: string, tpl: string, cfg: LembreteD1, now: Dat
   if (link === undefined) link = cfg.comLink ? (await createClientLink({ appointmentId: appts[0].id, via: "lembrete_d1", actorId: null, now })).url : null;
   // Sem "Não informado" (serviço que o Avec não mandou vira "Atendimento") e sem serviço repetido (duplicata do Avec).
   const seen = new Set<string>();
-  const items = appts.map((a) => ({ service: !a.service?.trim() || a.service.trim() === "Não informado" ? "Atendimento" : a.service, pro: onlyFirstName(a.pro) }))
+  const items = appts.map((a) => ({ service: !a.service?.trim() || a.service.trim() === "Não informado" ? "Atendimento" : a.service, pro: onlyFirstName(a.pro), start: a.startsAt }))
     .filter((i) => { const k = `${i.service.trim().toLowerCase()}|${i.pro ?? ""}`; if (seen.has(k)) return false; seen.add(k); return true; });
   // Fase B: endereço e mapa da Página da cliente (o texto da Casa os usa); sem link do mapa, a busca do endereço no Maps.
   const casa = await getCasaInfo();

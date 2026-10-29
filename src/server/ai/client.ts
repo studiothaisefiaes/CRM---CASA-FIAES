@@ -11,7 +11,7 @@ export const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 /** 20/10: Sonnet (o Haiku errava o pedido da atendente e soava seco). O servidor pode trocar por AI_MODEL no .env. */
 export const DEFAULT_MODEL = "claude-sonnet-5-5";
 
-/** O formato da resposta (structured output). Sem campo extra; os 6 obrigatórios (`horario` vazio = sem horário proposto; `retomar_dias` 0 = sem retomada). */
+/** O formato da resposta (structured output). Sem campo extra; os 7 obrigatórios (`horario` vazio = sem horário proposto; `retomar_dias` 0 = sem retomada). */
 export const SUGGESTION_JSON_SCHEMA = {
   type: "object",
   properties: {
@@ -21,8 +21,9 @@ export const SUGGESTION_JSON_SCHEMA = {
     motivo: { type: "string", description: "Curto: por que precisa de alguém da equipe. Vazio quando precisa_humano é false." },
     horario: { type: "string", description: "O id (h1, h2… ou hc) do horário principal que a mensagem propõe ou confirma. Vazio se não propôs horário." },
     retomar_dias: { type: "integer", description: "Só quando a cliente cancelou ou desmarcou e NÃO marcou outra data: em quantos dias a Casa deve retomar o contato (15 a 30). 0 em todos os outros casos." },
+    licao: { type: "string", description: "Vazio, a não ser quando a atendente rebateu a sugestão anterior: em 1 frase, o que você errou, escrito como regra geral para as próximas conversas (sem nome nem dado de cliente)." },
   },
-  required: ["resumo", "sugestao", "precisa_humano", "motivo", "horario", "retomar_dias"],
+  required: ["resumo", "sugestao", "precisa_humano", "motivo", "horario", "retomar_dias", "licao"],
   additionalProperties: false,
 } as const;
 
@@ -35,6 +36,8 @@ export const suggestionSchema = z.object({
   horario: z.string().trim().max(12).nullish(),
   /** Cancelou sem nova data (Cati 17/10): em quantos dias retomar; 0/ausente = nada. Quem decide se vira proposta é o servidor (suggest.ts). */
   retomar_dias: z.number().int().min(0).max(365).nullish().catch(null),
+  /** Rebater (29/10): o que a IA errou, como regra geral. Só vira lição depois que a gestão aprova (src/server/ai/licoes.ts). */
+  licao: z.string().trim().max(400).nullish().catch(null),
   /** Não vem da API: o atalho da marca `[[material:/atalho]]` que `callLegivel` tirou do texto (o servidor confere em suggest.ts). */
   material: z.string().nullish(),
 });

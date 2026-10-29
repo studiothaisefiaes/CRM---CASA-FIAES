@@ -5,6 +5,7 @@ import { assertPerm } from "@/server/auth/session";
 import { userErrorMessage } from "@/server/user-error";
 import { saveAiSettings, type AiSettings } from "@/server/ai/settings";
 import { saveAiManual } from "@/server/ai/manual";
+import { decideLicao } from "@/server/ai/licoes";
 import type { ManualSections } from "@/lib/ai-manual";
 
 type R<T = undefined> = { ok: true; data?: T } | { ok: false; error: string };
@@ -27,4 +28,14 @@ export async function saveAiManualAction(v: ManualSections): Promise<R<{ secoes:
     revalidatePath("/config/ia");
     return { ok: true, data: { secoes: r.secoes, updatedAt: r.updatedAt.toISOString() } };
   } catch (e) { return { ok: false, error: userErrorMessage(e, "config ia manual") }; }
+}
+
+/** Lições do Rebater (29/10): "Usar sempre" (com o texto ajustado), "Descartar" ou "Tirar". Gestão (config.sistema). Nada aqui envia mensagem. */
+export async function decideLicaoAction(input: { id: string; status: "aprovada" | "descartada"; texto?: string | null }): Promise<R> {
+  try {
+    const u = await assertPerm("config.sistema");
+    await decideLicao(z.string().uuid().parse(input.id), z.enum(["aprovada", "descartada"]).parse(input.status), u.id, z.string().max(300).nullish().parse(input.texto));
+    revalidatePath("/config/ia");
+    return { ok: true };
+  } catch (e) { return { ok: false, error: userErrorMessage(e, "config ia licao") }; }
 }

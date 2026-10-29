@@ -2,7 +2,8 @@ import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "../db";
 import { aiSuggestions, contacts, deals, outbox, tasks } from "../db/schema";
 import { markWaitingForClient } from "./funnel";
-import { cancelScheduled, scheduleMessage, scheduledOf, sendScheduledNow, SCHEDULED_SOURCE } from "./scheduled";
+import { cancelScheduled, iaPlaceholder, scheduleMessage, scheduledOf, sendScheduledNow, SCHEDULED_SOURCE } from "./scheduled";
+import { funcaoLigada } from "./funcoes";
 import { stopAttemptsTx } from "./attempts";
 import { completeTaskTx } from "./tasks";
 import { emit, logEvent } from "./events";
@@ -17,7 +18,8 @@ import { dueLabel } from "../../lib/next-action";
  * com texto, além do lembrete, a mensagem programada sai sozinha na hora (outbox "agendada"), ligada à tarefa por `options.taskId`:
  * saiu → a tarefa conta como feita; a cliente escreveu antes (com "Cancelar se ela responder antes") → as duas são canceladas.
  */
-export type ResumeInput = { dueAt: Date; motivo?: string | null; texto?: string | null; cancelIfReply?: boolean; assigneeId?: string | null };
+/** `ia`: o que a IA deve dizer (Retomada pela IA); sem texto e sem `ia`, com a função ligada, vale o motivo. */
+export type ResumeInput = { dueAt: Date; motivo?: string | null; texto?: string | null; cancelIfReply?: boolean; assigneeId?: string | null; ia?: string | null };
 export type ResumeResult = { dueAt: Date; taskId: string | null; outboxId: string | null };
 
 const linkedPending = (taskId: string) => and(eq(outbox.status, "pending"), sql`${outbox.options}->>'source' = ${SCHEDULED_SOURCE}`, sql`${outbox.options}->>'taskId' = ${taskId}`);
@@ -42,8 +44,12 @@ export async function resume(dealId: string, input: ResumeInput, userId: string,
   const motivo = input.motivo?.trim() || (texto ? "Mensagem programada" : `Retomar contato com ${clientFirstName(row.name)}`);
   const before = await openNextAction(dealId);
   // A mensagem primeiro: é ela que confere a hora (5 min a 60 dias). Se a retomada falhar depois, a mensagem é cancelada.
+  // Sem texto, com a Retomada pela IA ligada (29/10, pedido da Thaise): a IA escreve e envia na hora, a partir do que a atendente disse ou do motivo.
+  // Se não der para programar (número oculto, longe demais, 5 por cliente), fica só o lembrete, como antes.
+  const ia = !texto && await funcaoLigada("retomada_ia") ? (input.ia?.trim() || motivo).slice(0, 300) : null;
   const scheduled = texto
     ? await scheduleMessage({ dealId, text: fillFirstName(texto, row.nickname || row.name), at: input.dueAt, cancelIfReply: input.cancelIfReply !== false }, userId, now)
+    : ia ? await scheduleMessage({ dealId, text: iaPlaceholder(ia), ia, at: input.dueAt, cancelIfReply: input.cancelIfReply !== false }, userId, now).catch(() => null)
     : null;
   try {
     await markWaitingForClient(dealId, { resumeAt: input.dueAt, title: motivo, ...(input.assigneeId !== undefined ? { assigneeId: input.assigneeId } : {}) }, userId, now);
@@ -57,7 +63,7 @@ export async function resume(dealId: string, input: ResumeInput, userId: string,
   if (scheduled && task) {
     await db.update(outbox).set({ options: sql`${outbox.options} || ${JSON.stringify({ taskId: task.id })}::jsonb` }).where(eq(outbox.id, scheduled.id));
   }
-  await logEvent(db, dealId, "retomada", { para: input.dueAt.toISOString(), mensagem: !!scheduled, tarefa: task?.id ?? null }, userId);
+  await logEvent(db, dealId, "retomada", { para: input.dueAt.toISOString(), mensagem: !!scheduled, ...(ia && scheduled ? { ia: true } : {}), tarefa: task?.id ?? null }, userId);
   await emit("lead_atualizado", { dealId });
   return { dueAt: task?.dueAt ?? input.dueAt, taskId: task?.id ?? null, outboxId: scheduled?.id ?? null };
 }
@@ -161,7 +167,7 @@ export async function bulkResume(dealIds: string[], input: ResumeInput, userId: 
   let i = 0;
   for (const dealId of [...new Set(dealIds)]) {
     try {
-      const at = input.texto?.trim() ? new Date(input.dueAt.getTime() + i * BULK_RESUME_GAP_MS) : input.dueAt;
+      const at = input.texto?.trim() || input.ia?.trim() ? new Date(input.dueAt.getTime() + i * BULK_RESUME_GAP_MS) : input.dueAt;
       await resume(dealId, { ...input, dueAt: at }, userId, now);
       out.ok++; i++;
     } catch (e) { out.failed.push({ dealId, error: e instanceof Error ? e.message : String(e) }); }

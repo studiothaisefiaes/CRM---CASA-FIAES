@@ -26,10 +26,11 @@ const REASONS = ["Ver se ela decidiu", "Confirmar o horário", "Mandar os valore
  * "Escrever com IA" (IA ligada): a atendente diz o tema e a IA escreve o texto para o dia/hora escolhidos. O texto só entra no campo
  * (editável, com Desfazer); nada é programado sem o botão Programar. No lote, um modelo só com {primeiro_nome} (não lê as conversas).
  */
-export function RetomarDialog({ open, onClose, dealIds, name, initialText = "", initialMotivo = "", prontas = [], onDone, initialAt, initialCancela = true, editOutboxId }: {
+export function RetomarDialog({ open, onClose, dealIds, name, initialText = "", initialMotivo = "", prontas = [], onDone, initialAt, initialCancela = true, editOutboxId, initialTema = "" }: {
   open: boolean; onClose: () => void; dealIds: string[]; name?: string | null; initialText?: string; initialMotivo?: string; prontas?: Prontas;
   /** Editar uma mensagem programada (Mensagens programadas): abre no dia/hora dela e, ao confirmar, a troca pela nova. */
   initialAt?: number; initialCancela?: boolean; editOutboxId?: string;
+  /** Retomada pela IA sendo editada: o que a atendente tinha pedido. */ initialTema?: string;
   onDone: (r: { dueAt: string; texto: boolean; count: number }) => void;
 }) {
   const hours = useHours();
@@ -44,7 +45,9 @@ export function RetomarDialog({ open, onClose, dealIds, name, initialText = "", 
   const [pending, start] = useTransition();
   const [iaOk, setIaOk] = useState(false);
   const [iaAberta, setIaAberta] = useState(false);
-  const [tema, setTema] = useState("");
+  // Retomada pela IA ligada (29/10): sem texto, a IA escreve e envia na hora a partir do "O que falar?" (ou do motivo).
+  const [iaAuto, setIaAuto] = useState(false);
+  const [tema, setTema] = useState(initialTema);
   const [gerado, setGerado] = useState<string | null>(null);
   const [antes, setAntes] = useState<string | null>(null);
   const [iaErro, setIaErro] = useState<string | null>(null);
@@ -53,7 +56,11 @@ export function RetomarDialog({ open, onClose, dealIds, name, initialText = "", 
   useEffect(() => {
     if (!open) return;
     let alive = true;
-    aiProgramadaAvailableAction().then((r) => { if (alive && r.ok) setIaOk(r.data); }).catch(() => {});
+    aiProgramadaAvailableAction().then((r) => {
+      if (!alive || !r.ok) return;
+      const d = typeof r.data === "boolean" ? { escrever: r.data, auto: false } : r.data;
+      setIaOk(d.escrever); setIaAuto(d.auto); if (d.auto) setIaAberta(true);
+    }).catch(() => {});
     return () => { alive = false; };
   }, [open]);
   const bulk = dealIds.length > 1;
@@ -62,9 +69,12 @@ export function RetomarDialog({ open, onClose, dealIds, name, initialText = "", 
   const ms = escolher ? slotMs(slot.date, slot.time) : presets.find((p) => p.key === quando)!.at.getTime();
   const hasText = !!texto.trim();
   const when = Number.isFinite(ms) ? dueLabel(ms, openedAt) : null;
+  const autoIa = iaAuto && !hasText;
   const resumo = !when ? "Escolha o dia e a hora."
-    : bulk ? (hasText ? `${dealIds.length} mensagens · ${when} · saem 1 a cada 20 s` : `${dealIds.length} lembretes · ${when}`)
-    : hasText ? `A mensagem sai sozinha ${when}${cancela ? ", se ela não responder antes" : ""}.` : `Lembrete para você ${when}. Nada é enviado.`;
+    : bulk ? (hasText ? `${dealIds.length} mensagens · ${when} · saem 1 a cada 20 s` : autoIa ? `${dealIds.length} retomadas · ${when} · a IA escreve e envia cada uma, 1 a cada 20 s` : `${dealIds.length} lembretes · ${when}`)
+    : hasText ? `A mensagem sai sozinha ${when}${cancela ? ", se ela não responder antes" : ""}.`
+    : autoIa ? `${when.charAt(0).toLocaleUpperCase("pt-BR")}${when.slice(1)}, a IA lê a conversa, escreve${tema.trim() ? " o que você pediu" : " a partir do motivo"} e envia sozinha${cancela ? ", se ela não responder antes" : ""}. Para ver o texto antes, toque em Gerar.`
+    : `Lembrete para você ${when}. Nada é enviado.`;
 
   const gerar = () => {
     if (gerando) return;
@@ -86,7 +96,7 @@ export function RetomarDialog({ open, onClose, dealIds, name, initialText = "", 
     if (!Number.isFinite(ms)) { setError("Escolha o dia e a hora."); return; }
     if (ms < openedAt - 5 * 60_000) { setError("Essa data já passou. Escolha uma data futura."); return; }
     setError(null);
-    const input = { dueAt: new Date(ms).toISOString(), motivo: motivo.trim() || null, texto: hasText ? texto.trim() : null, cancelIfReply: cancela };
+    const input = { dueAt: new Date(ms).toISOString(), motivo: motivo.trim() || null, texto: hasText ? texto.trim() : null, cancelIfReply: cancela, ia: autoIa ? tema.trim() || null : null };
     start(async () => {
       if (editOutboxId) {
         const r = await editScheduledAction(editOutboxId, input);
@@ -106,8 +116,8 @@ export function RetomarDialog({ open, onClose, dealIds, name, initialText = "", 
 
   return (
     <Dialog open={open} onClose={onClose} width={480} title={editOutboxId ? (first ? `Editar mensagem para ${first}` : "Editar mensagem programada") : bulk ? `Retomar ${dealIds.length} conversas` : first ? `Retomar ${first}` : "Retomar"}
-      description={editOutboxId ? "Troque o texto, o dia ou a hora. A mensagem antiga dá lugar a esta." : "Dia, hora e, se quiser, a mensagem. Sem mensagem, vira um lembrete para você."}
-      footer={<><Button variant="ghost" onClick={onClose} disabled={pending}>Cancelar</Button><Button onClick={confirm} loading={pending}>{editOutboxId ? "Salvar" : hasText ? "Programar" : "Salvar lembrete"}</Button></>}>
+      description={editOutboxId ? "Troque o texto, o dia ou a hora. A mensagem antiga dá lugar a esta." : iaAuto ? "Dia, hora e o que falar. A IA escreve e envia na hora, ou gere agora para aprovar o texto." : "Dia, hora e, se quiser, a mensagem. Sem mensagem, vira um lembrete para você."}
+      footer={<><Button variant="ghost" onClick={onClose} disabled={pending}>Cancelar</Button><Button onClick={confirm} loading={pending}>{editOutboxId ? "Salvar" : hasText ? (gerado && texto === gerado ? "Aprovar e programar" : "Programar") : autoIa ? "Programar retomada" : "Salvar lembrete"}</Button></>}>
       <div className="flex max-h-[min(62vh,520px)] flex-col gap-4 overflow-y-auto pr-1">
         <div role="radiogroup" aria-label="Quando" className="flex flex-wrap gap-1.5">
           {[...presets.map((p) => ({ key: p.key as string, label: p.label })), { key: "escolher", label: "Escolher" }].map((p) => (
@@ -136,7 +146,7 @@ export function RetomarDialog({ open, onClose, dealIds, name, initialText = "", 
           </span>
           {iaOk && iaAberta && (
             <div className="flex flex-col gap-2 rounded-[var(--radius-control)] border border-line bg-paper-2 p-3">
-              <label htmlFor="retomar-tema" className="text-xs font-semibold text-graphite">Sobre o que é a mensagem?</label>
+              <label htmlFor="retomar-tema" className="text-xs font-semibold text-graphite">{iaAuto ? "O que falar com ela?" : "Sobre o que é a mensagem?"}</label>
               <div className="flex gap-2">
                 <Input id="retomar-tema" value={tema} maxLength={1000} autoComplete="off" placeholder="Ex.: perguntar se ficou alguma dúvida do orçamento"
                   onChange={(e) => setTema(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); gerar(); } }} className="h-11 min-w-0 flex-1" />
@@ -145,12 +155,12 @@ export function RetomarDialog({ open, onClose, dealIds, name, initialText = "", 
               </div>
               <p className="text-xs text-muted" suppressHydrationWarning>
                 {bulk ? `Um texto só para as ${dealIds.length}, com {primeiro_nome} no lugar do nome (a IA não lê as conversas).` : "A IA lê as últimas mensagens."}
-                {when ? ` Escrito para sair ${when}.` : ""} Confira antes de programar.
+                {when ? ` Escrito para sair ${when}.` : ""} {iaAuto ? "Gerar mostra o texto agora para você aprovar; sem gerar, a IA escreve na hora de sair." : "Confira antes de programar."}
               </p>
               {iaErro && <p role="alert" className="text-sm text-alert">{iaErro}</p>}
             </div>
           )}
-          <textarea id="retomar-texto" value={texto} rows={3} maxLength={4000} placeholder="Sem texto, vira um lembrete para você." onChange={(e) => setTexto(e.target.value)}
+          <textarea id="retomar-texto" value={texto} rows={3} maxLength={4000} placeholder={iaAuto ? "Sem texto, a IA escreve e envia na hora." : "Sem texto, vira um lembrete para você."} onChange={(e) => setTexto(e.target.value)}
             className="w-full resize-none rounded-[var(--radius-control)] border border-line-strong bg-paper px-3 py-2 text-[16px] lg:text-sm" />
           {prontas.length > 0 && (
             <span className="flex flex-wrap gap-1.5" aria-label="Respostas prontas">
@@ -167,7 +177,7 @@ export function RetomarDialog({ open, onClose, dealIds, name, initialText = "", 
           )}
           {bulk && <p className="text-xs text-muted">Use {"{primeiro_nome}"}: o primeiro nome de cada cliente entra sozinho.</p>}
         </div>
-        {hasText && (
+        {(hasText || autoIa) && (
           <button type="button" role="switch" aria-checked={cancela} onClick={() => setCancela((c) => !c)} className="flex min-h-11 items-center gap-3 text-left text-sm">
             <span aria-hidden className={cn("relative h-6 w-10 shrink-0 rounded-full transition-colors", cancela ? "bg-ink" : "bg-paper-3")}>
               <span className={cn("absolute top-0.5 size-5 rounded-full bg-paper transition-all", cancela ? "left-[18px]" : "left-0.5")} />

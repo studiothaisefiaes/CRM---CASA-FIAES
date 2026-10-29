@@ -17,8 +17,10 @@ export const SCHEDULED_PER_CONTACT = 5;
 /** Agendada que perdeu a hora (worker parado, Casa fechou) não sai sozinha depois disso: a autora decide. */
 export const SCHEDULED_LATE_MS = 2 * 3_600_000;
 
-export type ScheduledItem = { id: string; dealId: string; text: string; at: Date; authorName: string | null; cancelIfReply: boolean; /** A retomada (tarefa) a que a mensagem está ligada. */ taskId: string | null };
-type Meta = { source?: string; cancelIfReply?: boolean; sendAt?: string; taskId?: string };
+export type ScheduledItem = { id: string; dealId: string; text: string; at: Date; authorName: string | null; cancelIfReply: boolean; /** A retomada (tarefa) a que a mensagem está ligada. */ taskId: string | null;
+  /** Retomada pela IA: o que a atendente pediu (o texto sai na hora). */ ia: string | null };
+/** `ia`: Retomada pela IA (29/10): o que a mensagem deve dizer; o texto é escrito pela IA na hora de sair (o `text` guardado é só o aviso). */
+type Meta = { source?: string; cancelIfReply?: boolean; sendAt?: string; taskId?: string; ia?: string };
 const metaOf = (o: OutboxItem["options"]): Meta => (o && !Array.isArray(o) ? o : {});
 const isScheduled = sql`${outbox.options}->>'source' = ${SCHEDULED_SOURCE}`;
 const pendingOf = (contactId: string) => and(eq(outbox.status, "pending"), isScheduled, eq(deals.contactId, contactId));
@@ -28,7 +30,10 @@ const pendingOf = (contactId: string) => and(eq(outbox.status, "pending"), isSch
  * Sai na hora marcada mesmo com a Casa fechada (16/10), de 5 min a 60 dias para a frente, no máximo 5 por cliente.
  * `cancelIfReply` (padrão: sim): se a cliente escrever antes da hora, não sai e a autora é avisada.
  */
-export async function scheduleMessage(input: { dealId: string; text: string; at: Date; cancelIfReply?: boolean }, userId: string, now = new Date()): Promise<{ id: string; at: Date }> {
+/** O aviso guardado no lugar do texto da Retomada pela IA (Mensagens programadas e a faixa da conversa mostram). */
+export const iaPlaceholder = (instrucao: string) => `✨ A IA escreve na hora: ${instrucao}`;
+
+export async function scheduleMessage(input: { dealId: string; text: string; at: Date; cancelIfReply?: boolean; ia?: string | null }, userId: string, now = new Date()): Promise<{ id: string; at: Date }> {
   const text = input.text.trim();
   if (!text) throw new UserFacingError("Escreva a mensagem antes de agendar.");
   if (text.length > 4000) throw new UserFacingError("Mensagem muito longa (máximo 4.000 caracteres).");
@@ -44,7 +49,7 @@ export async function scheduleMessage(input: { dealId: string; text: string; at:
   if (pending.length >= SCHEDULED_PER_CONTACT) throw new UserFacingError(`Esta conversa já tem ${SCHEDULED_PER_CONTACT} mensagens agendadas. Cancele uma antes.`);
   const [item] = await db.insert(outbox).values({
     dealId: input.dealId, kind: "text", text, notBefore: at, createdBy: userId, createdAt: now,
-    options: { source: SCHEDULED_SOURCE, cancelIfReply: input.cancelIfReply !== false, sendAt: at.toISOString() },
+    options: { source: SCHEDULED_SOURCE, cancelIfReply: input.cancelIfReply !== false, sendAt: at.toISOString(), ...(input.ia ? { ia: input.ia } : {}) },
   }).returning({ id: outbox.id });
   await logEvent(db, input.dealId, "mensagem_agendada", { outboxId: item.id, para: at.toISOString() }, userId);
   await emit("agendada", { dealId: input.dealId });
@@ -58,7 +63,7 @@ export async function scheduledOf(contactId: string): Promise<ScheduledItem[]> {
     .where(pendingOf(contactId)).orderBy(asc(outbox.notBefore));
   return rows.map((r) => {
     const m = metaOf(r.options);
-    return { id: r.id, dealId: r.dealId, text: r.text, at: m.sendAt ? new Date(m.sendAt) : r.notBefore, authorName: r.authorName, cancelIfReply: m.cancelIfReply !== false, taskId: m.taskId ?? null };
+    return { id: r.id, dealId: r.dealId, text: r.text, at: m.sendAt ? new Date(m.sendAt) : r.notBefore, authorName: r.authorName, cancelIfReply: m.cancelIfReply !== false, taskId: m.taskId ?? null, ia: m.ia ?? null };
   });
 }
 
@@ -139,8 +144,23 @@ export async function deliverScheduled(item: OutboxItem, now = new Date()): Prom
     const [{ last }] = await db.select({ last: max(messages.createdAt) }).from(messages).where(and(eq(messages.contactId, row.contact.id), eq(messages.direction, "in")));
     if (last && last.getTime() > item.createdAt.getTime()) { await closeTask("cancelada"); return finish("cancelled", "a cliente escreveu depois que você agendou", "autora"); }
   }
+  const target = await targetDeal(item.dealId);
+  let text = item.text;
+  if (meta.ia) {
+    // Retomada pela IA: escreve agora, com a conversa de agora. Desligada, no limite do dia ou sem texto: não sai e a retomada fica de lembrete.
+    const { funcaoLigada, funcaoParam } = await import("./funcoes");
+    if (!(await funcaoLigada("retomada_ia"))) return finish("cancelled", "a Retomada pela IA está desligada: retome você", "autora");
+    const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(outbox).where(and(eq(outbox.status, "sent"), isScheduled,
+      sql`${outbox.options} ? 'ia'`, sql`${outbox.sentAt} >= ${new Date(now.getTime() - 86_400_000).toISOString()}::timestamptz`));
+    if (n >= await funcaoParam("retomada_ia", "max_dia")) return finish("cancelled", "a IA chegou ao limite de retomadas do dia: retome você", "autora");
+    const { generateProgramada } = await import("../ai/programada");
+    const r = await generateProgramada({ dealIds: [target], tema: meta.ia, sendAt: now, userId: author.id, now });
+    if (r.status !== "gerada") return finish("failed", "a IA não conseguiu escrever a retomada: retome você", "autora");
+    text = r.texto;
+    await db.update(outbox).set({ text }).where(eq(outbox.id, item.id));
+  }
   try {
-    await sendFromCrm(await targetDeal(item.dealId), item.text, author.id);
+    await sendFromCrm(target, text, author.id);
   } catch (e) {
     return finish("failed", (e instanceof Error ? e.message : String(e)).replace(/^Não foi possível enviar: /, ""), "autora");
   }

@@ -225,7 +225,7 @@ export function ConversationPane({ dealId, initial, initialTab = "conversa", bac
         </header>
         <section aria-label="Conversa" className="min-h-0 min-w-0 flex-col flex-1 flex 2xl:col-start-1 2xl:row-start-2">
           {/* Espiar sem assumir (pesquisa 20/10): a gestão lê sem tirar o "não lida" da dona (isPeek no servidor). */}
-          {detail && viewer && can(viewer.perms, "alertas.escalada") && detail.deal.ownerId && detail.deal.ownerId !== viewer.id && (
+          {detail && viewer && can(viewer.perms, "alertas.escalada") && !can(viewer.perms, "distribuicao.receber") && detail.deal.ownerId && detail.deal.ownerId !== viewer.id && (
             <p className="shrink-0 border-b border-line bg-paper-2/60 px-4 py-0.5 text-xs text-graphite truncate" data-testid="espiando">
               Espiando: para {displayName((detail.ownerName ?? "a dona").trim().split(/\s+/)[0])} continua não lida. Responder marca como lida.
             </p>

@@ -110,12 +110,22 @@ export function AiSuggestion({ dealId, replyTo = null, onBook }: { dealId: strin
   };
   const use = () => { if (composerHasText(dealId)) setReplace(true); else fill(); };
   const close = () => { mark("fechada"); setV({ state: "pode_pedir", again: true }); setReplace(false); };
+  // Rebater (29/10, pedido do dono): "não gostei, faça de tal jeito". A IA refaz com o que a atendente disse e anota o que errou;
+  // a lição só passa a valer para todas as conversas depois que a gestão aprovar (Configurações › Conversas › Sugestão por IA).
+  const [rebater, setRebater] = useState<{ id: string; text: string } | null>(null);
+  const rebaterAqui = s && rebater?.id === s.id ? rebater : null;
   // `falado`: o texto que acabou de vir do "Falar" (o estado do campo ainda não mudou nesta volta).
-  const ask = (kind: "primeira" | "outra", falado?: string) => start(async () => {
-    const r = await requestAiSuggestionAction(dealId, kind, { tema: (falado ?? tema).trim() || null, quotedId: replyTo?.id ?? null });
+  const ask = (kind: "primeira" | "outra", falado?: string, critica?: string) => start(async () => {
+    const r = await requestAiSuggestionAction(dealId, kind, { tema: (falado ?? tema).trim() || null, quotedId: replyTo?.id ?? null, ...(critica?.trim() ? { critica: critica.trim() } : {}) });
     if (!r.ok) { toast(r.error, "error"); return; }
-    seq.current++; setV(r.data); setReplace(false);
+    seq.current++; setV(r.data); setReplace(false); setRebater(null);
+    if (critica?.trim()) toast("Refeita com o que você disse. O que a IA errou vai para a gestão aprovar.");
   });
+  const refazer = (falado?: string) => {
+    const c = (falado ?? rebaterAqui?.text ?? "").trim();
+    if (c.length < 3) { toast("Diga o que não ficou bom (ex.: mais curta, sem oferecer horário).", "error"); return; }
+    ask("outra", undefined, c);
+  };
 
   const hint = v.state === "escrevendo" || v.state === "pode_pedir";
   return (
@@ -186,9 +196,22 @@ export function AiSuggestion({ dealId, replyTo = null, onBook }: { dealId: strin
             ) : (
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <Button size="sm" variant={s.precisaHumano ? "secondary" : "primary"} onClick={use} disabled={pending}>Usar e editar</Button>
-                <Button size="sm" variant="ghost" onClick={() => ask("outra")} loading={pending}>{pending ? "Escrevendo outra…" : "Outra"}</Button>
+                <Button size="sm" variant="ghost" onClick={() => ask("outra")} loading={pending && !rebaterAqui}>{pending && !rebaterAqui ? "Escrevendo outra…" : "Outra"}</Button>
+                <Button size="sm" variant="ghost" aria-expanded={!!rebaterAqui} onClick={() => setRebater(rebaterAqui ? null : { id: s.id, text: "" })} disabled={pending}>Rebater</Button>
                 <span className="ml-auto text-xs text-muted">O texto vai para a caixa de mensagem: edite e envie.</span>
               </div>
+            )}
+            {rebaterAqui && !replace && (
+              <form className="mt-2 flex flex-col gap-1.5" onSubmit={(e) => { e.preventDefault(); refazer(); }}>
+                <label htmlFor="rebater-ia" className="text-xs font-semibold text-graphite">O que não ficou bom? A IA refaz assim.</label>
+                <div className="flex items-center gap-2">
+                  <input id="rebater-ia" autoFocus value={rebaterAqui.text} maxLength={1000} placeholder="Ex.: mais curta, sem oferecer horário, ela já é cliente"
+                    onChange={(e) => setRebater({ id: s.id, text: e.target.value })}
+                    className="h-8 min-w-0 flex-1 rounded-[var(--radius-control)] border border-line bg-paper px-2.5 text-sm text-ink placeholder:text-muted focus:border-ink focus:outline-none" />
+                  <DictateButton value={rebaterAqui.text} onChange={(t) => setRebater({ id: s.id, text: t })} onTranscribed={(t) => refazer(t)} className="h-8" />
+                  <Button type="submit" size="sm" variant="secondary" loading={pending}>{pending ? "Refazendo…" : "Refazer"}</Button>
+                </div>
+              </form>
             )}
           </div>
         </motion.section>

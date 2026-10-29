@@ -84,6 +84,19 @@ describe("lembrete 24 h antes (pedido do dono, 15/10; DESLIGADO)", () => {
     expect(await db.select().from(deals).where(eq(deals.contactId, filha))).toHaveLength(0);
   });
 
+  it("Raquel 27/10: Maiara atendendo junto com a principal dela (assistente quando atende junto) sai com o nome da principal; sozinha, com o dela", async () => {
+    await ligar();
+    await db.update(professionals).set({ assistsWith: bia }).where(eq(professionals.id, maiara));
+    const raquel = await cliente("Raquel Souza", "+5571999990011");
+    await ap(raquel, bahia("2026-10-16", "10:00"));
+    await ap(raquel, bahia("2026-10-16", "10:00"), { serviceId: escova, serviceLabel: "Escova", professionalId: bia });
+    const sozinha = await cliente("Sonia Souza", "+5571999990012");
+    await ap(sozinha, bahia("2026-10-16", "15:00"));
+    await runLembreteD1(NOW);
+    expect((await ofText("Olá, Raquel!"))[0].text).toContain("✨ Corte e Escova com Bia\n");
+    expect((await ofText("Olá, Sonia!"))[0].text).toContain("✨ Corte com Maiara\n");
+  });
+
   it("agenda o envio 24 h antes, uma mensagem por visita, sem link por padrão, para todo horário com conversa (aberta ou não); não repete", async () => {
     await ligar();
     const paula = await cliente("Paula Souza", "+5571999990001");
@@ -96,7 +109,7 @@ describe("lembrete 24 h antes (pedido do dono, 15/10; DESLIGADO)", () => {
     expect(await runLembreteD1(NOW)).toEqual({ enqueued: 2, skipped: 1 });
     const [p] = await ofText("Olá, Paula!");
     expect(p.text).toBe(["Olá, Paula! 💛", "", "Passando para lembrar do seu horário amanhã na Casa Fiaes:", "", "📅 *sexta-feira, 16/10*", "⏰ às *10h*",
-      "✨ Corte com Maiara", "✨ Escova com Bia", "", "Temos tolerância de 15 minutos.", "", "Você confirma sua presença? Se precisar remarcar, é só responder por aqui."].join("\n"));
+      "✨ 10h · Corte com Maiara", "✨ 11h · Escova com Bia", "", "Temos tolerância de 15 minutos.", "", "Você confirma sua presença? Se precisar remarcar, é só responder por aqui."].join("\n"));
     expect(p.notBefore.toISOString()).toBe(bahia("2026-10-15", "10:00").toISOString());
     expect(p.options).toMatchObject({ source: expect.stringMatching(/^lembrete_d1:/), visitStart: bahia("2026-10-16", "10:00").toISOString() });
     expect((await ofText("Olá, Rita!"))[0].notBefore.toISOString()).toBe(bahia("2026-10-16", "14:00").toISOString());

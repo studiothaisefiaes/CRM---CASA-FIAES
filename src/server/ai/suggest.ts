@@ -19,6 +19,7 @@ import { buildSystem, buildUser, greetState, MAX_EXAMPLES, MAX_MESSAGES, MAX_PED
 import { loadEquipeContext } from "./contexto";
 import { loadAusencias, loadClienteContext } from "./cliente";
 import { costMicros } from "./pricing";
+import { approvedLicoes, saveLicao } from "./licoes";
 import { AGENDA_TAG, asksForSlots, cancelouSemData, dayMentions, hourLabel, hourMentions, isAgreement, mentionsTime, offeredSlot, pediuHorarioNovo, proFirstName } from "./horarios";
 import { freeHoursLine, planSlots, slotStillFree } from "./horarios-agenda";
 import { todayBahia } from "@/lib/agenda";
@@ -95,7 +96,7 @@ async function materialOf(replyId: string | null): Promise<CurrentSuggestion["ma
 
 /** O bloco fixo: serviços ativos com preço e descrição, horário, endereço, o prazo de cancelamento do link, o Manual da Casa e os materiais. */
 export async function loadCasaData(): Promise<CasaData> {
-  const [services, hours, casa, link, manual, packages, pros, team, assistants, materiais] = await Promise.all([
+  const [services, hours, casa, link, manual, packages, pros, team, assistants, materiais, licoes] = await Promise.all([
     // Só o que a cliente pode saber: nunca o custo do serviço (0084).
     db.select({ label: lists.label, priceCents: lists.priceCents, priceKind: lists.priceKind, durationMin: lists.durationMin, category: lists.category, description: lists.description })
       .from(lists).where(and(eq(lists.kind, "service"), eq(lists.active, true), eq(lists.aiCitavel, true))).orderBy(asc(lists.position), asc(lists.label)),
@@ -103,14 +104,14 @@ export async function loadCasaData(): Promise<CasaData> {
     db.select({ name: professionals.name }).from(professionals).where(eq(professionals.active, true)),
     db.select({ name: users.name }).from(users).where(eq(users.active, true)),
     db.select({ name: professionals.name }).from(professionals).where(and(eq(professionals.active, true), isNotNull(professionals.assistantOf))),
-    loadMateriais(),
+    loadMateriais(), approvedLicoes(),
   ]);
   return {
     services, hours: summarizeHours(hours), address: casa.endereco, cancelUntilHours: link.cancelarAteHoras, manual: manual.secoes,
     nomes: [...pros, ...team].map((p) => p.name.trim().split(/\s+/)[0] ?? "").filter(Boolean),
     assistentes: assistants.map((a) => a.name),
     packages: packages.map((p) => ({ name: p.name, priceCents: p.priceCents, sessions: Math.max(1, ...p.items.map((i) => i.sessions)), services: p.serviceLabels, validityDays: p.validityDays, description: p.description })),
-    materiais,
+    materiais, licoes,
   };
 }
 
@@ -210,7 +211,8 @@ export async function loadConversation(dealId: string, now = new Date(), until?:
 
 export type Claim = { id: string; dealId: string; lastMessageId: string; origin: "auto" | "outra"; apiKey: string; model: string; baseUrl?: string;
   /** O pedido (tema e citada) e a chave dele; quem pediu (a mensagem sai como ela). */
-  tema: string | null; quotedId: string | null; pedido: string; userId: string | null };
+  tema: string | null; quotedId: string | null; pedido: string; userId: string | null;
+  /** Rebater (29/10): o que a atendente disse da sugestão anterior (só com origin "outra"). */ critica?: string | null };
 
 /** A mensagem citada, só se for da mesma cliente (a tela mostra todas as conversas dela). */
 async function quotedMessage(contactId: string, id: string): Promise<PromptMessage | null> {
@@ -225,7 +227,7 @@ async function quotedMessage(contactId: string, id: string): Promise<PromptMessa
  * - "outra": a atendente pediu outra para o mesmo pedido.
  * Sempre respeita a chave ligada, a chave da API e o teto do mês/dia.
  */
-export async function claimSuggestion(dealId: string, opts: { origin?: "auto" | "outra"; requireWaiting?: boolean; userId?: string | null; now?: Date } & Pedido = {}): Promise<{ status: "reservada"; claim: Claim } | { status: "pulada"; motivo: SkipReason }> {
+export async function claimSuggestion(dealId: string, opts: { origin?: "auto" | "outra"; requireWaiting?: boolean; userId?: string | null; now?: Date; critica?: string | null } & Pedido = {}): Promise<{ status: "reservada"; claim: Claim } | { status: "pulada"; motivo: SkipReason }> {
   const origin = opts.origin ?? "auto";
   const now = opts.now ?? new Date();
   const s = await getAiSettings();
@@ -250,8 +252,9 @@ export async function claimSuggestion(dealId: string, opts: { origin?: "auto" | 
   if (budget !== "ok") return { status: "pulada", motivo: budget };
   const tema = normTema(opts.tema) || null;
   const pedido = pedidoKey({ tema, quotedId });
-  const values = { dealId, lastMessageId: last.id, pedido, resumo: "", sugestao: "", model, origin, requestedBy: opts.userId ?? null, createdAt: now };
-  const claimOf = (id: string): Claim => ({ id, dealId, lastMessageId: last.id, origin, apiKey, model, baseUrl, tema, quotedId, pedido, userId: opts.userId ?? null });
+  const critica = origin === "outra" ? opts.critica?.replace(/\s+/g, " ").trim().slice(0, MAX_PEDIDO_CHARS) || null : null;
+  const values = { dealId, lastMessageId: last.id, pedido, resumo: "", sugestao: "", model, origin, requestedBy: opts.userId ?? null, createdAt: now, critica };
+  const claimOf = (id: string): Claim => ({ id, dealId, lastMessageId: last.id, origin, apiKey, model, baseUrl, tema, quotedId, pedido, userId: opts.userId ?? null, critica });
   if (origin === "outra") {
     const [row] = await db.insert(aiSuggestions).values(values).returning({ id: aiSuggestions.id });
     return { status: "reservada", claim: claimOf(row.id) };
@@ -483,7 +486,9 @@ export async function fillSuggestion(claim: Claim, opts: { caller?: Caller; now?
         .where(and(eq(aiSuggestions.lastMessageId, claim.lastMessageId), eq(aiSuggestions.pedido, claim.pedido), ne(aiSuggestions.sugestao, ""))).orderBy(asc(aiSuggestions.createdAt))).map((p) => p.sugestao)
       : undefined;
     const citada = claim.quotedId ? await quotedMessage(conv.deal.contactId, claim.quotedId) : null;
-    const data: ConversationData = { ...conv.data, previous, pedido: claim.tema || citada ? { tema: claim.tema, citada } : null };
+    // Rebater: a sugestão anterior deste pedido (a que a atendente viu) e o que ela disse.
+    const rebatida = claim.critica && previous?.length ? { anterior: previous.at(-1)!, critica: claim.critica } : null;
+    const data: ConversationData = { ...conv.data, previous, rebatida, pedido: claim.tema || citada ? { tema: claim.tema, citada } : null };
     const robo = roboResult(data, claim.model);
     const req = robo ? { system: "", user: "", free: null, combinado: null, greet: null } : await prepareRequest(conv.deal, data, casa, now);
     // Texto embaralhado: pede de novo 1 vez; o texto que fica já vem pós-processado (src/server/ai/pos.ts).
@@ -503,6 +508,8 @@ export async function fillSuggestion(claim: Claim, opts: { caller?: Caller; now?
       // Resposta vazia (não devia acontecer): fica registrada e descartada.
       dismissedAt: sugestao ? null : now,
     }).where(eq(aiSuggestions.id, claim.id));
+    // O que a IA disse que errou vira lição PENDENTE (só vale depois que a gestão aprovar). Nunca derruba a sugestão.
+    if (rebatida && sugestao && r.data.licao) await saveLicao({ suggestionId: claim.id, critica: rebatida.critica, licao: r.data.licao, userId: claim.userId }).catch((e) => console.error("[lição da IA]", e));
     return { status: "gerada", id: claim.id, costMicros: r.costMicros, usage: r.usage };
   } catch (e) {
     const err = e instanceof AiError ? e : null;
@@ -525,7 +532,7 @@ export async function fillSuggestion(claim: Claim, opts: { caller?: Caller; now?
  * Reserva e chama na hora (o "Outra" e o "Sugerir resposta", e os testes). "Sugerir resposta" de um pedido que já tem sugestão:
  * a guardada é reaproveitada ("ja_tem", sem gastar); se ela já foi usada, fechada ou falhou, a atendente está pedindo de novo → gera outra.
  */
-export async function generateForDeal(dealId: string, opts: { origin?: "auto" | "outra"; requireWaiting?: boolean; userId?: string | null; now?: Date; caller?: Caller } & Pedido = {}): Promise<GenerateResult> {
+export async function generateForDeal(dealId: string, opts: { origin?: "auto" | "outra"; requireWaiting?: boolean; userId?: string | null; now?: Date; caller?: Caller; critica?: string | null } & Pedido = {}): Promise<GenerateResult> {
   let c = await claimSuggestion(dealId, opts);
   if (c.status === "pulada" && c.motivo === "ja_tem" && !opts.requireWaiting && (await pedidoState(dealId, opts, opts.now)).state === "pode_pedir") c = await claimSuggestion(dealId, { ...opts, origin: "outra" });
   if (c.status === "pulada") return c;

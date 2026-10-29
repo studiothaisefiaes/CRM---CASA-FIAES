@@ -20,6 +20,9 @@ export async function markSeen(dealId: string, _userId: string, now = new Date()
   if (rows.length) await emit("conversa_lida", { dealId });
 }
 
+/** Gestão que também recebe conversas (a Cati atende a recepção, 29/10) é colega cobrindo: abrir marca como lida. */
+export const peeks = (perms: readonly string[]) => can(perms, "alertas.escalada") && !can(perms, "distribuicao.receber");
+
 /**
  * "Espiar sem assumir" (pesquisa 20/10; Huggy e o modo espião do ChatGuru): a gestão (quem recebe escaladas) que abre a conversa de uma
  * atendente NÃO marca como lida para a dona: a bolinha de não lida e o aviso "a cliente escreveu" continuam com ela. Responder marca.
@@ -27,7 +30,7 @@ export async function markSeen(dealId: string, _userId: string, now = new Date()
  * O visto azul do WhatsApp já seguia esta regra (`markConversationRead`: só a dona ou quem responde).
  */
 export async function isPeek(user: { id: string; perms: readonly string[] }, dealId: string): Promise<boolean> {
-  if (!can(user.perms, "alertas.escalada")) return false;
+  if (!peeks(user.perms)) return false;
   const [d] = await db.select({ ownerId: deals.ownerId }).from(deals).where(eq(deals.id, dealId));
   return !!d?.ownerId && d.ownerId !== user.id;
 }

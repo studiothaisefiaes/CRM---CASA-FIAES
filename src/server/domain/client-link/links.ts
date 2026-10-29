@@ -44,12 +44,15 @@ const principal = alias(professionals, "principal");
 /**
  * Os horários da visita (sem lista de espera e sem gêmeo), com a duração do horário (senão a do serviço) e o apelido da profissional.
  * É o que a CLIENTE vê (link, lembrete, remarcado): `pro` é quem atende para ela, a principal quando a profissional é assistente
- * (17/10: Sidney, assistente de Thaise, aparece como Thaise).
+ * (17/10: Sidney, assistente de Thaise, aparece como Thaise; 29/10: Maiara, quando atende junto com Thaise, também).
  */
 export async function visitAppointments(visitId: string): Promise<VisitAppt[]> {
   const rows = await db.select({
     id: appointments.id, startsAt: appointments.startsAt, durationMin: sql<number | null>`coalesce(${appointments.durationMin}, ${lists.durationMin})`,
-    status: appointments.status, service: appointments.serviceLabel, pro: sql<string | null>`coalesce(${principal.name}, ${professionals.name})`, contactId: appointments.contactId,
+    status: appointments.status, service: appointments.serviceLabel, contactId: appointments.contactId,
+    // Assistente fixa → a principal; assistente quando atende junto (Maiara com Thaise, 29/10) → a principal só se ela está na mesma visita.
+    pro: sql<string | null>`coalesce(${principal.name}, (select j.name from professionals j where j.id = ${professionals.assistsWith} and exists (
+      select 1 from appointments v where v.visit_id = ${appointments.visitId} and v.professional_id = j.id and v.avec_twin_of is null and v.status not like 'espera%')), ${professionals.name})`,
     name: sql<string | null>`coalesce(${contacts.name}, ${appointments.clientName})`,
   }).from(appointments).leftJoin(professionals, eq(professionals.id, appointments.professionalId)).leftJoin(principal, eq(principal.id, professionals.assistantOf))
     .leftJoin(lists, eq(lists.id, appointments.serviceId)).leftJoin(contacts, eq(contacts.id, appointments.contactId))

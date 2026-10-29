@@ -401,6 +401,7 @@ export async function recordOutbound(input: OutboundInput) {
     // Quem respondeu: pelo celular, quem assinou; sem assinatura (áudio, foto), conta para a dona.
     const responder = input.fromPhone ? (signer?.id ?? deal.ownerId ?? input.userId ?? null) : (input.userId ?? deal.ownerId ?? null);
     const [stage] = await tx.select().from(stages).where(eq(stages.id, deal.stageId));
+    const takeover = authorId && deal.ownerId && authorId !== deal.ownerId && (input.userId || signerOwner === authorId) ? authorId : null;
     if (deal.awaitingReplySince) {
       // Tempo de resposta conta só o expediente: mensagem das 23h respondida às 8h não é "9 horas de atraso".
       const waited = businessSecondsBetween(deal.awaitingReplySince.getTime(), at.getTime(), await getBusinessHours(tx));
@@ -412,10 +413,13 @@ export async function recordOutbound(input: OutboundInput) {
     await tx.update(deals).set({
       lastOutboundAt: at, awaitingReplySince: null, conversationArchivedAt: null, // a Casa escreveu: a conversa arquivada volta
       firstResponseAt: deal.firstResponseAt ?? (deal.awaitingReplySince ? at : null),
-      ownerId: deal.ownerId ?? input.userId ?? signerOwner ?? null,
+      // Quem responde assume (Cati 29/10: "se eu já estou falando com ela, tem que mudar para quem está atendendo"): a conversa passa para quem
+      // escreveu pelo CRM ou assinou no celular (equipe ativa). Sem autora (áudio sem assinatura), continua com a dona.
+      ownerId: takeover ?? deal.ownerId ?? input.userId ?? signerOwner ?? null,
       ...(authorId ? { lastReplyById: authorId, lastReplyVia: sentVia } : {}),
     }).where(eq(deals.id, dealId));
-    if (!deal.ownerId && !input.userId && signerOwner) await logEvent(tx, dealId, "assumiu", { de: null, para: signerOwner, motivo: "assinatura" }, signerOwner);
+    if (takeover) await logEvent(tx, dealId, "assumiu", { de: deal.ownerId, para: takeover, motivo: "respondeu" }, takeover);
+    else if (!deal.ownerId && !input.userId && signerOwner) await logEvent(tx, dealId, "assumiu", { de: null, para: signerOwner, motivo: "assinatura" }, signerOwner);
     else if (!deal.ownerId && input.userId) await logEvent(tx, dealId, "assumiu", { de: null, para: input.userId, motivo: "resposta_crm" }, input.userId);
     let warned = false;
     if (authorId && deal.ownerId && authorId !== deal.ownerId) warned = await warnOwnerRepliedByOther(tx, { dealId, ownerId: deal.ownerId, authorId, at });

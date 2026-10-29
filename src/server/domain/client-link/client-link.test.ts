@@ -55,7 +55,7 @@ describe("gerar o link (seção 9.4.1)", () => {
     const a = await ap();
     await ap({ serviceId: escova, serviceLabel: "Escova", professionalId: bia, startsAt: bahia("2026-10-16", "11:00"), durationMin: 40 });
     const r = await createClientLink({ appointmentId: a.id, via: "agenda", actorId: recepcao, now: NOW });
-    expect(r.text).toContain("\n✨ Corte feminino com Maiara e Escova com Bia\n");
+    expect(r.text).toContain("\n✨ 10h · Corte feminino com Maiara e 11h · Escova com Bia\n");
     expect((await db.select().from(clientLinks))[0].expiresAt.toISOString()).toBe(bahia("2026-10-17", "11:40").toISOString());
   });
 

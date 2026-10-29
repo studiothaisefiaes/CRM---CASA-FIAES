@@ -91,8 +91,8 @@ describe("alertas: sem nome repetido nem telefone cru", () => {
     expect(alertText.offer("Edson")).toBe("A dona não respondeu. Pode assumir Edson?");
   });
   it("outra pessoa respondeu a conversa da dona (aviso do Lote 1A): mesma frase, sem telefone", () => {
-    expect(alertText.repliedByOther("Catarina Souza", "Edson")).toBe("Catarina respondeu a conversa de Edson. Ela continua sua; se for para passar, use Transferir.");
-    expect(alertText.repliedByOther(null, "Edson")).toBe("Outra pessoa respondeu a conversa de Edson. Ela continua sua; se for para passar, use Transferir.");
+    expect(alertText.repliedByOther("Catarina Souza", "Edson")).toBe("Catarina respondeu a conversa de Edson. A conversa passou para ela (quem responde assume).");
+    expect(alertText.repliedByOther(null, "Edson")).toBe("Outra pessoa respondeu a conversa de Edson. A conversa passou para ela (quem responde assume).");
   });
   it("aniversário diz o dia e não promete mensagem pronta", () => {
     expect(alertText.birthday("Fulana", 17, 10)).toBe("Aniversário de Fulana dia 17/10. Que tal mandar um parabéns?");

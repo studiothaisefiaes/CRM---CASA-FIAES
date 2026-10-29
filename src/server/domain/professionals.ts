@@ -23,6 +23,7 @@ export type Professional = {
   workHours: WorkHours | null; color: PaletteKey | null; agendaPosition: number | null;
   /** Versão da foto (6B.16); null = sem foto. */ photoVersion: string | null;
   /** De quem é assistente (17/10); null = atende em nome próprio. */ assistantOf: string | null;
+  /** Assistente só quando atende junto (29/10, Maiara com Thaise): na visita com esta principal, a cliente vê a principal. */ assistsWith: string | null;
   /** Dados fiscais (Fase D): vínculo, CNPJ (14 dígitos) e razão social da parceira. */ bond: Bond | null; cnpj: string | null; legalName: string | null;
   /** Período do repasse da comissão (Fase A): a data sugerida no "A pagar" é o fim do último período fechado. */ payoutPeriod: PayoutPeriod;
 };
@@ -33,7 +34,7 @@ const LEGAL_NAME_MAX = 150;
 const toProfessional = (p: typeof professionals.$inferSelect, serviceIds: string[]): Professional => ({
   id: p.id, name: p.name, fullName: p.fullName, role: p.role, active: p.active, serviceIds,
   workHours: p.workHours ?? null, color: isPaletteKey(p.color) ? p.color : null, agendaPosition: p.agendaPosition,
-  photoVersion: photoVersionOf(p.photoPath), assistantOf: p.assistantOf ?? null, payoutPeriod: isPayoutPeriod(p.payoutPeriod) ? p.payoutPeriod : "mensal",
+  photoVersion: photoVersionOf(p.photoPath), assistantOf: p.assistantOf ?? null, assistsWith: p.assistsWith ?? null, payoutPeriod: isPayoutPeriod(p.payoutPeriod) ? p.payoutPeriod : "mensal",
   bond: (BONDS.includes(p.bond ?? "") ? p.bond : null) as Bond | null, cnpj: p.cnpj ?? null, legalName: p.legalName ?? null,
 });
 const isPayoutPeriod = (v: unknown): v is PayoutPeriod => PAYOUT_PERIODS.includes(v as PayoutPeriod);
@@ -198,7 +199,7 @@ async function assertAssistantOf(tx: Tx, id: string, principalId: string) {
   }
 }
 
-export async function updateProfessional(id: string, input: { name?: string; fullName?: string | null; role?: string | null; serviceIds?: string[]; active?: boolean; force?: boolean; assistantOf?: string | null; bond?: Bond | null; cnpj?: string | null; legalName?: string | null; payoutPeriod?: PayoutPeriod }, userId: string, now = new Date()): Promise<void> {
+export async function updateProfessional(id: string, input: { name?: string; fullName?: string | null; role?: string | null; serviceIds?: string[]; active?: boolean; force?: boolean; assistantOf?: string | null; assistsWith?: string | null; bond?: Bond | null; cnpj?: string | null; legalName?: string | null; payoutPeriod?: PayoutPeriod }, userId: string, now = new Date()): Promise<void> {
   if (input.payoutPeriod !== undefined && !isPayoutPeriod(input.payoutPeriod)) throw new UserFacingError("Escolha Mensal, Quinzenal ou Semanal.");
   await db.transaction(async (tx) => {
     // 6.4, regra 14: desativar com horários futuros é recusado com a lista; a gestão pode forçar, e fica registrado.
@@ -222,6 +223,11 @@ export async function updateProfessional(id: string, input: { name?: string; ful
     if (patch.assistantOf !== undefined) {
       if (patch.assistantOf) await assertAssistantOf(tx, id, patch.assistantOf);
       set.assistantOf = patch.assistantOf;
+    }
+    if (patch.assistsWith !== undefined) {
+      if (patch.assistsWith === id) throw new UserFacingError("Escolha outra profissional.");
+      if (patch.assistsWith) { const [p] = await tx.select({ id: professionals.id }).from(professionals).where(eq(professionals.id, patch.assistsWith)); if (!p) throw new UserFacingError("Essa profissional não existe mais."); }
+      set.assistsWith = patch.assistsWith;
     }
     // Dados fiscais: vínculo "parceira" (salão-parceiro, Lei 13.352/2016) exige o CNPJ válido dela, o que já está gravado ou o novo.
     if (patch.bond !== undefined || patch.cnpj !== undefined || patch.legalName !== undefined) {

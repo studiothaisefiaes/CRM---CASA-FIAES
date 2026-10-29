@@ -36,6 +36,19 @@ describe("ligação que chega só com o @lid (20/10)", () => {
     expect((await calls())[0].contactId).toBe(cliente.id);
     vi.restoreAllMocks();
   });
+
+  it("29/10: atendida no celular vem com o @lid da própria Casa num lado; a ligação vai para quem ligou, nunca para o contato com o número da Casa", async () => {
+    const [cliente] = await db.insert(contacts).values({ name: "Sônia Fictícia", phoneE164: "+5571999990061" }).returning();
+    const [casa] = await db.insert(contacts).values({ name: "Cadastro com o número da Casa", phoneE164: "+5571933330000", waLid: "205000000000001" }).returning();
+    vi.spyOn(lidLookup, "phoneForLid").mockImplementation(async (l) => (l === "205000000000001" ? "+557133330000" : null));
+    await ingestEvolution(callEvent("L2", "accept", 30, { chatId: "205000000000001@lid", from: JID }));
+    expect((await calls()).map((m) => m.contactId)).toEqual([cliente.id]);
+    // Os dois lados são a Casa: não entra.
+    await ingestEvolution(callEvent("L3", "accept", 60, { chatId: "205000000000001@lid", from: "205000000000001@lid" }));
+    expect((await calls()).map((m) => m.contactId)).toEqual([cliente.id]);
+    expect((await calls()).some((m) => m.contactId === casa.id)).toBe(false);
+    vi.restoreAllMocks();
+  });
 });
 
 describe("ligações: o registro do WhatsApp (callLogMesssage)", () => {

@@ -85,6 +85,9 @@ export const FUNCOES: FuncaoDef[] = [
     enviaParaCliente: false, padraoLigada: true },
   { key: "unir", label: "Unir cadastros", description: "Desligada, some a opção de unir cadastros duplicados em Clientes. Não manda nada para a cliente.",
     enviaParaCliente: false, padraoLigada: true },
+  { key: "retomada_ia", label: "Retomada pela IA", description: "Retomar sem mensagem escrita (inclusive a retomada que a sugestão da IA propôs) deixa de ser só lembrete: no dia e na hora marcados, a IA lê a conversa, escreve a mensagem a partir do que a atendente disse (ou do motivo) e ENVIA SOZINHA, assinada por quem marcou. Não sai se a cliente escreveu depois, se a conversa foi marcada “Não é cliente” ou se passou do limite do dia: aí fica o lembrete para a equipe. Desligada, Retomar sem texto volta a ser só lembrete.",
+    enviaParaCliente: true, padraoLigada: false,
+    params: [{ key: "max_dia", label: "No máximo por dia", unit: "mensagens", min: 1, max: 200, default: 40 }] },
 ];
 
 export type FuncoesState = Record<string, { on?: boolean; params?: Record<string, number>; textos?: Record<string, string> }>;

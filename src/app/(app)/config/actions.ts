@@ -95,7 +95,7 @@ export const saveServiceCycleDaysAction = async (id: string, v: unknown) => runS
 
 /* Profissionais (quem faz cada serviço; escolhida ao Agendar). */
 const proSchema = z.object({ name: z.string().max(200), fullName: z.string().max(300).nullish(), role: z.string().max(200).nullish(), serviceIds: z.array(z.string().uuid()).max(100) });
-const proPatch = z.object({ name: z.string().max(200).optional(), fullName: z.string().max(300).nullish(), role: z.string().max(200).nullish(), serviceIds: z.array(z.string().uuid()).max(100).optional(), active: z.boolean().optional(), force: z.boolean().optional(), assistantOf: z.string().uuid().nullish(), bond: z.enum(["parceira", "clt", "outro"]).nullish(), cnpj: z.string().max(30).nullish(), legalName: z.string().max(300).nullish(), payoutPeriod: z.enum(PAYOUT_PERIODS).optional() });
+const proPatch = z.object({ name: z.string().max(200).optional(), fullName: z.string().max(300).nullish(), role: z.string().max(200).nullish(), serviceIds: z.array(z.string().uuid()).max(100).optional(), active: z.boolean().optional(), force: z.boolean().optional(), assistantOf: z.string().uuid().nullish(), assistsWith: z.string().uuid().nullish(), bond: z.enum(["parceira", "clt", "outro"]).nullish(), cnpj: z.string().max(30).nullish(), legalName: z.string().max(300).nullish(), payoutPeriod: z.enum(PAYOUT_PERIODS).optional() });
 /** Dados da profissional: dia a dia. Os serviços que ela faz (quem faz o quê) pedem também "Mudar serviços e preços". */
 export const createProfessionalAction = async (v: z.input<typeof proSchema>) => run(async (u) => {
   const p = proSchema.parse(v);

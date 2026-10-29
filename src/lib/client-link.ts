@@ -82,25 +82,32 @@ export function linkPageState(appts: LinkAppt[], issuedStartsAt: Date, now: Date
   return { ...base, state, canAct: true, canCancel: now.getTime() <= start.getTime() - cancelarAteHoras * HOUR_MS };
 }
 
-/** "Corte feminino com Ana e Escova com Bia". */
-export function servicesText(items: { service: string; pro: string | null }[]): string {
+/** "Corte feminino com Ana e Escova com Bia" (horas diferentes na visita: "11h Corte feminino com Ana e 13h Escova com Bia"). */
+export function servicesText(items: ServiceItem[]): string {
   const parts = serviceParts(items);
   return parts.length <= 1 ? parts.join("") : `${parts.slice(0, -1).join(", ")} e ${parts.at(-1)}`;
 }
+type ServiceItem = { service: string; pro: string | null; start?: Date | null };
 /**
  * Os serviços por quem atende, numa frase por profissional: "Luzes e Mechas e Coloração com Thaise" (17/10), na ordem em que aparecem.
  * O lembrete põe uma por linha. Serviço sem profissional fica sozinho.
+ * Visita com serviços em horas diferentes (Luciana 29/10: Thaise às 11h e Jackson remanejado para 13h; o lembrete dizia "às 11h" para os dois):
+ * cada linha leva a própria hora ("11h · Ritual de Tratamento com Thaise").
  */
-export function serviceParts(items: { service: string; pro: string | null }[]): string[] {
-  const groups: { pro: string | null; services: string[] }[] = [];
+export function serviceParts(items: ServiceItem[]): string[] {
+  const hours = new Set(items.map((i) => (i.start ? messageHour(i.start) : "")));
+  const withHour = hours.size > 1;
+  const groups: { key: string; pro: string | null; hour: string; services: string[] }[] = [];
   for (const i of items) {
-    const key = i.pro ? displayName(i.pro) : null;
-    const g = key ? groups.find((x) => x.pro === key) : undefined;
-    if (g) g.services.push(displayName(i.service)); else groups.push({ pro: key, services: [displayName(i.service)] });
+    const pro = i.pro ? displayName(i.pro) : null;
+    const hour = withHour && i.start ? messageHour(i.start) : "";
+    const key = `${hour}|${pro ?? ""}`;
+    const g = pro ? groups.find((x) => x.key === key) : undefined;
+    if (g) g.services.push(displayName(i.service)); else groups.push({ key, pro, hour, services: [displayName(i.service)] });
   }
   // Sem artigo antes do nome ("com Jackson"); o que vem do Avec em MAIÚSCULAS sai em Título.
   const join = (p: string[]) => (p.length <= 1 ? p.join("") : `${p.slice(0, -1).join(", ")} e ${p.at(-1)}`);
-  return groups.map((g) => (g.pro ? `${join(g.services)} com ${g.pro}` : join(g.services)));
+  return groups.map((g) => `${g.hour ? `${g.hour} · ` : ""}${g.pro ? `${join(g.services)} com ${g.pro}` : join(g.services)}`);
 }
 
 /** "sexta, 16 de outubro · 10:00 às 11:20" (sem duração: "às 10:00"). */

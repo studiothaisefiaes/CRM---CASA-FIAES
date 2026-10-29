@@ -12,6 +12,7 @@ import { assertCanActOnDeal } from "@/server/domain/deal-scope";
 import { resumeFromSuggestion } from "@/server/domain/retomada";
 import { transcreverDitado } from "@/server/ai/ditado";
 import { revalidatePath } from "next/cache";
+import { funcaoLigada } from "@/server/domain/funcoes";
 
 /** Sugestão de resposta por IA na conversa. Nenhuma destas ações envia mensagem: "Usar" só marca (o texto vai para a caixa no navegador). */
 export type AiResult<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
@@ -56,13 +57,13 @@ const WHY: Partial<Record<SkipReason, string>> = {
   citada_sumiu: "A mensagem marcada para responder não está mais na conversa.",
 };
 
-const pedidoSchema = z.object({ tema: z.string().max(1000).nullish(), quotedId: z.string().nullish() }).nullish();
+const pedidoSchema = z.object({ tema: z.string().max(1000).nullish(), quotedId: z.string().nullish(), critica: z.string().max(1000).nullish() }).nullish();
 
 /**
- * "Sugerir resposta" e "Outra", a qualquer momento (a última pode ser da Casa): gera na hora (respeitando o teto) e devolve para a tela trocar.
+ * "Sugerir resposta", "Outra" e "Rebater" (`pedido.critica`), a qualquer momento (a última pode ser da Casa): gera na hora (respeitando o teto) e devolve para a tela trocar.
  * `pedido`: o tema opcional e a mensagem marcada para responder (id de mensagem ainda não gravada é ignorado). O mesmo pedido reaproveita a guardada.
  */
-export async function requestAiSuggestionAction(dealId: string, kind: "primeira" | "outra", pedido?: { tema?: string | null; quotedId?: string | null } | null): Promise<AiResult<AiView>> {
+export async function requestAiSuggestionAction(dealId: string, kind: "primeira" | "outra", pedido?: { tema?: string | null; quotedId?: string | null; critica?: string | null } | null): Promise<AiResult<AiView>> {
   try {
     const user = await assertPerm("atendimento.ver");
     const id = uuid.parse(dealId);
@@ -70,7 +71,9 @@ export async function requestAiSuggestionAction(dealId: string, kind: "primeira"
     const p = pedidoSchema.parse(pedido) ?? {};
     const ped = { tema: p.tema ?? null, quotedId: p.quotedId && uuid.safeParse(p.quotedId).success ? p.quotedId : null };
     // Pedido da atendente: nunca exige a cliente por último (17/10: vale com a última da Casa, Resolvida ou encerrada).
-    const r = await generateForDeal(id, { origin: z.enum(["primeira", "outra"]).parse(kind) === "outra" ? "outra" : "auto", requireWaiting: false, userId: user.id, ...ped });
+    // Rebater (29/10): "Outra" com o que a atendente disse; a IA refaz e anota o que errou (lição pendente para a gestão).
+    const critica = kind === "outra" ? p.critica?.trim() || null : null;
+    const r = await generateForDeal(id, { origin: z.enum(["primeira", "outra"]).parse(kind) === "outra" ? "outra" : "auto", requireWaiting: false, userId: user.id, critica, ...ped });
     if (r.status === "pulada" && r.motivo !== "ja_tem") return { ok: false, error: WHY[r.motivo] ?? "Não deu para gerar agora." };
     if (r.status === "falhou") return { ok: false, error: aiFailureMessage(r.erro) };
     return { ok: true, data: view(await suggestionState(id, undefined, ped)) };
@@ -87,8 +90,13 @@ export async function markAiSuggestionAction(input: { id: string; dealId: string
 }
 
 /* ---------- "Escrever com IA" no Retomar/Programar mensagem: só devolve o texto; nada é programado aqui ---------- */
-export async function aiProgramadaAvailableAction(): Promise<AiResult<boolean>> {
-  try { await assertPerm("atendimento.ver"); return { ok: true, data: await programadaAvailable() }; } catch (e) { return fail(e); }
+/** `escrever`: o "Escrever com IA"; `auto`: a Retomada pela IA (sem texto, a IA escreve e envia na hora) está ligada. */
+export async function aiProgramadaAvailableAction(): Promise<AiResult<{ escrever: boolean; auto: boolean }>> {
+  try {
+    await assertPerm("atendimento.ver");
+    const escrever = await programadaAvailable();
+    return { ok: true, data: { escrever, auto: escrever && await funcaoLigada("retomada_ia") } };
+  } catch (e) { return fail(e); }
 }
 
 const WHY_PROG: Partial<Record<SkipReason | "sem_tema", string>> = { ...WHY, sem_tema: "Diga em poucas palavras sobre o que é a mensagem.", conversa_fechada: "Não achei esta conversa." };

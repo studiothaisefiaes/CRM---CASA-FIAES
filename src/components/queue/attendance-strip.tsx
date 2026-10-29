@@ -1,5 +1,5 @@
 "use client";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import type { AttendanceDue } from "@/server/queries/queue";
 import { setAttendanceAction, undoMissedAttendanceAction } from "@/app/(app)/funil/actions";
@@ -22,15 +22,26 @@ const dia = (iso: string) => new Date(iso).toLocaleDateString("pt-BR", { weekday
  * cada item é uma coluna (nome e hora em cima, botões embaixo: P9, 17/10, o nome era cortado em "Flávia G…") e a lista mostra 1 item por vez e rola (a frase de ajuda fica só para leitor de tela), para a primeira conversa da Fila aparecer sem rolar. Fica FORA do listbox da Fila
  * (botões dentro de uma `option` não são válidos): é uma lista comum com botões. Faltou cria a próxima ação "Remarcar".
  * Sai da lista assim que é marcado (o servidor não devolve mais quem já foi conferido).
+ * "Atrasada" (Cati 29/10: confirmou e ainda não chegou; não é Veio nem Faltou): some daqui por 30 min e volta a perguntar. Não muda nada no servidor.
  */
+const ATRASO_MS = 30 * 60_000;
 export function AttendanceStrip({ items }: { items: AttendanceDue[] }) {
   const toast = useToast();
   const openLead = useOpenLead();
   const [pending, start] = useTransition();
   const [gone, setGone] = useState<ReadonlySet<string>>(new Set());
   const [open, setOpen] = useState(true); // começa aberta: é pendência
+  const [late, setLate] = useState<Record<string, number>>({});
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  // A próxima "Atrasada" que vence: o item volta sozinho.
+  useEffect(() => {
+    const next = Math.min(...Object.values(late).filter((t) => t > nowMs));
+    if (!Number.isFinite(next)) return;
+    const t = setTimeout(() => setNowMs(Date.now()), next - nowMs + 500);
+    return () => clearTimeout(t);
+  }, [late, nowMs]);
   const confirmNoShow = useConfirmNoShow();
-  const list = items.filter((i) => !gone.has(i.dealId));
+  const list = items.filter((i) => !gone.has(i.dealId) && !((late[i.dealId] ?? 0) > nowMs));
   if (!list.length) return null;
   const toggle = () => setOpen((o) => !o);
 
@@ -86,6 +97,11 @@ export function AttendanceStrip({ items }: { items: AttendanceDue[] }) {
                     <Icon size={14} aria-hidden />{label}
                   </button>
                 ))}
+                <button type="button" disabled={pending} aria-label={`Atrasada: ${name} (pergunta de novo em 30 min)`} title="Ainda não chegou: pergunta de novo em 30 min"
+                  onClick={() => { const n = Date.now(); setNowMs(n); setLate((l) => ({ ...l, [i.dealId]: n + ATRASO_MS })); toast(`${name}: pergunto de novo em 30 min`); }}
+                  className="inline-flex min-h-11 items-center rounded-[var(--radius-control)] border border-line-strong bg-paper px-2.5 text-sm font-medium text-graphite transition-colors hover:bg-paper-2 disabled:opacity-60 lg:min-h-9">
+                  Atrasada
+                </button>
                 </span>
               </motion.li>
             );

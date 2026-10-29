@@ -32,6 +32,8 @@ export type CasaData = {
    * `[[material:/atalho]]`; o servidor confere e prende o anexo na sugestão. Vazio/ausente = a seção nem aparece (o bloco fica igual).
    */
   materiais?: Material[];
+  /** Lições que a gestão aprovou (rebater, 29/10): regras curtas aprendidas com as correções da equipe. Vazio/ausente = a seção nem aparece. */
+  licoes?: string[];
 };
 
 export type Material = { atalho: string; kind: "image" | "video"; quando: string; inicio: string };
@@ -64,6 +66,8 @@ export type ConversationData = {
   equipe?: EquipeContext | null;
   /** O pedido da atendente no "Sugerir resposta": tema e/ou a mensagem que ela marcou para responder. */
   pedido?: PedidoPrompt | null;
+  /** Rebater (29/10): a sugestão que a atendente não aprovou e o que ela disse. A nova segue o que ela disse e a IA diz o que errou (`licao`). */
+  rebatida?: { anterior: string; critica: string } | null;
   /** Histórico da cliente na Casa, fotos e estimativa já enviadas (src/server/ai/cliente.ts). Ausente: sem as linhas. */
   cliente?: ClienteContext | null;
   /** Ausências das profissionais nos próximos 7 dias, pelos bloqueios da agenda ("Thaise Fiaes fora de 20 a 22/10"). */
@@ -192,7 +196,7 @@ const RETOMADA = `Cancelamento ou desmarcação SEM nova data (ela cancelou, des
 const HOURS = `Quando a conversa trouxer a linha "Horários livres", cada opção tem um id entre parênteses (h1, h2…). Aí é PROIBIDO dizer "vou verificar", "vou conferir a agenda", "vou ver e te falo" ou "já te retorno": proponha 1 horário concreto da lista e, no máximo, 1 alternativa da lista, perguntando se pode reservar (ex.: "Tenho terça, 21/10, às 15h com <profissional da opção>. Posso reservar pra você?"). Se ela pediu dia ou período ("terça à tarde"), o horário principal é desse dia/período. Copie dia, hora e profissional exatamente da opção (nome só com a inicial maiúscula); nunca troque a profissional. Se a linha disser "nenhum livre <no período>; os mais próximos", diga com carinho que naquele período não tem e ofereça o mais próximo. Se a linha disser "só com <nome>", esse serviço é SÓ com ela: nunca cite nem ofereça outra profissional para ele (ex.: avaliação do Método é só com Thaise). Pedido de horário NÃO é motivo de precisa_humano: a atendente revisa antes de enviar. Nunca diga que já está agendado. Só quando a linha disser "nenhum nos próximos dias", diga que vai ver a agenda para ela, sem prometer retorno nem prazo (nada de "já te retorno", "te passo os horários").
 Quando vier "Horário combinado (hc)": a cliente aceitou o horário que a Casa ofereceu. Escreva a confirmação no padrão da Casa, do jeito que vier no contexto entre <confirmacao> e </confirmacao> ("Confirmado agendamento de … com …", a data por extenso e a hora cada uma na sua linha, em negrito), com no máximo 1 frase curta e calorosa a mais. A atendente marca na agenda antes de enviar.
 Datas: o dia de hoje é o de "Agora". Fale do dia pela data (ex.: "sexta, 17/10"); só diga "hoje", "amanhã" ou "ontem" depois de conferir com "Agora" (depois da meia-noite, o "amanhã" de uma mensagem de ontem já é hoje). Horário oferecido numa mensagem antiga: cite pela data, nunca "o de ontem".`;
-const OUTPUT = `resumo: 1 frase do que a cliente quer agora. motivo: vazio se precisa_humano=false. horario: o id do horário principal que a mensagem propõe ou confirma (ex.: "h3" ou "hc"); vazio se não há horário na mensagem. retomar_dias: 0, a não ser no cancelamento sem nova data (veja Horários).`;
+const OUTPUT = `resumo: 1 frase do que a cliente quer agora. motivo: vazio se precisa_humano=false. horario: o id do horário principal que a mensagem propõe ou confirma (ex.: "h3" ou "hc"); vazio se não há horário na mensagem. retomar_dias: 0, a não ser no cancelamento sem nova data (veja Horários). licao: vazio, a não ser quando o pedido traz <rebatida>.`;
 
 /** Serviços numa linha por categoria: "Cabelo: Corte R$ 120,00 (60 min); Escova a partir de R$ 80,00; Luzes sob consulta". */
 function servicesBlock(services: CasaData["services"]): string {
@@ -263,6 +267,7 @@ export function buildSystem(casa: CasaData): string {
     ...section("Objeções", m("objecoes")),
     ...section("Exemplos", m("exemplos") ? `Respostas ideais (o jeito, não o texto para copiar):\n${m("exemplos")}` : null),
     ...section("Materiais para enviar", materiaisBlock(casa.materiais ?? [])),
+    ...section("Lições aprendidas", casa.licoes?.length ? ["Correções que a equipe fez em sugestões antigas, aprovadas pela gestão. Siga sempre:", ...casa.licoes.map((l) => `- ${clean(l, 300)}`)].join("\n") : null),
     "## Resposta",
     OUTPUT,
   ].join("\n");
@@ -354,7 +359,15 @@ function combinadoLines(k: Combinado | null | undefined): string[] {
 
 export function buildUser(c: ConversationData): string {
   const out = [...contextLines(c), ...pedidoLines(c)];
-  if (c.previous?.length) out.push("Escreva uma versão diferente destas:", ...c.previous.map((p) => `- ${clean(p, MAX_EXAMPLE_CHARS)}`));
+  if (c.rebatida) {
+    // Rebater: a correção da atendente manda (vale mais que o estilo e que o pedido padrão; nunca mais que as regras de NUNCA da skill).
+    out.push("<rebatida>",
+      `A atendente NÃO aprovou esta sugestão sua: "${clean(c.rebatida.anterior, MAX_RECENT_MSG_CHARS)}"`,
+      `O que ela disse (falado ou digitado): ${clean(c.rebatida.critica, MAX_PEDIDO_CHARS)}`,
+      "Escreva a mensagem de novo seguindo exatamente o que ela disse; o resto da sugestão anterior só fica se ela não pediu para mudar. As regras de NUNCA continuam valendo.",
+      "Em licao, diga em 1 frase o que você errou, escrita como regra geral para as próximas conversas (ex.: \"Não oferecer horário quando a cliente só perguntou o preço.\"), sem nome nem dado da cliente.",
+      "</rebatida>");
+  } else if (c.previous?.length) out.push("Escreva uma versão diferente destas:", ...c.previous.map((p) => `- ${clean(p, MAX_EXAMPLE_CHARS)}`));
   return out.join("\n");
 }
 

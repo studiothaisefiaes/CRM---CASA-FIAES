@@ -507,7 +507,7 @@ export const outbox = pgTable("outbox", {
   kind: text("kind").notNull(),
   text: text("text").notNull(),
   /** Opções da enquete (lista) ou { values, source, ... }: `source` diz de onde veio ("automacao:<id>" | "auto_resposta") e `awaiting` / `scheduledAt` / `stage` guardam o que valia ao enfileirar, para reconferir na hora de enviar; `messageId` é a mensagem pendente criada na conversa. */
-  options: jsonb("options").$type<string[] | { values?: string[]; source?: string; awaiting?: string; scheduledAt?: string; stage?: string; messageId?: string; cancelIfReply?: boolean; sendAt?: string; visitStart?: string; fileId?: string; caption?: string; visitId?: string } | null>(),
+  options: jsonb("options").$type<string[] | { values?: string[]; source?: string; awaiting?: string; scheduledAt?: string; stage?: string; messageId?: string; cancelIfReply?: boolean; sendAt?: string; visitStart?: string; fileId?: string; caption?: string; visitId?: string; taskId?: string; /** Retomada pela IA: o que a mensagem deve dizer (o texto sai na hora). */ ia?: string } | null>(),
   /** pending | sending | sent | failed | cancelled */
   status: text("status").notNull().default("pending"),
   notBefore: timestamp("not_before", { withTimezone: true }).notNull().defaultNow(),
@@ -648,6 +648,8 @@ export const professionals = pgTable("professionals", {
    * cliente e IA mostram o nome dela; dentro do CRM a equipe vê "Sidney (assistente de Thaise)". Vazio = atende em nome próprio.
    */
   assistantOf: uuid("assistant_of").references((): AnyPgColumn => professionals.id, { onDelete: "set null" }),
+  /** Assistente quando atende junto (0097): atende em nome próprio, mas na visita com esta principal o serviço dela aparece com a principal. */
+  assistsWith: uuid("assists_with").references((): AnyPgColumn => professionals.id, { onDelete: "set null" }),
   /** Regras da comissão desta profissional (mesmo formato de settings.comissao_regras); vazio = segue as da Casa. */
   commissionRules: jsonb("commission_rules").$type<Record<string, unknown>>(),
   /** Período do repasse da comissão: mensal (padrão) | quinzenal | semanal (domingo a sábado). */
@@ -1584,6 +1586,8 @@ export const aiSuggestions = pgTable("ai_suggestions", {
   /** A resposta pronta (universal, com foto/vídeo) que a IA indicou para ir junto (0094): o "Usar" prende o anexo na caixa e o texto vai
    *  como legenda. Só proposta: nada sai sem a atendente apertar Enviar. Vazio = nenhuma. */
   quickReplyId: uuid("quick_reply_id").references(() => lists.id, { onDelete: "set null" }),
+  /** Rebater (0097): o que a atendente disse da sugestão anterior; esta é a refeita. */
+  critica: text("critica"),
   requestedBy: uuid("requested_by").references(() => users.id, { onDelete: "set null" }),
   createdAt: createdAt(),
   usedAt: timestamp("used_at", { withTimezone: true }),
@@ -1748,6 +1752,19 @@ export const financeCategories = pgTable("finance_categories", {
   position: integer("position").notNull().default(0),
   createdAt: createdAt(),
 }, (t) => [uniqueIndex("finance_categories_name_uq").on(sql`lower(${t.name})`)]);
+
+/** O que a IA disse que errou ao ser rebatida (0097). Só entra no pedido da IA depois que a gestão aprova ("aprovada"). */
+export const aiLicoes = pgTable("ai_licoes", {
+  id: id(),
+  suggestionId: uuid("suggestion_id").references(() => aiSuggestions.id, { onDelete: "set null" }),
+  critica: text("critica").notNull(),
+  licao: text("licao").notNull(),
+  status: text("status").$type<"pendente" | "aprovada" | "descartada">().notNull().default("pendente"),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  decidedBy: uuid("decided_by").references(() => users.id, { onDelete: "set null" }),
+  decidedAt: timestamp("decided_at", { withTimezone: true }),
+}, (t) => [index("ai_licoes_status_idx").on(t.status, t.createdAt)]);
 
 /** Contas bancárias da Casa (onde as despesas saem e onde cada forma de pagamento cai). */
 export const bankAccounts = pgTable("bank_accounts", {

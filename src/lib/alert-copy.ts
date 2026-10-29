@@ -95,7 +95,7 @@ export function lastMessageTime(ms: number, now: number): string {
   return `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)}`;
 }
 export const ATTENDANCE_TITLE = "Ela veio?";
-export const ATTENDANCE_HELP = "Já passou do horário. Toque em Veio ou Faltou.";
+export const ATTENDANCE_HELP = "Já passou do horário. Toque em Veio ou Faltou (Atrasada: pergunto de novo em 30 min).";
 export const SUMMARY_HELP = "O topo da Fila: as abas Todas, Não lidas (mensagem da cliente que ninguém abriu) e Resolvidas. Minhas, Esperando, Sem dono, Atrasados, Combinados, etapa, dona e etiqueta ficam no botão Filtros; o que estiver ligado aparece embaixo da busca, com ✕ para tirar.";
 export const ARCHIVED_ROW = "resolvida · volta se a cliente escrever";
 
@@ -184,7 +184,7 @@ export const alertText = {
   forwardFailed: (dest: string | null, what: string, why: string) =>
     `Encaminhamento para ${dest ?? "uma conversa que não existe mais"}: ${what}. ${/[.!?]$/.test(why.trim()) ? why.trim() : `${why.trim()}.`}`,
   /** Lote 1A: outra pessoa respondeu a conversa da dona (a dona não muda). */
-  repliedByOther: (actor: string | null, client: string) => `${firstName(actor) ?? "Outra pessoa"} respondeu a conversa de ${client}. Ela continua sua; se for para passar, use Transferir.`,
+  repliedByOther: (actor: string | null, client: string) => `${firstName(actor) ?? "Outra pessoa"} respondeu a conversa de ${client}. A conversa passou para ela (quem responde assume).`,
   birthday: (client: string, day: number, month: number) => `Aniversário de ${client} dia ${pad(day)}/${pad(month)}. Que tal mandar um parabéns?`,
   autoSendFailed: (client: string, why?: string) => `Mensagem automática para ${client} não saiu${why ? ` (${why})` : ""}. Abra a conversa e envie manualmente.`,
   /** Lote 5: alguém chamou a pessoa com @ numa nota interna. */

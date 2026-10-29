@@ -16,6 +16,9 @@ import { dueLabel } from "@/lib/next-action";
 import { bahiaParts } from "@/lib/schedule";
 import { cn } from "@/lib/cn";
 
+/** O aviso da Retomada pela IA (src/server/domain/scheduled.ts `iaPlaceholder`): editar abre com o pedido, não com o aviso. */
+const IA_PREFIX = /^✨ A IA escreve na hora: /;
+
 type Params = { quem: "minhas" | "todas"; periodo: "hoje" | "7d" | "todas"; q: string };
 const TZ = "America/Bahia";
 const CHIP = "inline-flex min-h-9 items-center rounded-full border px-3.5 text-sm font-medium transition-colors pointer-coarse:min-h-11";
@@ -157,7 +160,7 @@ export function ProgramadasView({ data, params, onlyOwnScope, nowIso }: { data: 
 
       {editing && (
         <RetomarDialog key={`e${editing.n}`} open onClose={() => setEditing(null)} dealIds={[editing.row.dealId]} name={displayName(editing.row.name)}
-          initialText={editing.row.text} initialMotivo={editing.row.motivo ?? ""} initialAt={Date.parse(editing.row.sendAt)} initialCancela={editing.row.cancelIfReply} editOutboxId={editing.row.id}
+          initialText={IA_PREFIX.test(editing.row.text) ? "" : editing.row.text} initialTema={IA_PREFIX.test(editing.row.text) ? editing.row.text.replace(IA_PREFIX, "") : ""} initialMotivo={editing.row.motivo ?? ""} initialAt={Date.parse(editing.row.sendAt)} initialCancela={editing.row.cancelIfReply} editOutboxId={editing.row.id}
           onDone={(r) => { setEditing(null); toast(r.texto ? `Mensagem atualizada · ${dueLabel(Date.parse(r.dueAt), Date.now())}` : "Virou lembrete: a mensagem não sai mais", "ok"); router.refresh(); }} />
       )}
       {cancelling && (

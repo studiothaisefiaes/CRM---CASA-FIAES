@@ -171,10 +171,10 @@ export async function setConversationStatusAction(dealId: string, status: Conver
 
 /* ---------- Retomada (nova organização, 16/10): uma ação só, lembrete ou mensagem programada ---------- */
 const resumeInput = z.object({
-  dueAt: z.string().min(10).max(40), motivo: z.string().max(120).nullish(), texto: z.string().max(4000).nullish(), cancelIfReply: z.boolean().optional(), assigneeId: uuid.nullish(),
+  dueAt: z.string().min(10).max(40), motivo: z.string().max(120).nullish(), texto: z.string().max(4000).nullish(), cancelIfReply: z.boolean().optional(), assigneeId: uuid.nullish(), ia: z.string().max(1000).nullish(),
 });
 type ResumeIn = z.input<typeof resumeInput>;
-const toResume = (v: z.output<typeof resumeInput>) => ({ dueAt: new Date(v.dueAt), motivo: v.motivo, texto: v.texto, cancelIfReply: v.cancelIfReply, ...(v.assigneeId !== undefined ? { assigneeId: v.assigneeId } : {}) });
+const toResume = (v: z.output<typeof resumeInput>) => ({ dueAt: new Date(v.dueAt), motivo: v.motivo, texto: v.texto, cancelIfReply: v.cancelIfReply, ia: v.ia, ...(v.assigneeId !== undefined ? { assigneeId: v.assigneeId } : {}) });
 
 export async function resumeAction(dealId: string, input: ResumeIn): Promise<ActionResult<{ dueAt: string; texto: boolean }>> {
   try {
