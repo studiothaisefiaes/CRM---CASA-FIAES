@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { activeAutomationFilter } from "./retired";
 import { db, type Tx } from "../db";
 import { alerts, automationRuns, automations, contactNotes, contactTags, deals, stages, tags, type Automation } from "../db/schema";
@@ -450,6 +450,13 @@ export async function runRules(now = new Date()) {
     catch (e) { summary.errors.push(`${auto.name}: ${e instanceof Error ? e.message : e}`); await warnBrokenAutomation(auto, "deu erro ao procurar as conversas", now); continue; }
     for (const cond of conds.data) if (cond.type === "etapa_em") cands = cands.filter((c) => cond.stages.includes(c.stageKey));
     const others = conds.data.filter((x) => x.type !== "etapa_em");
+    // A mesma janela já disparou (a maioria, a cada minuto): sai antes de abrir uma transação e travar a conversa por nada
+    // (29/10: ~250 transações por minuto, 9 a 17 s por rodada, pesando nas telas). O índice único continua garantindo dentro da transação.
+    if (cands.length) {
+      const done = new Set((await db.select({ dealId: automationRuns.dealId, windowKey: automationRuns.windowKey }).from(automationRuns)
+        .where(and(eq(automationRuns.automationId, auto.id), inArray(automationRuns.dealId, [...new Set(cands.map((c) => c.dealId))])))).map((r) => `${r.dealId}|${r.windowKey}`));
+      cands = cands.filter((c) => !done.has(`${c.dealId}|${c.windowKey}`));
+    }
     for (const c of cands) {
       try {
         if (others.length && !(await conditionsHold(others, c, now, hours))) continue;
