@@ -49,7 +49,7 @@ export type FilterChip = { key: keyof QueueParams; label: string; href: string }
  * Os filtros ligados, na ordem da URL, cada um com o link que tira só ele. Abas e busca não são chips (têm lugar próprio).
  * `names`: o nome legível da etapa, da dona e da etiqueta (o que a URL traz é a chave/id).
  */
-export function activeFilters(p: QueueParams, names: { etapa?: string | null; dono?: string | null; etiqueta?: string | null; /** Nomes das etiquetas de `etiquetas`, na mesma ordem (id sem nome = removida). */ etiquetas?: (string | null)[] }, opts: { onlyOwn?: boolean } = {}): FilterChip[] {
+export function activeFilters(p: QueueParams, names: { etapa?: string | null; dono?: string | null; etiqueta?: string | null; /** Nome da campanha do `anuncio` (id). */ anuncio?: string | null; /** Nomes das etiquetas de `etiquetas`, na mesma ordem (id sem nome = removida). */ etiquetas?: (string | null)[] }, opts: { onlyOwn?: boolean } = {}): FilterChip[] {
   const without = (k: keyof QueueParams) => hrefOf({ ...p, lead: null, [k]: null });
   const out: FilterChip[] = [];
   if (p.view && VIEW_CHIP[p.view]) out.push({ key: "view", label: VIEW_CHIP[p.view], href: without("view") });
@@ -60,6 +60,7 @@ export function activeFilters(p: QueueParams, names: { etapa?: string | null; do
   if (p.dono === "sem") out.push({ key: "dono", label: "Sem dona", href: without("dono") });
   else if (p.dono) out.push({ key: "dono", label: `Dona: ${names.dono ?? "outra pessoa"}`, href: without("dono") });
   if (p.fonte) out.push({ key: "fonte", label: `Origem: ${p.fonte}`, href: without("fonte") });
+  if (p.anuncio) out.push({ key: "anuncio", label: p.anuncio === "sim" ? "Veio de anúncio" : p.anuncio === "nao" ? "Não veio de anúncio" : `Anúncio: ${names.anuncio ?? "arquivado ou sem conversa"}`, href: without("anuncio") });
   if (p.etiqueta) out.push({ key: "etiqueta", label: `Etiqueta: ${names.etiqueta ?? "removida"}`, href: without("etiqueta") });
   const many = (p.etiquetas ?? "").split(",").filter(Boolean);
   if (many.length) {

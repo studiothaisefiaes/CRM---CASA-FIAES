@@ -182,3 +182,23 @@ it("a mãe sem horário e a filha com horário: o próximo passo mostra o horár
   expect(card.textContent).toContain("Horário de Vera Henriques (filha)");
   expect(card.textContent).toContain("Escova · com Bia");
 });
+
+it("aba Cliente: 'Veio do anúncio' com o nome da campanha e o link do post, embaixo de Como conheceu", () => {
+  const detail = { ...d(), sourceLabel: "Método Fiaes outubro", origem: { ad: { id: "111", name: "Método Fiaes outubro", postUrl: "https://www.instagram.com/p/TESTE123/" }, entryPoint: "anuncio" } } as unknown as DealDetail;
+  pane(detail, actions(), "cliente");
+  const selo = screen.getByTestId("origem-anuncio");
+  expect(selo.textContent).toBe("Veio do anúncio: Método Fiaes outubro · Ver post");
+  const link = within(selo).getByRole("link", { name: "Ver post" });
+  expect(link.getAttribute("href")).toBe("https://www.instagram.com/p/TESTE123/");
+  expect(link.getAttribute("target")).toBe("_blank");
+  expect(link.getAttribute("rel")).toContain("noopener");
+});
+
+it("aba Cliente: sem anúncio, a porta de entrada em texto pequeno; sem porta, nada", () => {
+  pane({ ...d(), origem: { ad: null, entryPoint: "busca" } } as unknown as DealDetail, actions(), "cliente");
+  expect(screen.getByTestId("origem-porta").textContent).toBe("Achou o número na busca");
+  cleanup();
+  pane({ ...d(), origem: { ad: null, entryPoint: null } } as unknown as DealDetail, actions(), "cliente");
+  expect(screen.queryByTestId("origem-porta")).toBeNull();
+  expect(screen.queryByTestId("origem-anuncio")).toBeNull();
+});

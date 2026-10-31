@@ -95,7 +95,7 @@ export function lastMessageTime(ms: number, now: number): string {
   return `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)}`;
 }
 export const ATTENDANCE_TITLE = "Ela veio?";
-export const ATTENDANCE_HELP = "Já passou do horário. Toque em Veio ou Faltou (Atrasada: pergunto de novo em 30 min).";
+export const ATTENDANCE_HELP = "Já passou do horário. Toque em Veio, Faltou ou Remarcou (Atrasada: pergunto de novo em 30 min).";
 export const SUMMARY_HELP = "O topo da Fila: as abas Todas, Não lidas (mensagem da cliente que ninguém abriu) e Resolvidas. Minhas, Esperando, Sem dono, Atrasados, Combinados, etapa, dona e etiqueta ficam no botão Filtros; o que estiver ligado aparece embaixo da busca, com ✕ para tirar.";
 export const ARCHIVED_ROW = "resolvida · volta se a cliente escrever";
 
@@ -211,7 +211,7 @@ const GROUP_OF: Record<string, AlertGroup> = {
   folga_pedida: "agenda", link_remarcar: "agenda", link_cancelou: "agenda", pedido_online: "agenda",
   oferta: "conversas", assumiu_sua_conversa: "conversas", transferido_para_voce: "conversas", respondida_por_outra: "conversas", mencao: "conversas", ligacao_sem_nota: "conversas", nota_baixa: "conversas",
   aniversario_em_dias: "lembretes", parado_dias: "lembretes", sem_retorno_cliente_dias: "lembretes", data_recontato: "lembretes", data_cobranca: "lembretes", agendamento_em_horas: "lembretes",
-  whatsapp_desconectado: "sistema", whatsapp_sem_conexao: "sistema", envio_automatico_falhou: "sistema", agendada_falhou: "sistema", encaminhar_falhou: "sistema", massa_concluida: "sistema", massa_pausada: "sistema", webhook_falhou: "sistema", mensagem_sem_numero: "sistema", historico_falhou: "sistema", automacao_falhou: "sistema",
+  whatsapp_desconectado: "sistema", whatsapp_sem_conexao: "sistema", envio_automatico_falhou: "sistema", agendada_falhou: "sistema", encaminhar_falhou: "sistema", massa_concluida: "sistema", massa_pausada: "sistema", webhook_falhou: "sistema", mensagem_sem_numero: "sistema", historico_falhou: "sistema", automacao_falhou: "sistema", conferencia_diaria: "sistema",
 };
 export const ALERT_TYPES = Object.keys(GROUP_OF);
 export const alertGroupOf = (type: string): AlertGroup => GROUP_OF[type] ?? "outros";
@@ -269,6 +269,9 @@ export const ALERT_HELP: (HelpEntry & { types: string[] })[] = [
     text: "Uma cliente faz aniversário em breve. Não existe mensagem pronta: escreva o parabéns do seu jeito.", example: alertText.birthday("Fulana", 17, 10) },
   { id: "alerta-lembretes", types: ["parado_dias", "sem_retorno_cliente_dias", "data_recontato", "data_cobranca", "agendamento_em_horas"], title: "Lembretes das automações",
     text: "Avisos configurados em Configurações › Automações: conversa parada, cliente sem retorno, dia de recontato ou de cobrança. Um aviso por conversa e por regra, sem som. A conversa parada que ganhou próximo passo, mudou de etapa ou foi resolvida sai sozinha; a que continua parada fica vermelha em 1 dia de expediente e aparece para a gestão em 2." },
+  { id: "alerta-conferencia", types: ["conferencia_diaria"], title: "Conferência do dia",
+    text: "Às 18h o sistema confere o que costuma dar errado sem ninguém ver (lembrete para horário que sumiu, Avec parado, envios que falharam). Vai só para o dono; não corrige nada.",
+    example: "Conferência de hoje: Envios que falharam hoje (2)." },
   { id: "alerta-whatsapp", types: ["whatsapp_desconectado", "whatsapp_sem_conexao"], title: "WhatsApp caiu",
     text: "Mensagens novas não estão chegando. Leia o QR code de novo em Configurações › WhatsApp." },
   { id: "alerta-envio", types: ["envio_automatico_falhou"], title: "Mensagem automática não saiu",

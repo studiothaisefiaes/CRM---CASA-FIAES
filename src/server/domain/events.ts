@@ -7,7 +7,9 @@ export type DealEventType =
   | "campo_alterado" | "responsavel_alterado" | "alerta" | "arquivado" | "restaurado"
   | "assumiu" | "venda" | "comparecimento" | "tarefa" | "lido"
   | "distribuido" | "oferecido" | "devolvido_a_fila" | "conversa_arquivada" | "conversa_desarquivada" | "espera_virou_followup" | "espera_encerrada_agradecimento" | "retomar_depois" | "contato_mesclado" | "aguardando_cliente" | "orcamento_enviado" | "tentativa" | "espera_vencida" | "tentativas_paradas" | "retomada" | "retomada_cancelada" | "nova_organizacao"
-  | "mensagem_agendada" | "agendada_cancelada" | "resolvida" | "resolvida_desfeita" | "convite_retorno" | "link_cliente" | "falta_marcada" | "falta_desfeita" | "passado_para_setor";
+  | "mensagem_agendada" | "agendada_cancelada" | "resolvida" | "resolvida_desfeita" | "convite_retorno" | "link_cliente" | "falta_marcada" | "falta_desfeita" | "passado_para_setor"
+  /** A cliente clicou num anúncio com a conversa já aberta (0096): o anúncio fica registrado na conversa. */
+  | "anuncio";
 
 export async function logEvent(tx: Tx | typeof db, dealId: string, type: DealEventType, payload: Record<string, unknown> = {}, userId: string | null = null) {
   await tx.insert(dealEvents).values({ dealId, type, payload, userId });

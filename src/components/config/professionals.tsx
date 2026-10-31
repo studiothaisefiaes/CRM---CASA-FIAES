@@ -1,4 +1,6 @@
 "use client";
+import { ProTimes } from "./pro-times";
+import type { ProServiceTime } from "@/server/domain/professionals";
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { Input } from "@/components/ui/field";
@@ -25,8 +27,8 @@ const BASE = "/config/profissionais";
  * escolhida (`?id=`), em blocos. No celular, uma coisa de cada vez: a lista, ou a ficha com "‹ Profissionais". A aba "Quem faz o quê" (6A)
  * continua igual.
  */
-export function ProfessionalsEditor({ tab, items, services, casa, suggestions, selectedId, access, canPayout = false }: {
-  tab: "lista" | "matriz"; items: Pro[]; services: Service[]; casa: BusinessHours; suggestions: WhoSuggestion[]; selectedId: string | null;
+export function ProfessionalsEditor({ tab, times = [], items, services, casa, suggestions, selectedId, access, canPayout = false }: {
+  tab: "lista" | "matriz" | "tempos"; times?: ProServiceTime[]; items: Pro[]; services: Service[]; casa: BusinessHours; suggestions: WhoSuggestion[]; selectedId: string | null;
   /** Lote 7A: "Acesso ao app" de cada profissional; só vem para quem gere a equipe. */
   access?: Record<string, ProAccess> | null;
   /** Fase A: quem paga a comissão (`comissao.pagar`) vê o período do repasse na ficha. */ canPayout?: boolean;
@@ -59,7 +61,7 @@ export function ProfessionalsEditor({ tab, items, services, casa, suggestions, s
   return (
     <div>
       <nav aria-label="Profissionais e serviços" className="mb-4 inline-flex rounded-[var(--radius-control)] border border-line-strong p-1">
-        {([["lista", "Profissionais", BASE], ["matriz", "Quem faz o quê", `${BASE}?aba=matriz`]] as const).map(([v, label, href]) => (
+        {([["lista", "Profissionais", BASE], ["matriz", "Quem faz o quê", `${BASE}?aba=matriz`], ["tempos", "Tempos", `${BASE}?aba=tempos`]] as const).map(([v, label, href]) => (
           <Link key={v} href={href} aria-current={tab === v ? "page" : undefined}
             className={cn("inline-flex h-11 items-center gap-1.5 rounded-[calc(var(--radius-control)-4px)] px-3.5 text-sm font-medium transition-colors sm:h-8",
               tab === v ? "bg-ink text-paper" : "text-graphite hover:text-ink")}>
@@ -67,7 +69,7 @@ export function ProfessionalsEditor({ tab, items, services, casa, suggestions, s
           </Link>
         ))}
       </nav>
-      {tab === "matriz" ? <WhoDoesWhat pros={active} services={services} suggestions={suggestions} /> : (
+      {tab === "tempos" ? <ProTimes rows={times} /> : tab === "matriz" ? <WhoDoesWhat pros={active} services={services} suggestions={suggestions} /> : (
         <div className="grid items-start gap-5 lg:grid-cols-[300px_minmax(0,1fr)]">
           <aside className={cn("flex flex-col gap-3", selectedId && "hidden lg:flex")}>
             <Link href={`${BASE}?id=nova`} aria-label="+ Adicionar profissional"

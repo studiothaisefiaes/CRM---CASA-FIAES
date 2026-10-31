@@ -82,7 +82,7 @@ sozinha, pelos caminhos de sempre da tela:
 | `GET /api/v1/contatos/{id}` | ler | contatos.ver |
 | `POST /api/v1/contatos` | escrever | contatos.editar |
 | `PATCH /api/v1/contatos/{id}` | escrever | contatos.editar |
-| `GET /api/v1/conversas?etapa=&dona=&q=&abertas=` | ler | atendimento.ver |
+| `GET /api/v1/conversas?etapa=&dona=&q=&abertas=&anuncio=` | ler | atendimento.ver |
 | `POST /api/v1/conversas` | escrever | atendimento.ver |
 | `GET /api/v1/conversas/{id}` | ler | atendimento.ver |
 | `PATCH /api/v1/conversas/{id}` (etapa, dona, status) | escrever (+ enviar ao resolver com a mensagem ligada) | atendimento.ver ou quadro.ver (dona de outra pessoa: atendimento.transferir) |
@@ -109,6 +109,10 @@ Relatórios (os mesmos cálculos da tela de Relatórios; o objeto `dados` tem os
 - Números do CRM, com `?periodo=hoje|7d|mes|ano` (e `dono=`, `origem=`): `resumo-do-dia`, `numeros`, `resposta`, `funil`, `parados`,
   `origem`, `perdas`, `canal`, `qualidade`, `followup`, `calor`, `respostas-por-pessoa`, `pessoas`, `vendas-e-cobrancas`,
   `faturamento-salao`, `retorno`. Sem "Ver números de toda a equipe", são sempre os números da pessoa da chave.
+  `origem` aceita `?recorte=anuncio` (por campanha: anúncios do Meta pelo nome dado em Configurações › Origens) e `?recorte=porta`
+  (por porta de entrada); sem `recorte`, por origem, como sempre.
+- Conversas trazem `anuncio` (`id`, `nome`, `plataforma`, `post_url`; null quando não veio de anúncio) e `porta_de_entrada`
+  (`anuncio`, `instagram`, `link`, `busca`, `grupo`, `status`, `outro` ou null). `?anuncio=sim|nao|<id do anúncio>` filtra a lista.
 - Salão e Financeiro, com `?de=AAAA-MM-DD&ate=AAAA-MM-DD` (ou `?periodo=hoje|7d|mes|mes-passado|ano`): `salao`, `satisfacao`, `ocupacao`,
   `financeiro`, `excecoes`, `resultado`, `contas-a-pagar`, `notas-fiscais`. Relatório desligado em Configurações dá 404.
 

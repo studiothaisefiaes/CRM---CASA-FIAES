@@ -2,7 +2,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import type { AttendanceDue } from "@/server/queries/queue";
-import { setAttendanceAction, undoMissedAttendanceAction } from "@/app/(app)/funil/actions";
+import { setAttendanceAction, setRescheduledAction, undoMissedAttendanceAction } from "@/app/(app)/funil/actions";
 import { useConfirmNoShow } from "@/components/ui/confirm-no-show";
 import { ContactAvatar } from "@/components/ui/contact-avatar";
 import { IconCheck, IconClose } from "@/components/icons";
@@ -22,6 +22,7 @@ const dia = (iso: string) => new Date(iso).toLocaleDateString("pt-BR", { weekday
  * cada item é uma coluna (nome e hora em cima, botões embaixo: P9, 17/10, o nome era cortado em "Flávia G…") e a lista mostra 1 item por vez e rola (a frase de ajuda fica só para leitor de tela), para a primeira conversa da Fila aparecer sem rolar. Fica FORA do listbox da Fila
  * (botões dentro de uma `option` não são válidos): é uma lista comum com botões. Faltou cria a próxima ação "Remarcar".
  * Sai da lista assim que é marcado (o servidor não devolve mais quem já foi conferido).
+ * "Remarcou" (Cati 30/10): o horário vencido sai sem contar falta; sem horário novo, abre a conversa para marcar.
  * "Atrasada" (Cati 29/10: confirmou e ainda não chegou; não é Veio nem Faltou): some daqui por 30 min e volta a perguntar. Não muda nada no servidor.
  */
 const ATRASO_MS = 30 * 60_000;
@@ -63,6 +64,16 @@ export function AttendanceStrip({ items }: { items: AttendanceDue[] }) {
     ? confirmNoShow({ who: i.name === i.phone ? formatPhoneClient(i.phone) : i.name, detail: `${dia(i.scheduledAt)} às ${hora(i.scheduledAt)}`, onConfirm: () => doMark(i, status) })
     : doMark(i, status));
 
+  const remarcou = (i: AttendanceDue) => start(async () => {
+    const r = await setRescheduledAction(i.dealId);
+    if (!r.ok) { toast(r.error, "error"); return; }
+    setGone((g) => new Set(g).add(i.dealId));
+    const name = i.name === i.phone ? formatPhoneClient(i.phone) : i.name;
+    if (r.data?.temNovo) { toast(`${name}: horário antigo retirado, sem contar falta`); return; }
+    toast(`${name}: sem contar falta. Marque o novo horário na conversa`);
+    openLead(i.dealId);
+  });
+
   return (
     <section aria-label={ATTENDANCE_TITLE} className="shrink-0 border-b border-line bg-gold-soft/50 px-4">
       <h2 className="m-0">
@@ -89,7 +100,7 @@ export function AttendanceStrip({ items }: { items: AttendanceDue[] }) {
                     <span className="block text-xs text-graphite tabular">{dia(i.scheduledAt)} às {hora(i.scheduledAt)}</span>
                   </span>
                 </button>
-                <span className="flex gap-2 max-lg:pl-[38px]">
+                <span className="flex flex-wrap gap-2 max-lg:pl-[38px]">
                 {([["compareceu", "Veio", IconCheck], ["faltou", "Faltou", IconClose]] as const).map(([value, label, Icon]) => (
                   <button key={value} type="button" disabled={pending} onClick={() => mark(i, value)} aria-label={`${label}: ${name}`}
                     className={cn("inline-flex min-h-11 items-center gap-1 rounded-[var(--radius-control)] border px-2.5 text-sm font-medium transition-colors disabled:opacity-60 lg:min-h-9",
@@ -101,6 +112,10 @@ export function AttendanceStrip({ items }: { items: AttendanceDue[] }) {
                   onClick={() => { const n = Date.now(); setNowMs(n); setLate((l) => ({ ...l, [i.dealId]: n + ATRASO_MS })); toast(`${name}: pergunto de novo em 30 min`); }}
                   className="inline-flex min-h-11 items-center rounded-[var(--radius-control)] border border-line-strong bg-paper px-2.5 text-sm font-medium text-graphite transition-colors hover:bg-paper-2 disabled:opacity-60 lg:min-h-9">
                   Atrasada
+                </button>
+                <button type="button" disabled={pending} aria-label={`Remarcou: ${name}`} title="Ela remarcou: tira o horário antigo sem contar falta" onClick={() => remarcou(i)}
+                  className="inline-flex min-h-11 items-center rounded-[var(--radius-control)] border border-line-strong bg-paper px-2.5 text-sm font-medium text-graphite transition-colors hover:bg-paper-2 disabled:opacity-60 lg:min-h-9">
+                  Remarcou
                 </button>
                 </span>
               </motion.li>

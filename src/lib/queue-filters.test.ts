@@ -69,3 +69,14 @@ describe("filtros finos: etiquetas com regra, sem dona e dias sem conversar", ()
     expect(activeFilters({ dias: "1" }, {})[0].label).toBe("1 dia sem conversar");
   });
 });
+
+describe("filtro 'Veio de anúncio' (26/10)", () => {
+  it("chip com o nome da campanha (ou 'Veio de anúncio' / 'Não veio de anúncio') e o link que tira só ele", () => {
+    expect(activeFilters({ anuncio: "sim", etapa: "lead" }, { etapa: "Lead" }).map((c) => [c.label, c.href]))
+      .toEqual([["Etapa: Lead", "/atendimento?anuncio=sim"], ["Veio de anúncio", "/atendimento?etapa=lead"]]);
+    expect(activeFilters({ anuncio: "nao" }, {})[0].label).toBe("Não veio de anúncio");
+    expect(activeFilters({ anuncio: "111" }, { anuncio: "Método Fiaes" })[0].label).toBe("Anúncio: Método Fiaes");
+    expect(activeFilters({ anuncio: "111" }, {})[0].label).toBe("Anúncio: arquivado ou sem conversa");
+    expect(tabHref("nao-lidas", { anuncio: "sim" })).toBe("/atendimento?aba=nao-lidas&anuncio=sim");
+  });
+});

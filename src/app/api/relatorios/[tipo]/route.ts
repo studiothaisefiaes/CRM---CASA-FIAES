@@ -4,7 +4,7 @@ import { findSessionUser } from "@/server/auth/sessions-store";
 import { csvDisposition, PERIOD_LABEL, toCsv, type Period, type ReportFilter } from "@/server/reports/common";
 import {
   crmVsPhone, dataQuality, demandHeatmap, executiveNumbers, financeWithPaid, firstResponse, followupEfficacy, funnelMilestones,
-  lossesByReasonAndStage, personVsGoal, sourceToSale, staleNow, type ChargeItem,
+  lossesByReasonAndStage, personVsGoal, sourceToSale, staleNow, adToSale, entryPointToSale, type ChargeItem,
 } from "@/server/reports/queries";
 import { scopedFilter } from "@/server/reports/screen";
 import { salonFinance } from "@/server/reports/salon";
@@ -85,6 +85,18 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/relatorios/[
       const r = await sourceToSale(f);
       csv = toCsv(["Origem", "Conversas", "Agendados", "Fechados", "% fechados", ...(gestor ? ["Receita (R$)"] : [])],
         r.map((x) => [x.origem, x.leads, x.agendados, x.fechados, pctCell(x.fechados, x.leads), ...(gestor ? [brl(x.receitaCents)] : [])]));
+      break;
+    }
+    case "origem-anuncio": {
+      const r = await adToSale(f);
+      csv = toCsv(["Campanha", "Anúncios (id do Meta)", "Conversas", "Agendados", "Fechados", "% fechados", ...(gestor ? ["Receita (R$)"] : [])],
+        r.map((x) => [x.campanha, x.anuncios.join(" "), x.leads, x.agendados, x.fechados, pctCell(x.fechados, x.leads), ...(gestor ? [brl(x.receitaCents)] : [])]));
+      break;
+    }
+    case "origem-porta": {
+      const r = await entryPointToSale(f);
+      csv = toCsv(["Porta de entrada", "Conversas", "Agendados", "Fechados", "% fechados", ...(gestor ? ["Receita (R$)"] : [])],
+        r.map((x) => [x.rotulo, x.leads, x.agendados, x.fechados, pctCell(x.fechados, x.leads), ...(gestor ? [brl(x.receitaCents)] : [])]));
       break;
     }
     case "objecoes": {

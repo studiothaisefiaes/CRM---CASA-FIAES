@@ -19,6 +19,7 @@ import { cancelAttemptTaskTx, startAttemptsTx, stopAttemptsTx, type AttemptStart
 import { isAttemptKind, isWaitingKind } from "../../lib/attempts";
 import { mergedTargetFor, mergedTargetForLid } from "./merge-contacts";
 import { hasOpenTaskByOriginTx, POS_ATENDIMENTO_META } from "./tasks";
+import type { OriginInfo } from "../../lib/ad-origin";
 
 export const CLOSED_KINDS = ["fechado", "perdido"] as const;
 
@@ -160,6 +161,8 @@ export type InboundInput = {
   quotedBody?: string | null;
   at?: Date;
   hasAdReferral?: boolean;
+  /** Anúncio e porta de entrada lidos da mensagem (lib/ad-origin.ts). Gravados depois do commit, sem nunca derrubar a ingestão. */
+  origin?: OriginInfo | null;
   /** Registro que não cobra resposta (ligação atendida, Lote 5): não abre espera, não desarquiva, não volta etapa nem responde fora do horário. */
   noWait?: boolean;
   /** Relógio da resposta fora do horário (só testes); em produção é o horário real. */
@@ -250,6 +253,11 @@ export async function recordInbound(input: InboundInput): Promise<InboundResult>
     }
     return { dealId: deal.id, created, messageId: msg.id };
   });
+  // De onde veio a conversa (anúncio, porta de entrada): antes dos avisos, para a tela que recarrega já mostrar. Nunca derruba a ingestão.
+  if (input.origin && "messageId" in result && result.messageId && result.dealId) {
+    try { const { captureOrigin } = await import("./ad-origin"); await captureOrigin({ dealId: result.dealId, origin: input.origin, first: result.created === true, at }); }
+    catch (e) { console.error("[origem do anúncio] não gravou", result.dealId, e instanceof Error ? e.message : e); }
+  }
   // "Não é cliente" que escreveu: a Fila atualiza o número do Filtros › Não é cliente (sem som nem aviso).
   if ("ignored" in result) await emit("mensagem_recebida", {});
   if ("dealId" in result && "created" in result) {
@@ -504,7 +512,8 @@ export async function activeUsers(opts: { atendem?: boolean } = {}) {
     .where(and(eq(users.active, true), sql`${users.passwordHash} is not null`, opts.atendem ? canReceiveConversation() : undefined)).orderBy(asc(users.name));
 }
 
-export type HistoryMessage = { externalId: string; fromMe: boolean; at: Date; kind: string; body: string | null; pushName?: string | null; media?: MediaNode | null; quotedBody?: string | null };
+export type HistoryMessage = { externalId: string; fromMe: boolean; at: Date; kind: string; body: string | null; pushName?: string | null; media?: MediaNode | null; quotedBody?: string | null;
+  /** Anúncio/porta de entrada da mensagem da cliente (lib/ad-origin.ts). */ origin?: OriginInfo | null };
 
 /** Conversas paradas há mais que isso entram como contato com histórico, sem lead aberto. */
 export const HISTORY_LEAD_DAYS = 30;
@@ -527,7 +536,7 @@ export async function importHistoryChat(channelId: string | null, phoneRaw: stri
 
   // Canal em modo quieto (acabou de parear): conversa do histórico não abre espera (nem aviso quando o modo acabar).
   const quiet = await isQuiet(channelId, now);
-  return db.transaction(async (tx) => {
+  const res = await db.transaction(async (tx) => {
     const sigs = await signatureMap(tx);
     /** Quem assinou a mensagem da Casa no histórico (ou null). */
     const signer = (m: HistoryMessage) => { const s = m.fromMe ? parseSignature(m.body) : null; return s ? sigs.get(signatureKey(s)) ?? null : null; };
@@ -565,8 +574,24 @@ export async function importHistoryChat(channelId: string | null, phoneRaw: stri
         channelId: deal.channelId ?? channelId,
       }).where(eq(deals.id, deal.id));
     }
-    return { dealId: deal?.id ?? null, created, inserted };
+    return { dealId: deal?.id ?? null, created, inserted, dealCreatedAt: deal?.createdAt ?? null };
   });
+  // De onde veio (anúncio, porta de entrada), depois do commit e sem derrubar o lote. A porta é a da primeira mensagem da cliente, só na conversa
+  // que o histórico criou; o anúncio, o da primeira mensagem da cliente que tem anúncio desde que a conversa existe (história mais velha que a
+  // conversa aberta não conta).
+  if (res.dealId && res.dealCreatedAt) {
+    const since = res.dealCreatedAt.getTime() - 60_000;
+    const firstIn = inbound[0];
+    const withAd = inbound.find((m) => m.origin?.ad && m.at.getTime() >= since);
+    try {
+      const { captureOrigin } = await import("./ad-origin");
+      if (res.created && firstIn?.origin) await captureOrigin({ dealId: res.dealId, origin: firstIn.origin, first: true, at: firstIn.at });
+      if (withAd && withAd !== (res.created ? firstIn : undefined)) await captureOrigin({ dealId: res.dealId, origin: { ad: withAd.origin!.ad, entry: null }, first: false, at: withAd.at });
+    } catch (e) { console.error("[origem do anúncio] histórico não gravou", res.dealId, e instanceof Error ? e.message : e); }
+  }
+  const { dealCreatedAt: _c, ...out } = res;
+  void _c;
+  return out;
 }
 
 /**

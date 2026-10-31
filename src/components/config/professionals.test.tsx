@@ -7,6 +7,7 @@ vi.mock("@/app/(app)/config/actions", () => ({
   createProfessionalAction: vi.fn(), updateProfessionalAction: vi.fn(), setWorkHoursAction: vi.fn(), setAppearanceAction: vi.fn(),
   setProfessionalServiceAction: vi.fn(), acceptSuggestionsAction: vi.fn(),
 }));
+vi.mock("@/app/(app)/servicos/actions", () => ({ setProServiceTermsAction: vi.fn() }));
 vi.mock("@/components/ui/toast", () => ({ useToast: () => () => {} }));
 vi.mock("@/app/(app)/config/profissionais/acesso-actions", () => ({ inviteProAction: vi.fn(), regenerateProInviteAction: vi.fn(), revokeProAccessAction: vi.fn(), saveProAppSettingsAction: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }), usePathname: () => "/config/profissionais" }));

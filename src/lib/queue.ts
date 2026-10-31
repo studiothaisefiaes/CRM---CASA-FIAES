@@ -82,12 +82,12 @@ export function offStage(section: QueueSectionKey, stageKind: string | null | un
   return !!ok && !!stageKind && !ok.includes(stageKind);
 }
 
-export type QueueParams = { view?: string | null; /** Aba "Não lidas" (`nao-lidas`). */ aba?: string | null; foco?: string | null; filtro?: string | null; etapa?: string | null; dono?: string | null; fonte?: string | null; etiqueta?: string | null; /** Mais etiquetas (ids separados por vírgula), a regra delas (todas | qualquer | nao_tem) e os dias sem conversar. */ etiquetas?: string | null; regra?: string | null; dias?: string | null; q?: string | null; lead?: string | null };
+export type QueueParams = { view?: string | null; /** Aba "Não lidas" (`nao-lidas`). */ aba?: string | null; foco?: string | null; filtro?: string | null; etapa?: string | null; dono?: string | null; fonte?: string | null; /** "Veio de anúncio": sim, nao ou o id de um anúncio. */ anuncio?: string | null; etiqueta?: string | null; /** Mais etiquetas (ids separados por vírgula), a regra delas (todas | qualquer | nao_tem) e os dias sem conversar. */ etiquetas?: string | null; regra?: string | null; dias?: string | null; q?: string | null; lead?: string | null };
 
 /** Query string da Fila (sem o `?`), na ordem estável da URL; parâmetros vazios saem. */
 export function queueQuery(p: QueueParams): string {
   const qs = new URLSearchParams();
-  for (const k of ["view", "aba", "foco", "filtro", "etapa", "dono", "fonte", "etiqueta", "etiquetas", "regra", "dias", "q", "lead"] as const) if (p[k]) qs.set(k, k === "view" && (p[k] === "arquivadas" || p[k] === "encerradas") ? "resolvidas" : p[k]!);
+  for (const k of ["view", "aba", "foco", "filtro", "etapa", "dono", "fonte", "anuncio", "etiqueta", "etiquetas", "regra", "dias", "q", "lead"] as const) if (p[k]) qs.set(k, k === "view" && (p[k] === "arquivadas" || p[k] === "encerradas") ? "resolvidas" : p[k]!);
   return qs.toString();
 }
 export const queueHref = (p: QueueParams) => { const q = queueQuery(p); return q ? `/atendimento?${q}` : "/atendimento"; };

@@ -3,6 +3,7 @@ import { cpfSearchDigits } from "@/lib/cpf";
 import { and, asc, desc, eq, gte, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
 import { activePurchaseSql } from "./package-purchase-sql";
 import { can, canSeeDealMoney } from "@/lib/permissions";
+import { adFilterCond } from "./ad-filter";
 import { SOURCE_EXPR } from "../reports/common";
 import type { FunilFilter } from "../../lib/report-links";
 import { isUuid } from "../../lib/uuid";
@@ -37,7 +38,8 @@ export type BoardStage = { id: string; key: string; name: string; kind: string; 
 
 /** Filtros vindos dos relatórios (drill-down): lista só os leads daquele número. */
 export type BoardFilter = { ownerId?: string | null; origin?: string | null; q?: string | null; filtro?: FunilFilter | null; etapa?: string | null;
-  /** Origem real (a mesma dos relatórios, com "Não identificada"). */ source?: string | null };
+  /** Origem real (a mesma dos relatórios, com "Não identificada"). */ source?: string | null;
+  /** "Veio de anúncio": `sim`, `nao` ou o id de um anúncio (vale a campanha). */ anuncio?: string | null };
 
 type Who = Pick<SessionUser, "id" | "perms"> & { profileId?: string | null };
 
@@ -60,6 +62,8 @@ export function boardConds(filter: BoardFilter = {}, viewer?: Who): { conds: SQL
   if (isUuid(filter.ownerId)) conds.push(eq(deals.ownerId, filter.ownerId));
   // A origem do Quadro é a mesma da Fila e dos relatórios (origem real; sem ela, "Não identificada"), nunca o canal.
   if (filter.origin) conds.push(sql`${SOURCE_EXPR("deals")} = ${filter.origin}`);
+  const adCond = adFilterCond(filter.anuncio);
+  if (adCond) conds.push(adCond);
   if (filter.q) {
     const like = `%${filter.q.trim().toLowerCase()}%`;
     const vs = phoneSearchVariants(filter.q);

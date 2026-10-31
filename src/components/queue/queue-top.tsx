@@ -22,6 +22,8 @@ export type QueueFilterOptions = {
   /** Pessoas para o filtro por dona; vazio = quem vê não filtra por dona (sem "ver conversas de todas"). */
   owners: { id: string; name: string }[];
   tags: { id: string; name: string; uses: number }[];
+  /** Campanhas para o filtro "Veio de anúncio" (uma por nome; o valor é um id de anúncio). */
+  ads?: { id: string; label: string }[];
 };
 
 const TAB_N = (tab: QueueTab, c: QueueCounts) => (tab === "todas" ? c.todasTotal ?? c.views.todos ?? c.total : tab === "nao-lidas" ? c.naoLidas ?? 0 : tab === "retomar" ? c.retomar ?? 0 : tab === "esperando" ? c.aguardando : c.views.arquivadas ?? 0);
@@ -79,6 +81,7 @@ export function QueueTop({ params, counts, options, team, onlyOwn = false, progr
     // "followup" é a estação Aguardando cliente da Jornada (a etapa desse tipo).
     etapa: options.stages.find((s) => s.key === params.etapa)?.name ?? (params.etapa === "followup" ? options.stages.find((s) => s.kind === "followup")?.name ?? "Aguardando cliente" : null),
     dono: options.owners.find((o) => o.id === params.dono)?.name ?? null,
+    anuncio: options.ads?.find((a) => a.id === params.anuncio)?.label ?? null,
     etiqueta: options.tags.find((t) => t.id === params.etiqueta)?.name ?? null,
     etiquetas: (params.etiquetas ?? "").split(",").filter(Boolean).map((id) => options.tags.find((t) => t.id === id)?.name ?? null),
   };
@@ -217,6 +220,15 @@ export function QueueTop({ params, counts, options, team, onlyOwn = false, progr
               </select>
             </label>
           )}
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs font-semibold text-muted">Veio de anúncio</span>
+            <select aria-label="Veio de anúncio" value={params.anuncio ?? ""} onChange={(e) => go({ anuncio: e.target.value || null })} className={SELECT}>
+              <option value="">Qualquer</option>
+              <option value="sim">Veio de anúncio</option>
+              <option value="nao">Não veio de anúncio</option>
+              {(options.ads ?? []).length > 0 && <optgroup label="Campanha">{options.ads!.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}</optgroup>}
+            </select>
+          </label>
           {options.tags.length > 0 && (
             <label className="flex flex-col gap-1.5">
               <span className="text-xs font-semibold text-muted">Etiqueta</span>

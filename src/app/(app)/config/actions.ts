@@ -11,6 +11,7 @@ import { assertAnyPerm, assertPerm } from "@/server/auth/session";
 import * as cfg from "@/server/domain/config";
 import type { AutomationInput } from "@/server/rules/types";
 import * as sources from "@/server/domain/sources";
+import * as adOrigin from "@/server/domain/ad-origin";
 import * as msg from "@/server/domain/messaging-settings";
 import * as pros from "@/server/domain/professionals";
 import * as tagAdmin from "@/server/domain/tags";
@@ -78,6 +79,9 @@ export const saveDistributionAction = async (v: { enabled: boolean; limit: numbe
 export const setPriorityLevelAction = async (userId: string, level: number) => run((u) => distribution.setPriorityLevel(userId, level, u), "/config/distribuicao", DIA);
 export const createSourceAction = async (v: Parameters<typeof sources.createSource>[0]) => run((u) => sources.createSource(v, u), "/config/origens", DIA);
 export const setSourceActiveAction = async (id: string, active: boolean) => run((u) => sources.setSourceActive(id, active, u), "/config/origens", DIA);
+/** Anúncios (Origens › Anúncios, 26/10): a mesma permissão que edita as Origens. */
+export const nameAdCampaignAction = async (adId: string, name: string) => run((u) => adOrigin.nameAdCampaign(adId, name, u), "/config/origens", DIA);
+export const setAdCampaignArchivedAction = async (adId: string, archived: boolean) => run((u) => adOrigin.setAdCampaignArchived(adId, archived, u), "/config/origens", DIA);
 
 /* ---------- Mensagens automáticas, teto, retenção e ciclo (texto de erro fixo: nada de e.message cru) ---------- */
 async function runSafe<T>(fn: (uid: string) => Promise<T>, path: string, fallback: string, perm: ConfigPerm): Promise<R<T>> {

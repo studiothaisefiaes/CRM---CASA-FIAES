@@ -140,6 +140,7 @@ function lines(e: HistoryEvent, lk: HistoryLookup): { text: string; tone: Histor
     case "resolvida": return one("Resolvida sem resposta (não precisava responder)");
     case "resolvida_desfeita": return one("“Resolvida” desfeita: voltou a esperar resposta");
     case "falta_desfeita": return one("Falta desfeita: a conversa voltou como estava");
+    case "anuncio": return one(`Veio do anúncio${typeof p.nome === "string" && p.nome ? ` ${p.nome}` : ""} (clicou com a conversa já aberta)`);
     case "link_cliente": {
       if (p.acao === "confirmou") return one("Confirmou pelo link", "ok");
       if (p.acao === "cancelou") return one(`Cancelou pelo link${p.motivo ? ` (${clip(String(p.motivo))})` : ""}`, "alerta");

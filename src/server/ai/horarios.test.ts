@@ -353,6 +353,13 @@ describe("pediuHorario: a cliente pediu horário de verdade (a garantia do servi
   });
 });
 
+describe("isAgreement: 'Td ok' (caso Izaura, 30/10)", () => {
+  it("conta 'Td ok 👍' e 'tudo certo'; a saudação 'tudo bem' não", () => {
+    for (const t of ["Td ok 👍", "tudo ok", "Tudo certo!"]) expect(isAgreement([t]), t).toBe(true);
+    for (const t of ["Tudo bem", "Oi, tudo bem?"]) expect(isAgreement([t]), t).toBe(false);
+  });
+});
+
 describe("isAgreement: a concordância como as clientes escrevem (avaliação real de 17/10: 6 de 20 sem horário por isso)", () => {
   it("com 'então'/'oi'/'bom dia' antes, 'correto', hora solta e pergunta de confirmação", () => {
     for (const t of [["Então pode ser 14:30"], ["Oi, pode marcar!"], ["Bom dia Confirmado", "As 13:00 né"], ["Obrigado", "As 13:00hs", "Correto"],

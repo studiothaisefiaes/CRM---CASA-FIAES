@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { NON_OPENING_KINDS } from "../domain/message-kinds";
 import { cohort, dealScope, iso, MIN_SAMPLE, NOT_IDENTIFIED, pct, periodWindow, previousWindow, rows, SLA_FALLBACK_SECONDS, SOURCE_EXPR, upTo, WON_SQL, type ReportFilter, type Window } from "./common";
 import { REPLY_MESSAGE_JOIN } from "./replies";
+import { adDisplayName, ENTRY_POINT_LABEL, ENTRY_POINT_UNKNOWN, ENTRY_POINTS, isEntryPoint, type EntryPoint } from "../../lib/ad-origin";
 
 /** Venda (antiga Fechado ou Atendida que terminou) e conversa em andamento, nas consultas com `s` = stages e `d` = deals. */
 const WON = sql.raw(WON_SQL);
@@ -34,7 +35,7 @@ export const firstResponses = (f: ReportFilter, w: Window) => sql`
  */
 const cohortStates = (f: ReportFilter, w: Window) => sql`
   c as (
-    select d.id, d.value_cents, d.stage_id, d.stage_entered_at, ${SOURCE_EXPR()} as origem,
+    select d.id, d.value_cents, d.stage_id, d.stage_entered_at, ${SOURCE_EXPR()} as origem, d.ad_id, d.ad_ctwa_clid, d.entry_point,
       case when d.first_response_at is not null and ${upTo("d.first_response_at", w)} then d.first_response_at end as first_response_at,
       case when d.closed_at is not null and not (${upTo("d.closed_at", w)}) then 'aberto' when ${WON} then 'fechado' else s.kind::text end as kind
     from deals d join stages s on s.id = d.stage_id where ${cohort(f, w)}
@@ -151,6 +152,51 @@ export async function sourceToSale(f: ReportFilter): Promise<SourceRow[]> {
   const out = r.map((x) => ({ ...x, receitaCents: num(x.receitaCents) }));
   if (!out.some((x) => x.origem === NOT_IDENTIFIED)) out.push({ origem: NOT_IDENTIFIED, leads: 0, agendados: 0, fechados: 0, receitaCents: 0 });
   return out;
+}
+
+// ------------------------------------------------------------------------------------------------
+// R8b: origem por campanha (anúncio) e por porta de entrada (26/10). Mesmas regras da R8: coorte de conversas novas, "agendados" = chegou a
+// Agendado ou além, "fechados" = venda (antiga Fechado ou Atendida que terminou) e a receita dessas vendas.
+// ------------------------------------------------------------------------------------------------
+type Sums = { leads: number; agendados: number; fechados: number; receitaCents: number };
+/** Uma campanha: o nome dado pela gestão (os anúncios com o mesmo nome somam) ou, sem nome, cada anúncio pelo texto dele. */
+export type AdSourceRow = Sums & { campanha: string; anuncios: string[] };
+export type EntrySourceRow = Sums & { porta: EntryPoint | null; rotulo: string };
+const SUMS = sql`count(*)::int as leads, count(*) filter (where ${REACHED_AGENDADO})::int as agendados,
+  count(*) filter (where c.kind = 'fechado')::int as fechados, coalesce(sum(c.value_cents) filter (where c.kind = 'fechado'), 0)::float8 as "receitaCents"`;
+const add = (a: Sums, b: Sums): Sums => ({ leads: a.leads + b.leads, agendados: a.agendados + b.agendados, fechados: a.fechados + b.fechados, receitaCents: a.receitaCents + num(b.receitaCents) });
+const ZERO: Sums = { leads: 0, agendados: 0, fechados: 0, receitaCents: 0 };
+/** Conversa de anúncio em que o WhatsApp mandou só o clique (sem o id do anúncio). */
+export const AD_WITHOUT_ID = "Anúncio sem identificação";
+
+export async function adToSale(f: ReportFilter): Promise<AdSourceRow[]> {
+  const w = periodWindow(f);
+  const r = await rows<Sums & { ad_id: string | null; name: string | null; title: string | null; body: string | null }>(sql`
+    with ${cohortStates(f, w)}
+    select c.ad_id, a.name, a.title, a.body, ${SUMS}
+    from c left join ad_campaigns a on a.ad_id = c.ad_id
+    where c.ad_id is not null or c.ad_ctwa_clid is not null
+    group by c.ad_id, a.name, a.title, a.body`);
+  const groups = new Map<string, AdSourceRow>();
+  for (const x of r) {
+    const campanha = x.ad_id ? adDisplayName({ adId: x.ad_id, name: x.name, title: x.title, body: x.body }) : AD_WITHOUT_ID;
+    const key = x.ad_id && !x.name?.trim() ? `ad:${x.ad_id}` : `nome:${campanha}`;
+    const g = groups.get(key) ?? { campanha, anuncios: [], ...ZERO };
+    groups.set(key, { ...g, ...add(g, x), anuncios: x.ad_id ? [...g.anuncios, x.ad_id].sort() : g.anuncios });
+  }
+  return [...groups.values()].sort((a, b) => b.leads - a.leads || a.campanha.localeCompare(b.campanha, "pt-BR"));
+}
+
+export async function entryPointToSale(f: ReportFilter): Promise<EntrySourceRow[]> {
+  const w = periodWindow(f);
+  const r = await rows<Sums & { porta: string | null }>(sql`
+    with ${cohortStates(f, w)}
+    select c.entry_point as porta, ${SUMS} from c group by c.entry_point`);
+  const order = (p: string | null) => (p === null ? ENTRY_POINTS.length : ENTRY_POINTS.indexOf(p as EntryPoint));
+  return r.sort((a, b) => order(a.porta) - order(b.porta)).map((x) => {
+    const porta = isEntryPoint(x.porta) ? x.porta : null;
+    return { porta, rotulo: porta ? ENTRY_POINT_LABEL[porta] : ENTRY_POINT_UNKNOWN, ...add(ZERO, x) };
+  });
 }
 
 // ------------------------------------------------------------------------------------------------

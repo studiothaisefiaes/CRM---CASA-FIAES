@@ -344,7 +344,7 @@ export function metodoTopic(texts: (string | null | undefined)[]): boolean {
 /** Tira as palavras que só dizem "é do Método" (para saber se a cliente citou um serviço de verdade). */
 export const withoutMetodoWords = (t: string) => plain(t).replace(/\bmetodo\b|\bfiaes\b/g, " ");
 
-const AGREE = /^(sim|ss+|s|fica sim|fica bom|fica otimo|fica perfeito|sim fica|ficou bom|pode ficar|da sim|da certo|pode|pode ser|pode sim|pode marcar|pode reservar|pode agendar|pode confirmar|fechado|fechou|fecha|quero|quero sim|ok|okay|okk+|blz|beleza|perfeito|otimo|combinado|claro|com certeza|bora|vamos|serve|show|top|isso|isso mesmo|esse|essa|esse mesmo|essa mesmo|marca|marcar|reserva|agenda|agendar|confirmo|confirmado|certo|certinho|correto|ta bom|ta otimo|ta certo|pode ser sim|sim pode ser|melhor|prefiro)\b/;
+const AGREE = /^(td ok|td certo|tudo ok|tudo certo|sim|ss+|s|fica sim|fica bom|fica otimo|fica perfeito|sim fica|ficou bom|pode ficar|da sim|da certo|pode|pode ser|pode sim|pode marcar|pode reservar|pode agendar|pode confirmar|fechado|fechou|fecha|quero|quero sim|ok|okay|okk+|blz|beleza|perfeito|otimo|combinado|claro|com certeza|bora|vamos|serve|show|top|isso|isso mesmo|esse|essa|esse mesmo|essa mesmo|marca|marcar|reserva|agenda|agendar|confirmo|confirmado|certo|certinho|correto|ta bom|ta otimo|ta certo|pode ser sim|sim pode ser|melhor|prefiro)\b/;
 const NEG = /\b(nao|nem|nunca|outro|outra|depois|ainda)\b|\?/;
 /** O que vem antes da concordância sem mudar nada ("Então pode ser 14:30", "Oi, pode marcar!", "Bom dia Confirmado"). */
 const LEAD = /^(?:(?:oi+e?|ola|bom dia|boa tarde|boa noite|entao|ah+)\s+)+/;

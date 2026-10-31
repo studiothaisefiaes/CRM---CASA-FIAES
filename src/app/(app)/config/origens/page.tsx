@@ -7,6 +7,8 @@ import { notRemovedChannel } from "@/server/whatsapp/channel-removed";
 import { listSources, sourceLink } from "@/server/domain/sources";
 import { SourcesEditor, type SourceRow } from "@/components/config/sources";
 import { SimpleOrigins } from "@/components/config/origins";
+import { AdCampaigns, type AdRow } from "@/components/config/ad-campaigns";
+import { listAdCampaigns } from "@/server/domain/ad-origin";
 export const metadata = { title: "Origens e links" };
 
 const QR_COLORS = { dark: "#121212", light: "#ffffff" };
@@ -16,9 +18,10 @@ export default async function OrigensPage() {
   const [channel] = await db.select({ phone: channels.phone }).from(channels)
     .where(and(eq(channels.status, "conectado"), isNotNull(channels.phone), notRemovedChannel)).orderBy(asc(channels.createdAt)).limit(1);
   const phone = channel?.phone ?? null;
-  const [srcs, simple] = await Promise.all([
+  const [srcs, simple, ads] = await Promise.all([
     listSources(),
     db.select({ id: lists.id, label: lists.label, active: lists.active }).from(lists).where(eq(lists.kind, "origin")).orderBy(asc(lists.position), asc(lists.label)),
+    listAdCampaigns(),
   ]);
   const rows: SourceRow[] = await Promise.all(srcs.map(async (s) => {
     const link = phone ? sourceLink(s, phone) : null;
@@ -34,6 +37,10 @@ export default async function OrigensPage() {
       <section aria-labelledby="origens-links">
         <h2 id="origens-links" className="mb-1 text-lg font-semibold">Links e QR</h2>
         <SourcesEditor sources={rows} hasChannel={!!phone} />
+      </section>
+      <section id="anuncios" aria-labelledby="origens-anuncios" className="scroll-mt-20">
+        <h2 id="origens-anuncios" className="mb-1 text-lg font-semibold">Anúncios</h2>
+        <AdCampaigns rows={ads.map((a): AdRow => ({ ...a, firstSeenAt: a.firstSeenAt.toISOString(), lastSeenAt: a.lastSeenAt.toISOString() }))} />
       </section>
     </div>
   );

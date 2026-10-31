@@ -9,12 +9,12 @@ import { Field, Input } from "@/components/ui/field";
 import { createLeadAction } from "@/app/(app)/funil/actions";
 import { useToast } from "@/components/ui/toast";
 
-export function Toolbar({ people, origins }: { people: { id: string; name: string }[]; origins: string[] }) {
+export function Toolbar({ people, origins, ads = [] }: { people: { id: string; name: string }[]; origins: string[]; /** Campanhas do filtro "Veio de anúncio". */ ads?: { id: string; label: string }[] }) {
   const router = useRouter(); const sp = useSearchParams();
   const [q, setQ] = useState(sp.get("q") ?? "");
   const [open, setOpen] = useState(false);
   const [filters, setFilters] = useState(false);
-  const activeFilters = (sp.get("dono") ? 1 : 0) + (sp.get("origem") ? 1 : 0);
+  const activeFilters = (sp.get("dono") ? 1 : 0) + (sp.get("origem") ? 1 : 0) + (sp.get("anuncio") ? 1 : 0);
   const set = (k: string, v: string) => { const p = new URLSearchParams(sp.toString()); if (v) p.set(k, v); else p.delete(k); p.delete("lead"); router.replace(`/funil${p.size ? `?${p}` : ""}`, { scroll: false }); };
   useEffect(() => { const t = setTimeout(() => { if ((sp.get("q") ?? "") !== q) set("q", q); }, 280); return () => clearTimeout(t); });
   const sel = "h-9 rounded-[var(--radius-control)] border border-line-strong bg-paper px-3 pr-7 text-sm appearance-none cursor-pointer";
@@ -32,6 +32,10 @@ export function Toolbar({ people, origins }: { people: { id: string; name: strin
         </select>
         <select aria-label="Origem" value={sp.get("origem") ?? ""} onChange={(e) => set("origem", e.target.value)} className={`${sel} flex-1 sm:flex-none`}>
           <option value="">Todas as origens</option>{originOptions(origins).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+        <select aria-label="Veio de anúncio" value={sp.get("anuncio") ?? ""} onChange={(e) => set("anuncio", e.target.value)} className={`${sel} flex-1 sm:flex-none`}>
+          <option value="">Com ou sem anúncio</option><option value="sim">Veio de anúncio</option><option value="nao">Não veio de anúncio</option>
+          {ads.length > 0 && <optgroup label="Campanha">{ads.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}</optgroup>}
         </select>
       </div>
       <Button onClick={() => setOpen(true)} size="sm" className="h-9" aria-label="Nova conversa"><IconPlus size={16} /><span className="hidden sm:inline">Nova conversa</span></Button>

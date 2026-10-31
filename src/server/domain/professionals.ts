@@ -109,6 +109,14 @@ export async function setProfessionalService(professionalId: string, serviceId: 
   });
 }
 
+/** Aba Tempos (Cati 30/10): cada serviço de cada profissional ativa, com o tempo dela e o do serviço. Assistente fica de fora: não tem horário próprio. */
+export type ProServiceTime = { professionalId: string; professionalName: string; serviceId: string; serviceLabel: string; category: string | null; own: number | null; base: number | null };
+export async function listProServiceTimes(): Promise<ProServiceTime[]> {
+  return db.select({ professionalId: professionals.id, professionalName: professionals.name, serviceId: lists.id, serviceLabel: lists.label, category: lists.category, own: professionalServices.durationMin, base: lists.durationMin })
+    .from(professionalServices).innerJoin(professionals, eq(professionals.id, professionalServices.professionalId)).innerJoin(lists, eq(lists.id, professionalServices.serviceId))
+    .where(and(eq(professionals.active, true), isNull(professionals.assistantOf), eq(lists.active, true))).orderBy(asc(professionals.name), asc(lists.label));
+}
+
 /** Tempo próprio da profissional: de 5 min (o passo da Agenda) a 12 h, como o CHECK do 0084. */
 export const PRO_DURATION_MIN = 5;
 

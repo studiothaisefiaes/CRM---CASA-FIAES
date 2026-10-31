@@ -1,4 +1,5 @@
 "use server";
+import { markRescheduled } from "@/server/domain/agenda/remarcou";
 import { revalidatePath } from "next/cache";
 import { can, canSeeDealMoney } from "@/lib/permissions";
 import { touchesMoney } from "@/lib/money-fields";
@@ -337,6 +338,18 @@ export async function setAttendanceAction(dealId: string, status: "compareceu" |
     const id = uuid.parse(dealId);
     await assertCanActOnDeal(user, id);
     const r = await markAttendance(id, z.enum(["compareceu", "faltou"]).parse(status), user.id);
+    revalidateLead();
+    return { ok: true, data: r };
+  } catch (e) { return safe(e, "Não foi possível registrar. Tente de novo."); }
+}
+
+/** "Remarcou" no "Ela veio?" (Cati 30/10): o horário vencido sai sem contar falta. `temNovo`: ela já tem outro horário na agenda. */
+export async function setRescheduledAction(dealId: string): Promise<ActionResult<{ temNovo: boolean }>> {
+  try {
+    const user = await assertPerm("atendimento.ver");
+    const id = uuid.parse(dealId);
+    await assertCanActOnDeal(user, id);
+    const r = await markRescheduled(id, user.id);
     revalidateLead();
     return { ok: true, data: r };
   } catch (e) { return safe(e, "Não foi possível registrar. Tente de novo."); }

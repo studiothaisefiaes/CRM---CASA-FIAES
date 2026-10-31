@@ -6,7 +6,7 @@ import { periodWindow, type Period, type ReportFilter } from "../../reports/comm
 import { hideMoney, scopedFilter } from "../../reports/screen";
 import {
   crmVsPhone, dataQuality, demandHeatmap, executiveNumbers, financeWithPaid, firstResponse, followupEfficacy, funnelMilestones, lossesByReasonAndStage,
-  personVsGoal, sourceToSale, staleNow,
+  personVsGoal, sourceToSale, staleNow, adToSale, entryPointToSale,
 } from "../../reports/queries";
 import { dailySummaryText } from "../../reports/summary-text";
 import { returnCohorts } from "../../reports/cohort";
@@ -66,15 +66,15 @@ const exigir = (user: SessionUser, perms: Perm[]) => {
 };
 const desligado = (o: string) => new ApiErro(404, `${o} está desligado em Configurações.`);
 
-function crm(caminho: string, resumo: string, extra: Perm[], calc: (user: SessionUser, f: ReportFilter) => Promise<unknown>, descricao?: string): RotaApi {
+function crm(caminho: string, resumo: string, extra: Perm[], calc: (user: SessionUser, f: ReportFilter, q: Crm & Record<string, unknown>) => Promise<unknown>, descricao?: string, query: z.ZodObject<z.ZodRawShape> = zCrm): RotaApi {
   return rotaApi({
     metodo: "GET", caminho: `/relatorios/${caminho}`, escopo: "ler", perm: "relatorios.ver", grupo: GRUPO, resumo,
     descricao: [descricao, "Período do CRM (`periodo`); sem \"Ver números de toda a equipe\", só os números da pessoa da chave.", extra.length ? `Pede também: ${extra.join(", ")}.` : ""].filter(Boolean).join(" "),
-    query: zCrm, resposta: zResposta,
-    handler: async ({ user, query }) => {
+    query, resposta: zResposta,
+    handler: async ({ user, query: q }) => {
       exigir(user, extra);
-      const f = filtroCrm(user, query);
-      return { dados: await calc(user, f), periodo: periodoCrm(f) };
+      const f = filtroCrm(user, q as Crm);
+      return { dados: await calc(user, f, q as Crm & Record<string, unknown>), periodo: periodoCrm(f) };
     },
   });
 }
@@ -100,7 +100,11 @@ export const RELATORIOS: RotaApi[] = [
   crm("resposta", "Tempo de primeira resposta", [], (_u, f) => firstResponse(f)),
   crm("funil", "Etapas da conversa no período", [], (_u, f) => funnelMilestones(f)),
   crm("parados", "Conversas paradas agora", [], (_u, f) => staleNow({ now: f.now, ownerId: f.ownerId, source: f.source }), "O retrato de agora (o período não muda este)."),
-  crm("origem", "De onde vieram e quanto viraram venda", [], async (u, f) => (await sourceToSale(f)).map((s) => ({ ...s, receitaCents: money(u) ? s.receitaCents : null }))),
+  crm("origem", "De onde vieram e quanto viraram venda", [], async (u, f, q) => {
+    const rows: { receitaCents: number }[] = q.recorte === "anuncio" ? await adToSale(f) : q.recorte === "porta" ? await entryPointToSale(f) : await sourceToSale(f);
+    return rows.map((s) => ({ ...s, receitaCents: money(u) ? s.receitaCents : null }));
+  }, "Com `recorte`: `origem` (padrão, por origem: `origem`), `anuncio` (por campanha: `campanha`, `anuncios` = ids do Meta; anúncios com o mesmo nome somam) ou `porta` (por porta de entrada: `porta`, `rotulo`; `porta` null = não informada). Os números (conversas novas, `agendados`, `fechados` e `receitaCents`) são os mesmos em todos.",
+  zCrm.extend({ recorte: z.enum(["origem", "anuncio", "porta"]).default("origem").meta({ description: "origem (padrão), anuncio (por campanha) ou porta (por porta de entrada)." }) })),
   crm("perdas", "Perdas por motivo e etapa", [], (_u, f) => lossesByReasonAndStage(f)),
   crm("canal", "Respostas pelo CRM x pelo celular", [], (_u, f) => crmVsPhone(f)),
   crm("qualidade", "Qualidade dos dados", [], (_u, f) => dataQuality(f), "Fichas sem origem, sem nome… (não depende do período)."),

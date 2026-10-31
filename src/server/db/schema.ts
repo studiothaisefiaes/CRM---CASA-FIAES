@@ -1,4 +1,5 @@
 import type { Deductions } from "@/lib/commission-math";
+import type { EntryPoint } from "@/lib/ad-origin";
 import { sql } from "drizzle-orm";
 import {
   pgTable, uuid, text, timestamp, integer, boolean, jsonb, pgEnum, uniqueIndex, unique, index, smallint, primaryKey, date, numeric, bigint, real, check, customType, type AnyPgColumn,
@@ -261,6 +262,15 @@ export const deals = pgTable("deals", {
   conversationArchivedAt: timestamp("conversation_archived_at", { withTimezone: true }),
   sourceId: uuid("source_id").references(() => leadSources.id),
   sourceLabel: text("source_label"),
+  /** Anúncio do Meta (Click-to-WhatsApp) de onde a conversa veio: FK lógica para `ad_campaigns.ad_id` (0096). Ver lib/ad-origin.ts. */
+  adId: text("ad_id"),
+  /** O clique no anúncio (`ctwaClid`), quando o WhatsApp manda. */
+  adCtwaClid: text("ad_ctwa_clid"),
+  /** Quando o anúncio apareceu na conversa (a mensagem da cliente que veio do clique). */
+  adAt: timestamp("ad_at", { withTimezone: true }),
+  /** Porta de entrada da primeira mensagem (anuncio | instagram | link | busca | grupo | status | outro) e o valor cru do WhatsApp ("fonte|app"). */
+  entryPoint: text("entry_point").$type<EntryPoint>(),
+  entryPointRaw: text("entry_point_raw"),
   serviceId: uuid("service_id").references(() => lists.id),
   /** Quem vai fazer o serviço no horário marcado (Agendar). */
   professionalId: uuid("professional_id").references((): AnyPgColumn => professionals.id),
@@ -475,6 +485,33 @@ export const leadSources = pgTable("lead_sources", {
   active: boolean("active").notNull().default(true),
   createdAt: createdAt(),
 }, (t) => [uniqueIndex("lead_sources_code_uq").on(t.code)]);
+
+/**
+ * Anúncios do Meta vistos nas conversas (0096). `adId` = o `sourceId` do WhatsApp (agrupa a campanha; o nome não vem): a gestão dá o nome em
+ * Configurações › Origens e ele vale para as conversas antigas também. `meta_*`: o que a API de Marketing do Meta devolver (desligada).
+ */
+export const adCampaigns = pgTable("ad_campaigns", {
+  id: id(),
+  adId: text("ad_id").notNull(),
+  name: text("name"),
+  /** instagram | facebook (o `sourceApp` do WhatsApp). */
+  sourceApp: text("source_app"),
+  postUrl: text("post_url"),
+  mediaUrl: text("media_url"),
+  thumbnailUrl: text("thumbnail_url"),
+  title: text("title"),
+  body: text("body"),
+  metaCampaignName: text("meta_campaign_name"),
+  metaAdsetName: text("meta_adset_name"),
+  metaAdName: text("meta_ad_name"),
+  metaSyncedAt: timestamp("meta_synced_at", { withTimezone: true }),
+  firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+  namedBy: uuid("named_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: createdAt(),
+}, (t) => [uniqueIndex("ad_campaigns_ad_id_uq").on(t.adId)]);
+export type AdCampaign = typeof adCampaigns.$inferSelect;
 
 export const tasks = pgTable("tasks", {
   id: id(),

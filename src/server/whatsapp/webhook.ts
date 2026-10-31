@@ -11,6 +11,7 @@ import { joinHiddenForPhone } from "../domain/hidden-conversations";
 import { lidLookup } from "./lid-pairs";
 import { alertText, clientLabel } from "@/lib/alert-copy";
 import { callDuration, callLabel, durationLabel, type CallInfo, type CallStatus } from "@/lib/calls";
+import { parseOrigin, type OriginInfo } from "@/lib/ad-origin";
 
 export function checkSecret(received: string | null, expected: string) {
   if (!received) return false;
@@ -34,7 +35,8 @@ export function messageTime(timestampSeconds: number | undefined | null, now = D
   return new Date(Math.min(Math.max(now, start), start + 999));
 }
 
-type CtxInfo = { externalAdReply?: object; conversionSource?: string; ctwaClid?: string };
+/** contextInfo da mensagem: anúncio (externalAdReply, ctwaClid) e porta de entrada da conversa nova (entryPointConversion*), lidos em lib/ad-origin.ts. */
+type CtxInfo = { externalAdReply?: object; conversionSource?: string; ctwaClid?: string; entryPointConversionSource?: string; entryPointConversionApp?: string; entryPointConversionDelaySeconds?: number };
 type DocMsg = { caption?: string; fileName?: string };
 /** Só os campos do Baileys que o CRM usa. */
 type LocationMsg = { degreesLatitude?: number; degreesLongitude?: number; name?: string; address?: string };
@@ -181,6 +183,17 @@ function hasAd(d: EvoMessageData) {
   const ci = d.contextInfo ?? d.message?.extendedTextMessage?.contextInfo;
   return !!(ci?.externalAdReply || ci?.conversionSource || ci?.ctwaClid);
 }
+
+/**
+ * Anúncio (Click-to-WhatsApp) e porta de entrada da mensagem da cliente (lib/ad-origin.ts). O WhatsApp manda em `data.contextInfo` e, às
+ * vezes, no contextInfo do tipo (`message.extendedTextMessage.contextInfo`, `message.imageMessage.contextInfo`…, também dentro de
+ * mensagem temporária); nos lotes do histórico, só no do tipo. Vale o primeiro que tiver cada informação.
+ */
+export function originOf(d: Pick<EvoMessageData, "contextInfo" | "message">): OriginInfo {
+  const inner = d.message ? Object.values(unwrap(d.message as Loose)).map((v) => (v && typeof v === "object" ? (v as { contextInfo?: unknown }).contextInfo : null)) : [];
+  return parseOrigin([d.contextInfo, ...inner]);
+}
+const hasOrigin = (o: OriginInfo) => !!(o.ad || o.entry);
 
 async function channelFor(instance?: string) {
   if (!instance) return null;
@@ -486,8 +499,9 @@ export async function handleEvolutionEvent(p: EvoPayload) {
         fromPhone: event === "messages.upsert", at, media: mediaNode(content.kind, d), quotedBody: quotedBody(d) });
       return { ok: true, kind: "out", result: r };
     }
+    const origin = originOf(d);
     const r = await recordInbound({ channelId, externalId: d.key.id, phoneRaw: hidden ? "" : jid, lid, pushName: d.pushName, kind: content.kind,
-      body: content.body, at, hasAdReferral: hasAd(d), media: mediaNode(content.kind, d), quotedBody: quotedBody(d) });
+      body: content.body, at, hasAdReferral: hasAd(d) || !!origin.ad, origin: hasOrigin(origin) ? origin : null, media: mediaNode(content.kind, d), quotedBody: quotedBody(d) });
     return { ok: true, kind: "in", result: r };
   }
   return { ok: true, ignored: event || "sem_evento" };
@@ -626,7 +640,9 @@ export async function processHistoryEvents(limit = 20) {
         // Ligação no histórico: o texto diz se foi recebida ou feita (os dados completos só nas que chegam ao vivo).
         if (content.kind === "call") { const c = callFromLog(d.message); if (c) content.body = callLabel(c, d.key.fromMe ? "out" : "in"); }
         const list = byChat.get(jid) ?? [];
-        list.push({ externalId: d.key.id, fromMe: !!d.key.fromMe, at: new Date(Number(d.messageTimestamp) * 1000), kind: content.kind, body: content.body, pushName: d.pushName, media: mediaNode(content.kind, d), quotedBody: quotedBody(d) });
+        const origin = d.key.fromMe ? null : originOf(d);
+        list.push({ externalId: d.key.id, fromMe: !!d.key.fromMe, at: new Date(Number(d.messageTimestamp) * 1000), kind: content.kind, body: content.body, pushName: d.pushName, media: mediaNode(content.kind, d), quotedBody: quotedBody(d),
+          ...(origin && hasOrigin(origin) ? { origin } : {}) });
         byChat.set(jid, list);
       }
       for (const [jid, items] of byChat) {

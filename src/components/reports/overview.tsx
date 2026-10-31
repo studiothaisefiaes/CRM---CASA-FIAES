@@ -154,13 +154,48 @@ function Sources({ d, gestor, csv }: { d: Overview; gestor: boolean; csv: { href
     ...(gestor ? [{ key: "r", label: "Receita", align: "right" as const, render: (s: (typeof d.sources)[number]) => (s.receitaCents == null || s.fechados === 0 ? <span className="text-muted">—</span> : money(s.receitaCents)) }] : []),
   ];
   const small = d.sources.some((s) => s.leads > 0 && s.leads < MIN_SAMPLE);
+  // Os mesmos números, por campanha (anúncio) e por porta de entrada (26/10). A coluna de receita segue a mesma regra (só com "ver valores").
+  const sums = <T extends { leads: number; agendados: number; fechados: number; receitaCents: number | null }>(first: Col<T>): Col<T>[] => [
+    first,
+    { key: "l", label: "Conversas", align: "right", render: (s) => s.leads },
+    { key: "a", label: "Agendados", align: "right", render: (s) => cell(s.agendados, s.leads) },
+    { key: "f", label: "Fechados", align: "right", render: (s) => cell(s.fechados, s.leads) },
+    ...(gestor ? [{ key: "r", label: "Receita", align: "right" as const, render: (s: T) => (s.receitaCents == null || s.fechados === 0 ? <span className="text-muted">—</span> : money(s.receitaCents)) }] : []),
+  ];
+  const fromAds = d.ads.reduce((n, a) => n + a.leads, 0);
+  const total = d.entries.reduce((n, e) => n + e.leads, 0);
+  const knownDoor = d.entries.some((e) => e.porta !== null && e.leads > 0);
   return (
     <Section id="origem" title="De onde vêm as vendas" lead="Origem real das conversas novas, até a venda." csv={csv} legend="origem">
       <DataList rows={d.sources} cols={cols} rowKey={(s) => s.origem} caption="Origem das conversas até a venda" />
       {small && <p className="text-sm text-muted mt-2">Origens com menos de {MIN_SAMPLE} conversas mostram a contagem, não a %: com poucos casos a % engana.</p>}
+      <div className="mt-8 flex flex-col gap-2">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <h3 className="text-base font-semibold">Por anúncio</h3>
+          <a href={csvHref(csv.href, "origem-anuncio")} download className="inline-flex items-center min-h-11 text-sm text-gold-ink underline underline-offset-2 hover:text-ink" aria-label="Baixar CSV: origem por anúncio">Baixar CSV</a>
+        </div>
+        {d.ads.length === 0 ? <Muted>Nenhuma conversa nova veio de anúncio neste período.</Muted> : (
+          <>
+            <p className="text-sm text-graphite tabular">{fromAds} de {total} {total === 1 ? "conversa nova veio" : "conversas novas vieram"} de anúncio.</p>
+            <DataList rows={d.ads} cols={sums<(typeof d.ads)[number]>({ key: "c", label: "Campanha", render: (s) => s.campanha })} rowKey={(s) => s.anuncios.join(",") || s.campanha} caption="Conversas por anúncio até a venda" />
+            <p className="text-sm text-muted">Dê nome aos anúncios em <Link href="/config/origens#anuncios" className="font-medium text-gold-ink underline underline-offset-4">Configurações › Origens</Link>: anúncios com o mesmo nome somam numa campanha.</p>
+          </>
+        )}
+      </div>
+      <div className="mt-8 flex flex-col gap-2">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <h3 className="text-base font-semibold">Por porta de entrada</h3>
+          <a href={csvHref(csv.href, "origem-porta")} download className="inline-flex items-center min-h-11 text-sm text-gold-ink underline underline-offset-2 hover:text-ink" aria-label="Baixar CSV: origem por porta de entrada">Baixar CSV</a>
+        </div>
+        {!knownDoor ? <Muted>Ainda sem porta de entrada registrada neste período (ela é gravada nas conversas novas desde 26/10).</Muted>
+          : <DataList rows={d.entries} cols={sums<(typeof d.entries)[number]>({ key: "p", label: "Porta de entrada", render: (s) => s.rotulo })} rowKey={(s) => s.porta ?? "nao-informada"} caption="Conversas por porta de entrada até a venda" />}
+      </div>
     </Section>
   );
 }
+
+/** O mesmo endereço do CSV da origem, para outro recorte. */
+const csvHref = (href: string, tipo: string) => href.replace("/api/relatorios/origem?", `/api/relatorios/${tipo}?`);
 
 function Losses({ d, csv }: { d: Overview; csv: { href: string; label: string } }) {
   const l = d.losses;

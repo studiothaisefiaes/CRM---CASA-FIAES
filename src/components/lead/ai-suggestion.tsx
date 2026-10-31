@@ -9,7 +9,7 @@ import { useToast } from "@/components/ui/toast";
 import { useLive } from "@/components/shell/live";
 import { composerHasText, offerDraft } from "./composer-draft";
 import type { QuoteTarget } from "./composer";
-import { getAiSuggestionAction, markAiSuggestionAction, prepareAiBookingAction, programarRetomadaAction, requestAiSuggestionAction, type AiBooking, type AiView } from "@/app/(app)/conversa/ai-actions";
+import { confirmarEMarcarAction, desfazerMarcacaoAction, getAiSuggestionAction, markAiSuggestionAction, prepareAiBookingAction, programarRetomadaAction, requestAiSuggestionAction, type AiBooking, type AiView } from "@/app/(app)/conversa/ai-actions";
 import { dueLabel } from "@/lib/next-action";
 import { slotLabel, type ProposedSlot } from "@/lib/proposed-slot";
 import { EASE, T } from "@/lib/motion";
@@ -73,6 +73,22 @@ export function AiSuggestion({ dealId, replyTo = null, onBook }: { dealId: strin
     if (!r.ok) { toast(r.error, "error"); return; }
     if (r.data.livre === false) toast("Esse horário não está mais livre. Escolha outro na folha.", "error");
     onBook(r.data, () => { if (keep) setKept(null); });
+  };
+
+  // Cati 30/10: a cliente aceitou o horário; um toque marca na agenda e envia. Faltando dado (tempo vazio, mais de um serviço), abre a folha preenchida.
+  const confirmar = async (id: string) => {
+    if (!onBook || booking) return;
+    setBooking(true);
+    const r = await confirmarEMarcarAction({ id, dealId, text: shown }).catch(() => null).finally(() => setBooking(false));
+    if (!r) { toast("Não deu para marcar agora. Tente de novo.", "error"); return; }
+    if (!r.ok) { toast(r.error, "error"); return; }
+    if (!r.data.marcado) { toast(`${r.data.motivo} Confira na folha.`); onBook(r.data.booking, () => {}); return; }
+    const ids = r.data.appointmentIds;
+    setV({ state: "pode_pedir", again: true });
+    if (!r.data.enviada) { toast("Marcado na agenda, mas a mensagem não saiu. Envie pela caixa.", "error"); offerDraft(dealId, shown); return; }
+    toast("Marcado na agenda e confirmação enviada", "ok", { label: "Desfazer", onClick: () => void desfazerMarcacaoAction({ dealId, appointmentIds: ids }).then((u) => {
+      toast(u.ok ? "Horário retirado da agenda. A mensagem já tinha saído: avise a cliente." : u.error, u.ok ? "ok" : "error");
+    }) });
   };
 
   const load = useCallback((open = false) => {
@@ -195,7 +211,8 @@ export function AiSuggestion({ dealId, replyTo = null, onBook }: { dealId: strin
               </div>
             ) : (
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                <Button size="sm" variant={s.precisaHumano ? "secondary" : "primary"} onClick={use} disabled={pending}>Usar e editar</Button>
+                {s.horario?.origem === "combinado" && onBook && <Button size="sm" onClick={() => void confirmar(s.id)} loading={booking} disabled={pending}>Confirmar e marcar</Button>}
+                <Button size="sm" variant={s.precisaHumano || (s.horario?.origem === "combinado" && onBook) ? "secondary" : "primary"} onClick={use} disabled={pending}>Usar e editar</Button>
                 <Button size="sm" variant="ghost" onClick={() => ask("outra")} loading={pending && !rebaterAqui}>{pending && !rebaterAqui ? "Escrevendo outra…" : "Outra"}</Button>
                 <Button size="sm" variant="ghost" aria-expanded={!!rebaterAqui} onClick={() => setRebater(rebaterAqui ? null : { id: s.id, text: "" })} disabled={pending}>Rebater</Button>
                 <span className="ml-auto text-xs text-muted">O texto vai para a caixa de mensagem: edite e envie.</span>
@@ -220,7 +237,7 @@ export function AiSuggestion({ dealId, replyTo = null, onBook }: { dealId: strin
   );
 }
 
-/** "Horário proposto: ter 20/10 às 15h · Thaise Fiaes · Avaliação" e o botão que abre a folha preenchida (nunca marca sozinho). */
+/** "Horário proposto: ter 20/10 às 15h · Thaise Fiaes · Avaliação" e o botão que abre a folha preenchida. */
 function ProposedRow({ horario, busy, onBook, bare = false }: { horario: ProposedSlot; busy: boolean; onBook?: () => void; bare?: boolean }) {
   return (
     <div data-testid="horario-proposto" className={`flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5 ${bare ? "" : "mt-2 rounded-[var(--radius-control)] border border-line bg-paper px-2.5 py-1.5"}`}>

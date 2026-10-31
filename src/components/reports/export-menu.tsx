@@ -8,7 +8,7 @@ import { EASE, T } from "@/lib/motion";
 export function ExportMenu({ qs, team, money }: { qs: string; team: boolean; money: boolean }) {
   const [open, setOpen] = useState(false);
   const items: [string, string][] = [["numeros", "Números do período"], ["resposta", "Primeira resposta"], ["funil", "Do primeiro contato à venda"], ["parados", "Parados agora"], ["canal", "Pelo CRM ou pelo celular"],
-    ["origem", "Origem até a venda"], ["objecoes", "Perdas e objeções"], ["qualidade", "Qualidade dos dados"], ["followup", "Eficácia da retomada"], ["calor", "Mapa de calor"],
+    ["origem", "Origem até a venda"], ["origem-anuncio", "Origem por anúncio"], ["origem-porta", "Origem por porta de entrada"], ["objecoes", "Perdas e objeções"], ["qualidade", "Qualidade dos dados"], ["followup", "Eficácia da retomada"], ["calor", "Mapa de calor"],
     ...(team ? ([["pessoas", "Pessoa contra a meta"]] as [string, string][]) : []),
     ...(team && money ? ([["financeiro", "Financeiro das vendas"], ["cobrancas", "Cobranças vencidas e a vencer"]] as [string, string][]) : [])];
   return (

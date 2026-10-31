@@ -11,10 +11,12 @@ import type { ProposedSlot } from "@/lib/proposed-slot";
 import { assertCanActOnDeal } from "@/server/domain/deal-scope";
 import { resumeFromSuggestion } from "@/server/domain/retomada";
 import { transcreverDitado } from "@/server/ai/ditado";
+import { confirmarEMarcar, desfazerMarcacao } from "@/server/ai/confirmar";
+import { sendFromCrm } from "@/server/domain/send";
 import { revalidatePath } from "next/cache";
 import { funcaoLigada } from "@/server/domain/funcoes";
 
-/** Sugestão de resposta por IA na conversa. Nenhuma destas ações envia mensagem: "Usar" só marca (o texto vai para a caixa no navegador). */
+/** Sugestão de resposta por IA na conversa. Só o "Confirmar e marcar" envia mensagem, no toque da atendente; "Usar" só marca (o texto vai para a caixa no navegador). */
 export type AiResult<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
 const fail = (e: unknown): { ok: false; error: string } => ({ ok: false, error: userErrorMessage(e, "sugestão por IA") });
 const uuid = z.string().uuid();
@@ -130,6 +132,40 @@ export async function prepareAiBookingAction(input: { id: string; dealId: string
     const b = await bookingFromSuggestion(id, uuid.parse(input.dealId));
     if (!b) return { ok: false, error: "Esta sugestão não tem horário para marcar." };
     return { ok: true, data: { suggestionId: id, ...b } };
+  } catch (e) { return fail(e); }
+}
+
+/**
+ * "Confirmar e marcar" (Cati 30/10): marca e envia a confirmação num toque só. Marca antes de enviar: horário ocupado não vira mensagem.
+ * Faltando dado, não marca nem envia: volta o que a folha "Marcar horário" precisa para abrir preenchida.
+ */
+export type ConfirmarResult = { marcado: true; appointmentIds: string[]; enviada: boolean } | { marcado: false; motivo: string; booking: AiBooking };
+export async function confirmarEMarcarAction(input: { id: string; dealId: string; text: string }): Promise<AiResult<ConfirmarResult>> {
+  try {
+    const user = await assertPerm("agenda.marcar");
+    await assertPerm("atendimento.ver");
+    const id = uuid.parse(input.id), dealId = uuid.parse(input.dealId);
+    const text = z.string().trim().min(1).max(4000).parse(input.text);
+    await assertCanActOnDeal(user, dealId);
+    const r = await confirmarEMarcar(id, dealId, { id: user.id, perms: user.perms });
+    if (!r) return { ok: false, error: "Esta sugestão não tem horário para marcar." };
+    if (!r.marcado) return { ok: true, data: { marcado: false, motivo: r.motivo, booking: { suggestionId: id, slot: r.slot, livre: r.livre, confirm: r.confirm } } };
+    await markSuggestion(id, dealId, "usada");
+    revalidatePath("/agenda");
+    const enviada = await sendFromCrm(dealId, text, user.id).then(() => true, (e) => { console.error("[confirmar e marcar] não enviou", dealId, e); return false; });
+    return { ok: true, data: { marcado: true, appointmentIds: r.appointmentIds, enviada } };
+  } catch (e) { return fail(e); }
+}
+
+/** O Desfazer do "Confirmar e marcar": cancela os horários. A mensagem já saiu; quem desfaz avisa a cliente. */
+export async function desfazerMarcacaoAction(input: { dealId: string; appointmentIds: string[] }): Promise<AiResult> {
+  try {
+    const user = await assertPerm("agenda.marcar");
+    const dealId = uuid.parse(input.dealId);
+    await assertCanActOnDeal(user, dealId);
+    await desfazerMarcacao(dealId, z.array(uuid).max(10).parse(input.appointmentIds), { id: user.id, perms: user.perms });
+    revalidatePath("/agenda");
+    return { ok: true, data: undefined };
   } catch (e) { return fail(e); }
 }
 

@@ -36,7 +36,7 @@ export default async function ConversaPage({ params, searchParams }: PageProps<"
   if (!isUuid(id)) notFound();
   const withList = !isMobileUserAgent((await headers()).get("user-agent"));
   const etiqueta = typeof sp.etiqueta === "string" && isUuid(sp.etiqueta) ? sp.etiqueta : null;
-  const [item, queue, banners, bulk, team, tagList, options, programadas, dayProgress] = await Promise.all([getQueueItem(id), withList ? getQueue(user, { etiqueta }) : Promise.resolve(null), getShellBanners(), withList ? getBulkOptions(user) : Promise.resolve(null), withList ? getTeamNow() : Promise.resolve(undefined), withList ? listTags() : Promise.resolve([]), withList ? getQueueFilterOptions(user) : Promise.resolve({ stages: [], owners: [] }),
+  const [item, queue, banners, bulk, team, tagList, options, programadas, dayProgress] = await Promise.all([getQueueItem(id), withList ? getQueue(user, { etiqueta }) : Promise.resolve(null), getShellBanners(), withList ? getBulkOptions(user) : Promise.resolve(null), withList ? getTeamNow() : Promise.resolve(undefined), withList ? listTags() : Promise.resolve([]), withList ? getQueueFilterOptions(user) : Promise.resolve({ stages: [], owners: [], ads: [] }),
     // O número ao lado de "Programadas", igual ao da Fila (Plano 5): só com a lista na tela, onde a barra aparece.
     withList ? countScheduled(user) : Promise.resolve(undefined), withList ? getDayProgressLine() : Promise.resolve(null)]);
   if (!item) notFound();

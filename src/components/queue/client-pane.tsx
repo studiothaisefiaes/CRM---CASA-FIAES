@@ -37,6 +37,7 @@ import { AvatarZoom } from "@/components/ui/avatar-zoom";
 import { avatarVersion } from "@/lib/avatar-url";
 import { nameFallback } from "@/lib/phone-client";
 import { originLabel } from "@/lib/origin-label";
+import { ENTRY_POINT_TEXT } from "@/lib/ad-origin";
 
 export type SideTab = "agora" | "cliente";
 const LABEL = "text-xs font-semibold text-graphite";
@@ -229,13 +230,36 @@ function Agora({ d, viewer, actions }: { d: DealDetail; viewer: Viewer | null; a
   );
 }
 
-function Linha({ k, v, onAdd }: { k: string; v: ReactNode | null; onAdd: () => void }) {
+function Linha({ k, v, onAdd, sub }: { k: string; v: ReactNode | null; onAdd: () => void; /** Linha pequena embaixo do valor (outro `dd` do mesmo item). */ sub?: ReactNode }) {
+  if (sub) return (
+    <div className="grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-3 py-1 text-sm">
+      <dt className="text-muted">{k}</dt>
+      <dd className="min-w-0 truncate text-right text-ink">{v ?? <button type="button" onClick={onAdd} className={LINK}>Adicionar</button>}</dd>
+      {sub}
+    </div>
+  );
   return (
     <div className="flex items-baseline justify-between gap-3 py-1 text-sm">
       <dt className="shrink-0 text-muted">{k}</dt>
       <dd className="min-w-0 truncate text-right text-ink">{v ?? <button type="button" onClick={onAdd} className={LINK}>Adicionar</button>}</dd>
     </div>
   );
+}
+
+/**
+ * De onde veio a conversa (26/10), embaixo de "Como conheceu": "Veio do anúncio: <campanha> · Ver post" quando veio de anúncio (o nome é o
+ * atual, dado em Configurações › Origens); senão a porta de entrada em texto pequeno ("Achou o número na busca"). Sem nada, não aparece.
+ */
+function OrigemEntrada({ d }: { d: DealDetail }) {
+  const o = d.origem;
+  if (o?.ad) return (
+    <dd data-testid="origem-anuncio" className="col-span-2 mt-0.5 text-right text-xs text-graphite">
+      Veio do anúncio: <span className="font-medium text-ink">{o.ad.name}</span>
+      {o.ad.postUrl && <> · <a href={o.ad.postUrl} target="_blank" rel="noopener noreferrer" className="font-medium text-gold-ink underline-offset-4 hover:underline pointer-coarse:inline-flex pointer-coarse:min-h-11 pointer-coarse:items-center">Ver post</a></>}
+    </dd>
+  );
+  if (o?.entryPoint) return <dd data-testid="origem-porta" className="col-span-2 mt-0.5 text-right text-xs text-muted">{ENTRY_POINT_TEXT[o.entryPoint]}</dd>;
+  return null;
 }
 
 function Cliente({ d, viewer, actions }: { d: DealDetail; viewer: Viewer | null; actions: LeadActions }) {
@@ -279,7 +303,7 @@ function Cliente({ d, viewer, actions }: { d: DealDetail; viewer: Viewer | null;
           <Linha k="E-mail" v={ct.email} onAdd={add} />
           <Linha k="Instagram" v={ct.instagram ? `@${ct.instagram}` : null} onAdd={add} />
           {ct.phoneAlt && <Linha k="Outro telefone" v={ct.phoneAlt} onAdd={add} />}
-          <Linha k="Como conheceu" v={origem} onAdd={add} />
+          <Linha k="Como conheceu" v={origem} onAdd={add} sub={<OrigemEntrada d={d} />} />
           <Linha k="Tipo de cabelo" v={ct.hairType} onAdd={add} />
           <Linha k="Alergias e cuidados" v={ct.alertNotes ? ct.alertNotes.split("\n")[0] : null} onAdd={add} />
           {canEdit && <Linha k="CPF" v={ct.cpf ? <span className="tabular">{formatCpf(ct.cpf)}</span> : null} onAdd={add} />}

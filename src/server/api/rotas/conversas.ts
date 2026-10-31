@@ -5,7 +5,7 @@ import { can, canSeeDealMoney } from "@/lib/permissions";
 import { CONTACT_KINDS } from "@/lib/contact-kind";
 import { conversationStatus, CONVERSATION_STATUSES } from "@/lib/conversation-status";
 import { db } from "../../db";
-import { contacts, deals, messages, stages, tasks, users } from "../../db/schema";
+import { adCampaigns, contacts, deals, messages, stages, tasks, users } from "../../db/schema";
 import type { SessionUser } from "../../auth/sessions-store";
 import { assertCanActOnDeal, OUT_OF_SCOPE } from "../../domain/deal-scope";
 import { listarEtapas } from "./funil";
@@ -21,6 +21,8 @@ import { getAutoMessage } from "../../domain/auto-message-settings";
 import { tagsOf } from "../../domain/tags";
 import { SOURCE_EXPR } from "../../reports/common";
 import { canActOn } from "../../queries/conversation";
+import { adFilterCond } from "../../queries/ad-filter";
+import { adDisplayName, ENTRY_POINTS, isEntryPoint, parseAdFilter } from "@/lib/ad-origin";
 import { ApiErro, erroParaFora, lerCursor, pagina, rotaApi, zId, zInstante, zInstanteSaida, zLista, zPaginacao, zUm, zUuid } from "../rota";
 import { buscaContato, telefoneDe, zBool, zContatoResumo, zInstanteOuNulo, zPessoa } from "./comum";
 
@@ -44,6 +46,13 @@ const zConversa = z.object({
   ultima_mensagem_casa_em: zInstanteOuNulo,
   agendado_em: zInstanteOuNulo,
   origem: z.string(),
+  anuncio: z.object({
+    id: z.string().meta({ description: "Id do anúncio no Meta (o `sourceId` do WhatsApp)." }),
+    nome: z.string().meta({ description: "O nome dado em Configurações › Origens (vale para as conversas antigas); sem nome, o começo do texto do anúncio." }),
+    plataforma: z.string().nullable().meta({ description: "instagram ou facebook." }),
+    post_url: z.string().nullable().meta({ description: "O post do anúncio." }),
+  }).nullable().meta({ description: "O anúncio (Click-to-WhatsApp) de onde a conversa veio; null quando não veio de anúncio (ou só veio o clique, sem o id)." }),
+  porta_de_entrada: z.enum(ENTRY_POINTS).nullable().meta({ description: "Por onde a cliente abriu a conversa: anuncio, instagram (botão do perfil), link, busca (busca do WhatsApp), grupo, status ou outro. null: sem a informação (antes de 26/10 ou iniciada pela Casa)." }),
   valor_centavos: z.number().int().nullable(),
   criada_em: zInstanteSaida,
   fechada_em: zInstanteOuNulo,
@@ -60,8 +69,10 @@ const cols = {
   scheduledAt: deals.scheduledAt, valueCents: deals.valueCents, ownerId: deals.ownerId, ownerName: owner.name,
   contactId: contacts.id, contactName: contacts.name, phone: contacts.phoneE164, kind: contacts.kind,
   stageKey: stages.key, stageName: stages.name, stageKind: stages.kind, origem: sql<string>`${SOURCE_EXPR("deals")}`,
+  adId: deals.adId, entryPoint: deals.entryPoint, adName: adCampaigns.name, adTitle: adCampaigns.title, adBody: adCampaigns.body, adApp: adCampaigns.sourceApp, adPost: adCampaigns.postUrl,
 };
-const consulta = () => db.select(cols).from(deals).innerJoin(contacts, eq(contacts.id, deals.contactId)).innerJoin(stages, eq(stages.id, deals.stageId)).leftJoin(owner, eq(owner.id, deals.ownerId));
+const consulta = () => db.select(cols).from(deals).innerJoin(contacts, eq(contacts.id, deals.contactId)).innerJoin(stages, eq(stages.id, deals.stageId)).leftJoin(owner, eq(owner.id, deals.ownerId))
+  .leftJoin(adCampaigns, eq(adCampaigns.adId, deals.adId));
 
 function conversaDe(r: Awaited<ReturnType<typeof consulta>>[number], money: boolean) {
   return {
@@ -72,7 +83,10 @@ function conversaDe(r: Awaited<ReturnType<typeof consulta>>[number], money: bool
     aberta: !r.closedAt && !r.archivedAt,
     status: conversationStatus({ archivedAt: r.conversationArchivedAt, awaitingSince: r.awaitingReplySince }), aguardando_resposta_desde: r.awaitingReplySince,
     ultima_mensagem_cliente_em: r.lastInboundAt, ultima_mensagem_casa_em: r.lastOutboundAt, agendado_em: r.scheduledAt,
-    origem: r.origem, valor_centavos: money ? r.valueCents : null, criada_em: r.createdAt, fechada_em: r.closedAt,
+    origem: r.origem,
+    anuncio: r.adId ? { id: r.adId, nome: adDisplayName({ adId: r.adId, name: r.adName, title: r.adTitle, body: r.adBody }), plataforma: r.adApp, post_url: r.adPost } : null,
+    porta_de_entrada: isEntryPoint(r.entryPoint) ? r.entryPoint : null,
+    valor_centavos: money ? r.valueCents : null, criada_em: r.createdAt, fechada_em: r.closedAt,
   };
 }
 
@@ -118,6 +132,8 @@ export const listarConversas = rotaApi({
     dona: z.union([zUuid, z.enum(["sem", "eu"])]).optional().meta({ description: "Id da dona, `eu` (a pessoa da chave) ou `sem` (sem dona)." }),
     q: z.string().trim().min(1).max(80).optional().meta({ description: "Nome ou telefone (qualquer formato)." }),
     abertas: zBool.default(true).meta({ description: "true (padrão): só as da lista de Conversas (não resolvidas, não fechadas, não Não é cliente). false: todas." }),
+    anuncio: z.string().refine((v) => parseAdFilter(v) !== null, "Use sim, nao ou o id de um anúncio.").optional()
+      .meta({ description: "`sim` (veio de anúncio), `nao`, ou o id de um anúncio (vale a campanha: os anúncios com o mesmo nome em Configurações › Origens)." }),
     ...zPaginacao,
   }),
   resposta: zLista(zConversa),
@@ -130,6 +146,7 @@ export const listarConversas = rotaApi({
     else if (query.dona === "eu") conds.push(eq(deals.ownerId, user.id));
     else if (query.dona) conds.push(eq(deals.ownerId, query.dona));
     if (query.q) conds.push(buscaContato(query.q));
+    if (query.anuncio) conds.push(adFilterCond(query.anuncio) ?? undefined);
     const c = lerCursor(query.cursor);
     if (c) conds.push(or(lt(deals.createdAt, c.em), and(eq(deals.createdAt, c.em), lt(deals.id, c.id))));
     const rows = await consulta().where(and(...conds)).orderBy(desc(deals.createdAt), desc(deals.id)).limit(query.limite + 1);

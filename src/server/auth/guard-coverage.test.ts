@@ -22,6 +22,7 @@ const PAGE_SESSION_ONLY: Record<string, string> = {
 const PUBLIC_PAGES = new Set(["layout.tsx", "login/page.tsx", "convite/[token]/page.tsx",
   "imprimir/relatorio/page.tsx", // sem cookie: só abre com token de uso único (5 min) emitido para quem tem "exportar", e os dados seguem as permissões dessa pessoa
   "imprimir/conversa/page.tsx", // token de uso único (5 min) de quem pediu + contatos.ver e relatorios.exportar dessa pessoa
+  "imprimir/orcamento/page.tsx", // token de uso único de quem pediu + atendimento.ver dessa pessoa
   "imprimir/avec/page.tsx", // idem, para a tabela de um relatório do Avec: token de uso único + relatorios.ver e relatorios.exportar (ver load.ts)
   "c/[token]/page.tsx", // link da cliente: só o token (32 bytes; no banco, só o hash), mostra o primeiro nome e o horário
   "agendar/page.tsx", // agendamento online: 404 quando desligado; os pedidos guardam o horário e quem confirma é a recepção

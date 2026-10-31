@@ -4,7 +4,7 @@ import { summaryLinkHref } from "../../lib/report-links";
 import type { ReportFilter } from "./common";
 import {
   crmVsPhone, dataQuality, demandHeatmap, executiveNumbers, financeWithPaid, firstResponse, followupEfficacy, funnelMilestones, lossesByReasonAndStage,
-  personVsGoal, sourceToSale, staleNow, type ExecutiveNumbers, type SourceRow,
+  personVsGoal, sourceToSale, staleNow, adToSale, entryPointToSale, type ExecutiveNumbers, type SourceRow, type AdSourceRow, type EntrySourceRow,
 } from "./queries";
 import { dailySummaryText } from "./summary-text";
 import { returnCohorts } from "./cohort";
@@ -22,6 +22,8 @@ export type ExecutiveView = Omit<ExecutiveNumbers, "vendas" | "ticketMedio"> & {
   ticketMedio: ExecutiveNumbers["ticketMedio"] | null;
 };
 export type SourceView = Omit<SourceRow, "receitaCents"> & { receitaCents: number | null };
+export type AdSourceView = Omit<AdSourceRow, "receitaCents"> & { receitaCents: number | null };
+export type EntrySourceView = Omit<EntrySourceRow, "receitaCents"> & { receitaCents: number | null };
 
 export function hideMoney(n: ExecutiveNumbers, gestor: boolean): ExecutiveView {
   if (gestor) return n;
@@ -31,9 +33,9 @@ export function hideMoney(n: ExecutiveNumbers, gestor: boolean): ExecutiveView {
 export async function loadOverview(user: ScreenUser, filter: ReportFilter) {
   const gestor = can(user.perms, "valores.ver");
   const f = scopedFilter(user, filter);
-  const [summary, numbers, response, funnel, stale, sources, losses, channel, quality] = await Promise.all([
+  const [summary, numbers, response, funnel, stale, sources, losses, channel, quality, ads, entries] = await Promise.all([
     dailySummaryText(user, f.now), executiveNumbers(f), firstResponse(f), funnelMilestones(f), staleNow({ now: f.now, ownerId: f.ownerId, source: f.source }),
-    sourceToSale(f), lossesByReasonAndStage(f), crmVsPhone(f), dataQuality(f),
+    sourceToSale(f), lossesByReasonAndStage(f), crmVsPhone(f), dataQuality(f), adToSale(f), entryPointToSale(f),
   ]);
   return {
     summary: {
@@ -42,6 +44,9 @@ export async function loadOverview(user: ScreenUser, filter: ReportFilter) {
     },
     numbers: hideMoney(numbers, gestor), response, funnel, stale, losses, channel, quality,
     sources: sources.map((s): SourceView => ({ ...s, receitaCents: gestor ? s.receitaCents : null })),
+    /** O recorte da origem por campanha (anúncio) e por porta de entrada (26/10). */
+    ads: ads.map((s): AdSourceView => ({ ...s, receitaCents: gestor ? s.receitaCents : null })),
+    entries: entries.map((s): EntrySourceView => ({ ...s, receitaCents: gestor ? s.receitaCents : null })),
   };
 }
 

@@ -17,6 +17,7 @@ import { getTeamNow } from "@/server/queries/team-now";
 import { listTags } from "@/server/domain/tags";
 import { countScheduled } from "@/server/queries/scheduled-list";
 import { getDayProgressLine } from "@/server/queries/day-progress";
+import { parseAdFilter } from "@/lib/ad-origin";
 
 export const metadata = { title: "Conversas" };
 
@@ -32,6 +33,7 @@ export default async function AtendimentoPage({ searchParams }: PageProps<"/aten
   const view = parseQueueView(sp.view);
   const filtro = parseQueueFilter(sp.filtro);
   const q = str("q"), dono = str("dono"), etapa = str("etapa"), fonte = str("fonte");
+  const anuncio = parseAdFilter(str("anuncio"));
   const lead = str("lead");
   const etiqueta = isUuid(str("etiqueta")) ? str("etiqueta") : null;
   const etiquetasList = (str("etiquetas") ?? "").split(",").filter((t) => isUuid(t)).slice(0, 10);
@@ -47,8 +49,8 @@ export default async function AtendimentoPage({ searchParams }: PageProps<"/aten
   if (leadId && isMobileUserAgent((await headers()).get("user-agent"))) redirect(`/atendimento/${leadId}`);
   const foco = parseQueueFoco(sp.foco);
   const aba = view === "arquivadas" || view === "equipe" || view === "fornecedores" || view === "nao-cliente" ? null : parseQueueAba(sp.aba);
-  const [queue, bulk, team, tagList, options, programadas, dayProgress] = await Promise.all([getQueue(user, { view, aba, foco, q, filtro, dono, etapa, fonte, etiqueta, etiquetas: etiquetasList, regraEtiqueta: parseEtiquetaRegra(regra), diasSemConversa: dias, setor, limit: limite }), getBulkOptions(user), getTeamNow(), listTags(), getQueueFilterOptions(user), countScheduled(user), getDayProgressLine()]);
-  const params = { view: str("view") ? view : null, aba, foco, filtro, etapa, dono, fonte, etiqueta, etiquetas, regra: regra ? parseEtiquetaRegra(regra) : null, dias: dias ? String(dias) : null, q };
+  const [queue, bulk, team, tagList, options, programadas, dayProgress] = await Promise.all([getQueue(user, { view, aba, foco, q, filtro, dono, etapa, fonte, anuncio, etiqueta, etiquetas: etiquetasList, regraEtiqueta: parseEtiquetaRegra(regra), diasSemConversa: dias, setor, limit: limite }), getBulkOptions(user), getTeamNow(), listTags(), getQueueFilterOptions(user), countScheduled(user), getDayProgressLine()]);
+  const params = { view: str("view") ? view : null, aba, foco, filtro, etapa, dono, fonte, anuncio, etiqueta, etiquetas, regra: regra ? parseEtiquetaRegra(regra) : null, dias: dias ? String(dias) : null, q };
   const query = queueQuery(params);
   // O painel abre com o item da Fila (nome, foto, espera, última mensagem) e busca a conversa depois. Fora da lista (filtro, busca), pede só esse lead.
   const serverItem = leadId ? queue.sections.flatMap((s) => s.items).find((i) => i.dealId === leadId) ?? await getQueueItem(leadId) : null;

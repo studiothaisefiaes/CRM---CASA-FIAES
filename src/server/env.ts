@@ -33,6 +33,14 @@ const schema = z.object({
   ANTHROPIC_API_KEY: z.string().optional(),
   /** Modelo da sugestão por IA. Padrão: claude-haiku-5-5 (o teto de gasto usa os preços do Haiku 5.5). */
   AI_MODEL: z.string().optional(),
+  /**
+   * API de Marketing do Meta (preparada e desligada, 26/10): token de sistema com ads_read e a conta de anúncios (act_…). Com os dois, dá
+   * para buscar o nome da campanha/conjunto e o gasto por anúncio (server/domain/meta-ads.ts). Sem eles, nada acontece. Nunca no repositório.
+   */
+  META_ADS_TOKEN: z.string().min(1).optional(),
+  META_AD_ACCOUNT_ID: z.string().min(1).optional(),
+  /** Versão da Graph API (padrão v23.0). */
+  META_GRAPH_VERSION: z.string().min(1).optional(),
   /** Só teste: endereço da API da IA (o e2e usa um endereço morto). */
   AI_BASE_URL: z.string().optional(),
   /**

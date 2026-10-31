@@ -14,6 +14,7 @@ import { transferText } from "../../lib/alert-copy";
 import { callPreview, type CallInfo } from "../../lib/calls";
 import type { QueueFilter } from "../../lib/report-links";
 import { lateDealIds } from "./late-count";
+import { adFilterCond, adFilterOptions } from "./ad-filter";
 import { phoneMatches, phoneSearchVariants } from "@/lib/phone-search";
 import { cpfSearchDigits } from "@/lib/cpf";
 import { isUuid } from "../../lib/uuid";
@@ -106,6 +107,8 @@ export type QueueOptions = {
   diasSemConversa?: number | null;
   /** Id de um setor: só as conversas passadas para ele (Setores, item 15). Id que não é uuid é ignorado. */
   setor?: string | null;
+  /** "Veio de anúncio" (26/10): `sim`, `nao` ou o id de um anúncio (vale a campanha). Ver queries/ad-filter.ts. */
+  anuncio?: string | null;
   /** Aba "Não lidas": só as conversas com mensagem da cliente que ninguém abriu. */
   aba?: QueueAba | null;
   now?: Date;
@@ -305,15 +308,16 @@ export async function getBulkOptions(user: Who): Promise<BulkOptions> {
  * Opções do painel "Filtros" da Fila: as etapas que podem estar na Fila (a Casa tem um funil só; fechado e perdido não ficam na Fila)
  * e, para quem vê as conversas de todas, as pessoas ativas da equipe que atendem (filtro por dona; o Contador não é dona de conversa).
  */
-export async function getQueueFilterOptions(user: Who): Promise<{ stages: { key: string; name: string; color: string | null; kind: string }[]; owners: { id: string; name: string }[] }> {
-  const [stageRows, owners] = await Promise.all([
+export async function getQueueFilterOptions(user: Who): Promise<{ stages: { key: string; name: string; color: string | null; kind: string }[]; owners: { id: string; name: string }[]; ads: { id: string; label: string }[] }> {
+  const [stageRows, owners, ads] = await Promise.all([
     db.select({ key: stages.key, name: stages.name, color: stages.color, kind: stages.kind }).from(stages)
       .where(and(eq(stages.active, true), sql`${stages.kind} not in ('fechado', 'perdido')`)).orderBy(asc(stages.position)),
     can(user.perms, "atendimento.todas")
       ? db.select({ id: users.id, name: users.name }).from(users).where(and(eq(users.active, true), isNotNull(users.passwordHash), canReceiveConversation())).orderBy(asc(users.name))
       : Promise.resolve([] as { id: string; name: string }[]),
+    adFilterOptions(),
   ]);
-  return { stages: stageRows, owners };
+  return { stages: stageRows, owners, ads };
 }
 
 /**
@@ -416,6 +420,8 @@ export async function getQueue(user: Who, opts: QueueOptions = {}): Promise<Queu
   }
   if (opts.etapa && ETAPA_KEY.test(opts.etapa)) conds.push(opts.etapa === FOLLOWUP_STATION ? eq(stages.kind, "followup") : eq(stages.key, opts.etapa));
   if (opts.fonte) conds.push(sql`${SOURCE_EXPR("deals")} = ${opts.fonte}`);
+  const adCond = adFilterCond(opts.anuncio);
+  if (adCond) conds.push(adCond);
 
   const reengage = opts.view === "sem-contato-90d";
   const archivedView = opts.view === "arquivadas";
@@ -445,7 +451,7 @@ export async function getQueue(user: Who, opts: QueueOptions = {}): Promise<Queu
   // Equipe com mensagem nova (22/10: o áudio da Thaíse às 10:01 só foi visto às 10:36, na aba Equipe; o aviso verde do topo passou batido):
   // enquanto ninguém abre, entra também no topo de Todas e Não lidas, com a etiqueta Equipe. Lida, volta a morar só na aba Equipe.
   const teamInMain = (!opts.view || opts.view === "todos") && !opts.foco && !opts.filtro && (!opts.aba || opts.aba === "nao-lidas")
-    && !opts.etapa && !opts.dono && !opts.fonte && !isUuid(opts.setor) && !(dias >= 1 && dias <= 365);
+    && !opts.etapa && !opts.dono && !opts.fonte && !adCond && !isUuid(opts.setor) && !(dias >= 1 && dias <= 365);
   const teamUnread = teamInMain ? lightRows([...teamConds, sql`${UNREAD} > 0`, ...(opts.q?.trim() ? [qCond(opts.q)] : [])]) : Promise.resolve([] as Light[]);
   const resolvedResume = opts.foco === "retomar" ? lightRows([...resolvedResumeConds, ...(opts.q?.trim() ? [qCond(opts.q)] : [])]) : Promise.resolve([] as Light[]);
   const resolvedResumeCount = countOf(resolvedResumeConds);
@@ -639,7 +645,7 @@ export async function getQueue(user: Who, opts: QueueOptions = {}): Promise<Queu
   }
   // A conferência só acompanha as visões em que faz sentido e some quando há busca/filtro (a lista ali é outra pergunta).
   const view = opts.view ?? "todos";
-  const refined = !!(opts.q?.trim() || opts.filtro || opts.foco || opts.etapa || opts.dono || opts.fonte || opts.etiqueta || opts.etiquetas?.length || opts.diasSemConversa || opts.setor || opts.aba);
+  const refined = !!(opts.q?.trim() || opts.filtro || opts.foco || opts.etapa || opts.dono || opts.fonte || opts.etiqueta || opts.etiquetas?.length || opts.diasSemConversa || opts.setor || opts.aba || adFilterCond(opts.anuncio));
   const conferir = refined || !["todos", "meus", "agendados-hoje"].includes(view) ? [] : await attendanceDue(user, now, { mine: view === "meus" });
   return { sections, counts, truncated: total > shown.length ? { shown: shown.length, total } : null, conferir };
 }

@@ -1,5 +1,5 @@
 import { requirePerm } from "@/server/auth/session";
-import { listProfessionals } from "@/server/domain/professionals";
+import { listProfessionals, listProServiceTimes } from "@/server/domain/professionals";
 import { getBusinessHours } from "@/server/domain/hours";
 import { suggestProfessionalServices } from "@/server/domain/agenda/who-does-what";
 import { listBookableServices } from "@/server/queries/agenda";
@@ -18,7 +18,8 @@ export const metadata = { title: "Profissionais" };
 export default async function ProfissionaisPage({ searchParams }: PageProps<"/config/profissionais">) {
   const user = await requirePerm("config.diaadia");
   const sp = await searchParams;
-  const tab = sp.aba === "matriz" ? "matriz" : "lista";
+  const tab = sp.aba === "matriz" ? "matriz" : sp.aba === "tempos" ? "tempos" : "lista";
+  const times = tab === "tempos" ? await listProServiceTimes() : [];
   const [items, services, casa, who] = await Promise.all([listProfessionals({ all: true }), listBookableServices(), getBusinessHours(), suggestProfessionalServices()]);
   // Lote 7A: "Acesso ao app" só para quem gere a equipe.
   const access = can(user.perms, "equipe.gerir") ? await proAccessList() : null;
@@ -28,7 +29,7 @@ export default async function ProfissionaisPage({ searchParams }: PageProps<"/co
   return (
     <>
       <ProAppSettingsCard value={proApp} />
-      <ProfessionalsEditor tab={tab} items={items} services={services} casa={casa} suggestions={who.suggestions} selectedId={selectedId} access={access} canPayout={can(user.perms, "comissao.pagar")} />
+      <ProfessionalsEditor tab={tab} times={times} items={items} services={services} casa={casa} suggestions={who.suggestions} selectedId={selectedId} access={access} canPayout={can(user.perms, "comissao.pagar")} />
     </>
   );
 }

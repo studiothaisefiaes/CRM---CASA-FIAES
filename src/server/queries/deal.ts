@@ -15,7 +15,8 @@ import { quickRepliesFor } from "../domain/quick-replies";
 import { firstName } from "@/lib/authorship";
 import { and, asc, desc, eq, getTableColumns, gt, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import { db } from "../db";
-import { aiSuggestions, contacts, dealEvents, deals, leadSources, lists, messages, stages, tasks, users, channels } from "../db/schema";
+import { adCampaigns, aiSuggestions, contacts, dealEvents, deals, leadSources, lists, messages, stages, tasks, users, channels } from "../db/schema";
+import { adDisplayName, isEntryPoint } from "../../lib/ad-origin";
 import { SOURCE_EXPR } from "../reports/common";
 import { NOT_IDENTIFIED } from "../../lib/source-kinds";
 import { HISTORY_EVENT_LIMIT } from "../../lib/history";
@@ -88,7 +89,9 @@ export async function getDealDetail(id: string, opts: { money?: boolean; viewer?
       .from(deals).innerJoin(stages, eq(stages.id, deals.stageId))
       .where(and(eq(deals.contactId, row.contact.id))).orderBy(desc(deals.createdAt)).limit(10),
     // A mesma origem da Fila e dos relatórios: `source_label` (link/QR/evidência); sem ela, "Não identificada". Nunca o canal ("WhatsApp").
-    db.select({ label: sql<string>`${SOURCE_EXPR("deals")}` }).from(deals).where(eq(deals.id, id)),
+    // Com o anúncio (nome atual da campanha) e a porta de entrada (26/10): o selo "Veio do anúncio" da ficha.
+    db.select({ label: sql<string>`${SOURCE_EXPR("deals")}`, adId: deals.adId, entryPoint: deals.entryPoint, adName: adCampaigns.name, adTitle: adCampaigns.title, adBody: adCampaigns.body, adPost: adCampaigns.postUrl })
+      .from(deals).leftJoin(adCampaigns, eq(adCampaigns.adId, deals.adId)).where(eq(deals.id, id)),
     // A próxima ação: UMA aberta por lead (a mais próxima, se houver legado com mais de uma).
     db.select({ id: tasks.id, title: tasks.title, dueAt: tasks.dueAt, assigneeId: tasks.assigneeId, assigneeName: assignee.name }).from(tasks)
       .leftJoin(assignee, eq(assignee.id, tasks.assigneeId))
@@ -148,6 +151,11 @@ export async function getDealDetail(id: string, opts: { money?: boolean; viewer?
     origins: listRows.filter((l) => l.kind === "origin"),
     services: listRows.filter((l) => l.kind === "service"),
     sourceLabel: src?.label ?? NOT_IDENTIFIED,
+    /** De onde veio a conversa: o anúncio (com o nome que a gestão deu, ou o começo do texto) e a porta de entrada (lib/ad-origin.ts). */
+    origem: {
+      ad: src?.adId ? { id: src.adId, name: adDisplayName({ adId: src.adId, name: src.adName, title: src.adTitle, body: src.adBody }), postUrl: src.adPost } : null,
+      entryPoint: isEntryPoint(src?.entryPoint) ? src.entryPoint : null,
+    },
     nextAction: nextAction ?? null,
     /** Origens de link/QR (para o "Como conheceu?" e para o nome nas mudanças do histórico). */
     sources: sourceRows,
