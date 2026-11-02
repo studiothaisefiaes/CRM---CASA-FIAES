@@ -23,6 +23,7 @@ const BACKOFF_MIN = [5, 30];
 /** Item preso em "enviando" (worker caiu no meio): não reenvia sozinho, para não duplicar, e marca como falho. */
 const STUCK_AFTER_MS = 15 * 60_000;
 export const AUTO_REPLY_SOURCE = "auto_resposta";
+export const POS_SILENCIO_SOURCE = "pos_silencio";
 /** Resposta fora do horário que ficou mais que isso na fila perdeu a hora: cancela. */
 export const AUTO_REPLY_MAX_QUEUE_MS = 30 * 60_000;
 /** Cadeado (advisory) que mantém um único `drainOutbox` por vez, para o teto por hora valer. */
@@ -165,6 +166,10 @@ async function processItem(item: OutboxItem, now: Date, open: boolean, progress:
   } else if (source?.startsWith("automacao:")) {
     const [a] = await db.select({ enabled: automations.enabled }).from(automations).where(eq(automations.id, source.slice("automacao:".length)));
     if (!a?.enabled) return cancel("A automação foi desligada.");
+  } else if (source === POS_SILENCIO_SOURCE) {
+    const { posSilencioCancelReason } = await import("./pos-silencio");
+    const why = await posSilencioCancelReason(item.dealId, item.createdAt);
+    if (why) return cancel(why);
   } else if (source?.startsWith(AUTO_MESSAGE_SOURCE)) {
     // Boas-vindas, ausência, encerramento (Lote 4): desligada, velha ou conversa que mudou não sai.
     const why = await autoMessageCancelReason(source, meta, row.deal, item.createdAt, now);

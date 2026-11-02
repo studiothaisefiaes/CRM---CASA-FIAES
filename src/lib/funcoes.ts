@@ -88,6 +88,14 @@ export const FUNCOES: FuncaoDef[] = [
   { key: "retomada_ia", label: "Retomada pela IA", description: "Retomar sem mensagem escrita (inclusive a retomada que a sugestão da IA propôs) deixa de ser só lembrete: no dia e na hora marcados, a IA lê a conversa, escreve a mensagem a partir do que a atendente disse (ou do motivo) e ENVIA SOZINHA, assinada por quem marcou. Não sai se a cliente escreveu depois, se a conversa foi marcada “Não é cliente” ou se passou do limite do dia: aí fica o lembrete para a equipe. Desligada, Retomar sem texto volta a ser só lembrete.",
     enviaParaCliente: true, padraoLigada: false,
     params: [{ key: "max_dia", label: "No máximo por dia", unit: "mensagens", min: 1, max: 200, default: 40 }] },
+  { key: "pos_silencio", label: "Mensagem depois do silêncio", description: "Cliente nova que só mandou um link e não respondeu às boas-vindas: depois do tempo escolhido, no horário de funcionamento, recebe esta mensagem, uma vez só. Não sai se ela escreveu ou se alguém da Casa respondeu.",
+    enviaParaCliente: true, padraoLigada: false,
+    params: [{ key: "horas", label: "Enviar depois de", unit: "horas", min: 1, max: 48, default: 3 }],
+    textos: [{ key: "texto", label: "Mensagem", vars: ["nome"], default: "Oi! Recebemos o que você enviou. Posso te ajudar com algo aqui na Casa Fiaes? Se foi engano, sem problema. 🌷" }] },
+  { key: "retomada_automatica", label: "Retomada automática das vencidas", description: "Retomada que venceu e ficou sem conversa: no horário de funcionamento, a IA lê a conversa, escreve e ENVIA SOZINHA, assinada por quem cuida da conversa, com limite por dia e começando pelas mais recentes. Fica de fora quem tem visita marcada, quem recusou WhatsApp ou IA, Não é cliente e conversa resolvida. Precisa da Retomada pela IA ligada.",
+    enviaParaCliente: true, padraoLigada: false,
+    params: [{ key: "max_dia", label: "No máximo por dia", unit: "mensagens", min: 1, max: 100, default: 20 },
+      { key: "dias_max", label: "Só retomadas vencidas há até", unit: "dias", min: 1, max: 180, default: 30 }] },
 ];
 
 export type FuncoesState = Record<string, { on?: boolean; params?: Record<string, number>; textos?: Record<string, string> }>;

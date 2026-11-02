@@ -7,6 +7,8 @@ import { PgBoss } from "pg-boss";
 import { ensureQueue, releaseStaleActive, trimScheduleQueue } from "../src/server/jobs/queues";
 import { runRules } from "../src/server/rules/engine";
 import { sweepClosingWaits, sweepOverdueWaits } from "../src/server/domain/overdue-waits";
+import { sweepPosSilencio } from "../src/server/domain/pos-silencio";
+import { sweepRetomadaAutomatica } from "../src/server/domain/retomada-automatica";
 import { syncLidPairs } from "../src/server/whatsapp/lid-pairs";
 import { processHistoryEvents, purgeOldWebhookEvents, retryFailedWebhooks } from "../src/server/whatsapp/webhook";
 import { reconcileMissedMessages } from "../src/server/whatsapp/reconcile";
@@ -119,6 +121,11 @@ async function main() {
     // Número oculto (@lid) que já tem o número revelado pela Evolution: junta com a conversa da cliente.
     const l = await syncLidPairs().catch((e) => { console.error("[número oculto]", e); return { merged: 0, renamed: 0 }; });
     if (l.merged || l.renamed) console.log("[número oculto → número]", l);
+    // Duas funções que mandam mensagem: nascem desligadas e cada uma confere o interruptor.
+    const ps = await sweepPosSilencio().catch((e) => { console.error("[depois do silêncio]", e); return 0; });
+    if (ps) console.log("[depois do silêncio]", ps);
+    const ra = await sweepRetomadaAutomatica().catch((e) => { console.error("[retomada automática]", e); return 0; });
+    if (ra) console.log("[retomada automática]", ra);
     await beat().catch((e) => console.error("[batida do worker]", e));
   });
   await boss.work(QUEUES.webhooks, async () => { const r = await retryFailedWebhooks(); if (r.tried) console.log("[webhooks]", r); });

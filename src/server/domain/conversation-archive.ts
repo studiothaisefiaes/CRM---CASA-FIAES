@@ -1,6 +1,8 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, lt, sql } from "drizzle-orm";
 import { db, type Tx } from "../db";
-import { alerts, deals } from "../db/schema";
+import { alerts, deals, tasks } from "../db/schema";
+import { stopAttemptsTx } from "./attempts";
+import { completeTaskTx } from "./tasks";
 import { emit, logEvent } from "./events";
 import { UserFacingError } from "./errors";
 
@@ -20,8 +22,23 @@ export async function archiveConversationTx(tx: Tx, dealId: string, userId: stri
   if (!d) throw new UserFacingError("Essa conversa não está mais aberta.");
   await tx.update(alerts).set({ resolvedAt: now, readAt: sql`coalesce(${alerts.readAt}, ${now.toISOString()}::timestamptz)` })
     .where(and(eq(alerts.dealId, dealId), isNull(alerts.resolvedAt)));
+  await closeOverdueResumesTx(tx, dealId, userId, now);
   await logEvent(tx, dealId, "conversa_arquivada", {}, userId);
   // Atendida: só encerra (nova organização, 16/10: sem Fechado). A conversa termina sozinha 3 dias depois (`closeAttendedDeals`).
+}
+
+/**
+ * Resolver encerra a retomada que já venceu (Cati 31/10, Camilla: Resolvido e a etiqueta "venceu 18/10" sem sair de jeito nenhum).
+ * A retomada com data à frente continua: é o combinado de voltar a falar (caso Aline, 20/10).
+ */
+export async function closeOverdueResumesTx(tx: Tx, dealId: string, userId: string | null, now: Date): Promise<number> {
+  const overdue = await tx.select({ id: tasks.id }).from(tasks)
+    .where(and(eq(tasks.dealId, dealId), eq(tasks.kind, "proxima_acao"), isNull(tasks.doneAt), lt(tasks.dueAt, now)));
+  if (!overdue.length) return 0;
+  const [d] = await tx.select().from(deals).where(eq(deals.id, dealId));
+  if (d?.followupTaskId && overdue.some((t) => t.id === d.followupTaskId)) await stopAttemptsTx(tx, d, userId, now);
+  for (const t of overdue) await completeTaskTx(tx, t.id, userId, "cancelada", now);
+  return overdue.length;
 }
 
 /** Depois do commit do encerramento: avisa as telas e põe na fila a mensagem de encerramento (Lote 4; nasce desligada). Nunca lança. */

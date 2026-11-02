@@ -10,6 +10,7 @@ import { archiveDeals, restoreDeals } from "./archive";
 import { isQuiet } from "./quiet";
 import { getBusinessHours } from "./hours";
 import { closesConversation } from "./message-kinds";
+import { SO_LINK_SQL } from "../../lib/so-link";
 import { businessSecondsBetween } from "../../lib/business-hours";
 import { sentViaOf, signatureMap, signerOf, warnOwnerRepliedByOther } from "./authorship";
 import { applyConfirmationTx } from "./confirmation";
@@ -66,6 +67,13 @@ export function detectOrigin(input: { body?: string | null; hasAdReferral?: bool
  * Distribuição desligada: quem recebe a conversa nova é quem tem "Receber leads da distribuição" e menos leads abertos.
  * Ninguém com essa permissão (só a gestão ativa): fica Sem dono. A gestão nunca recebe conversa sozinha (pedido da Casa, 14/10).
  */
+/** Tudo o que a cliente mandou nesta conversa é só link? */
+async function onlyLinksSoFarTx(tx: Tx, dealId: string): Promise<boolean> {
+  const [r] = await tx.select({ total: sql<number>`count(*)::int`, links: sql<number>`(count(*) filter (where ${messages.kind} = 'text' and ${messages.body} ~* ${SO_LINK_SQL}))::int` })
+    .from(messages).where(and(eq(messages.dealId, dealId), eq(messages.direction, "in")));
+  return r.total > 0 && r.total === r.links;
+}
+
 async function pickOwner(tx: Tx): Promise<string | null> {
   const rows = await tx.execute(sql`
     select u.id, count(d.id)::int as open
@@ -403,6 +411,8 @@ export async function recordOutbound(input: OutboundInput) {
     const stale = !!deal.awaitingReplySince && at < deal.awaitingReplySince;
     if (input.automated || stale) {
       await tx.update(deals).set({ lastOutboundAt: sql`greatest(${deals.lastOutboundAt}, ${at.toISOString()}::timestamptz)` }).where(eq(deals.id, dealId));
+      // A cliente nova só mandou um link e a automática já respondeu (Cati 31/10, Iara): a vez é dela, não é atraso da Casa.
+      if (input.automated && deal.awaitingReplySince && !deal.firstResponseAt && await onlyLinksSoFarTx(tx, dealId)) await tx.update(deals).set({ awaitingReplySince: null }).where(eq(deals.id, dealId));
       await logEvent(tx, dealId, "mensagem_enviada", { messageId: msg.id, ...(input.automated ? { automatica: true } : { atrasada: true }) }, null);
       return { dealId, messageId: msg.id, warned: false };
     }
