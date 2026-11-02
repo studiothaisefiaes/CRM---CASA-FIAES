@@ -39,9 +39,14 @@ export async function loadEquipeContext(d: DealInfo, requesterId: string | null 
       .where(and(eq(clientPackages.contactId, d.contactId), isNull(clientPackages.cancelledAt), lt(clientPackages.usedSessions, clientPackages.totalSessions),
         or(isNull(clientPackages.validUntil), gte(clientPackages.validUntil, today))))
       .orderBy(desc(clientPackages.purchasedOn)).limit(1),
+    // Quem vai enviar já falou (pelo CRM, ou assinada/apresentada pelo celular e pela boas-vindas: "*CATI - CASA FIAES:*", "Me chamo Caticilene")
+    // e se OUTRA pessoa da equipe falou antes (só aí cabe "Aqui é…, vou continuar": avaliação 02/11, a equipe apagava a apresentação fora de hora).
     requesterId
-      ? db.select({ x: sql<number>`1` }).from(messages).where(and(eq(messages.dealId, d.id), eq(messages.sentByUserId, requesterId))).limit(1)
-      : Promise.resolve([] as { x: number }[]),
+      ? db.execute<{ ja: boolean; outra: boolean }>(sql`select
+          exists (select 1 from messages m join users u on u.id = ${requesterId}::uuid where m.deal_id = ${d.id} and m.direction = 'out' and (m.sent_by_user_id = u.id
+            or m.body ilike '%' || split_part(u.name, ' ', 1) || '%' or (coalesce(u.signature, '') <> '' and m.body ilike '*' || u.signature || '%'))) ja,
+          exists (select 1 from messages m where m.deal_id = ${d.id} and m.direction = 'out' and m.kind <> 'call' and (m.from_phone or (m.sent_by_user_id is not null and m.sent_by_user_id <> ${requesterId}::uuid))) outra`).then((r) => r.rows)
+      : Promise.resolve([] as { ja: boolean; outra: boolean }[]),
   ]);
 
   let transfer: { de: string | null; para: string | null; at: Date; byId: string | null } | null = null;
@@ -59,7 +64,7 @@ export async function loadEquipeContext(d: DealInfo, requesterId: string | null 
     status: STATUS_LABEL[conversationStatus({ archivedAt: d.conversationArchivedAt, awaitingSince: d.awaitingReplySince })],
     com: d.ownerId ? names.get(d.ownerId) ?? null : null,
     transfer: transfer ? { de: names.get(transfer.de ?? "") ?? null, para: names.get(transfer.para ?? "") ?? null, at: transfer.at, nota: tNote?.body ?? null } : null,
-    quemPede: requesterId && names.get(requesterId) ? { nome: names.get(requesterId)!, jaFalou: spoke.length > 0 } : null,
+    quemPede: requesterId && names.get(requesterId) ? { nome: names.get(requesterId)!, jaFalou: !!spoke[0]?.ja, outraFalou: !!spoke[0]?.outra } : null,
     retomada: msg ? { at: msg.at, texto: `mensagem programada: ${msg.text}` } : task ? { at: task.dueAt, texto: task.title } : null,
     pacote: pkg ? `${pkg.name}, ${pkg.total - pkg.used} de ${pkg.total} sessões restantes` : null,
     notas: notes.filter((n) => n !== tNote).slice(0, 2).reverse().map((n) => n.body),

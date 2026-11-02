@@ -1,13 +1,14 @@
 import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
-import { auditLog, contactNotes, deals, libraryFiles, messages, outbox, settings, teams, users } from "../db/schema";
+import { auditLog, contactNotes, contacts, deals, libraryFiles, messages, outbox, settings, teams, users } from "../db/schema";
 import { isOpen } from "@/lib/business-hours";
 import {
   menuStep, menuTrail, welcomePathOf, welcomeSubmenuSource, welcomeText, WELCOME_MAX_OPTIONS, WELCOME_MIN_OPTIONS, WELCOME_REPLY_SOURCE, WELCOME_SOURCE,
   type MenuOption, type WelcomeConfig,
 } from "@/lib/welcome-menu-flow";
 import { getBusinessHours } from "./hours";
+import { AUTO_REPLY_GAP_MS, AUTO_REPLY_MAX_AGE_MS } from "./auto-reply";
 import { enqueueAutomated } from "./outbox";
 import { addTag, TAG_MAX } from "./tags";
 import { UserFacingError } from "./errors";
@@ -113,17 +114,27 @@ export async function saveWelcomeMenu(input: unknown, userId: string): Promise<v
 /**
  * Número que escreve pela primeira vez na vida (o contato não tem nenhuma mensagem antes) com a Casa aberta: o menu entra na fila de envio.
  * Desligado por padrão. Com a Casa fechada, quem responde é a "resposta fora do horário" (nunca os dois).
+ * 02/11: as mesmas travas das outras automáticas: mensagem velha (reprocessada) não recebe, e a janela de 12 h do contato (`lastAutoReplyAt`)
+ * vale para o menu também. Com Boas-vindas e Menu ligados, o primeiro contato recebia os dois; agora sai uma só (a que chega primeiro).
  */
 export async function maybeWelcomeMenu(dealId: string, at: Date, now = new Date()): Promise<boolean> {
   const cfg = await getWelcomeMenu();
   if (!cfg.enabled || cfg.options.length < 2) return false;
+  if (now.getTime() - at.getTime() > AUTO_REPLY_MAX_AGE_MS) return false;
   if (!isOpen(now.getTime(), await getBusinessHours())) return false;
   const [d] = await db.select({ contactId: deals.contactId }).from(deals).where(eq(deals.id, dealId));
   if (!d) return false;
   const [{ n }] = (await db.execute(sql`select count(*)::int as n from messages where contact_id = ${d.contactId}`)).rows as { n: number }[];
   if (n !== 1) return false;
-  await enqueueAutomated({ dealId, kind: "text", text: welcomeText(cfg), source: WELCOME_SOURCE, at });
-  return true;
+  return db.transaction(async (tx) => {
+    // Reserva a janela de 12 h de forma atômica, como a "fora do horário" e as boas-vindas.
+    const claimed = await tx.update(contacts).set({ lastAutoReplyAt: at })
+      .where(sql`${contacts.id} = ${d.contactId} and (${contacts.lastAutoReplyAt} is null or ${contacts.lastAutoReplyAt} <= ${new Date(at.getTime() - AUTO_REPLY_GAP_MS).toISOString()}::timestamptz)`)
+      .returning({ id: contacts.id });
+    if (!claimed.length) return false;
+    await enqueueAutomated({ dealId, kind: "text", text: welcomeText(cfg), source: WELCOME_SOURCE, at }, tx);
+    return true;
+  });
 }
 
 /**

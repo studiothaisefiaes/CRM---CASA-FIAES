@@ -363,3 +363,11 @@ describe("marca de material da IA ([[material:/atalho]], 24/10)", () => {
     expect(separarMaterial("Oi!\n[[material:]]")).toEqual({ texto: "Oi!", material: null });
   });
 });
+
+describe("despedida não ganha horário (avaliação 02/11)", () => {
+  it("reconhece agradecimento e despedida, e não confunde com pedido", async () => {
+    const { ehDespedida } = await import("./pos");
+    for (const t of ["Muito obrigada pela atenção! Bom final de semana!💐", "Tudo bem.  Obrigada", "Até lá", "Entendi. 👋🏽💐", "Combinado. Agradeço.", "Ah sim"]) expect(ehDespedida(t), t).toBe(true);
+    for (const t of ["Hoje tem?", "Concordo", "Obrigada! Tem horário sábado?", "obrigada, pode ser às 10h", "Quero marcar", "Seria para minha mãe kkk"]) expect(ehDespedida(t), t).toBe(false);
+  });
+});

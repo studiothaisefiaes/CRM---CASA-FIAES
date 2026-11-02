@@ -139,21 +139,22 @@ function daysIn(raw: string, today: string): string[] {
   });
   const [y, mo] = [Number(today.slice(0, 4)), Number(today.slice(5, 7))];
   const iso = (yy: number, mm: number, dd: number) => `${yy}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+  // 02/11: data que não existe ("31/11", "dia 31" em novembro, "29/02" fora do bissexto) é descartada; antes virava o dia seguinte (01/12).
+  const real = (yy: number, mm: number, dd: number) => new Date(Date.UTC(yy, mm - 1, dd)).getUTCDate() === dd;
+  const add = (yy: number, mm: number, dd: number) => { if (real(yy, mm, dd)) out.add(iso(yy, mm, dd)); };
   for (const m of t.matchAll(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2}|\d{4}))?\b/g)) {
     const [dd, mm] = [Number(m[1]), Number(m[2])];
     if (dd < 1 || dd > 31 || mm < 1 || mm > 12) continue;
     // Com ano: ano passado nunca é pedido de horário (nascimento); senão vale o ano escrito.
     const yy = m[3] ? (m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3])) : null;
-    if (yy != null) { if (yy >= y && iso(yy, mm, dd) >= today) out.add(iso(yy, mm, dd)); continue; }
-    const d = iso(y, mm, dd);
-    out.add(d < today ? iso(y + 1, mm, dd) : d);
+    if (yy != null) { if (yy >= y && iso(yy, mm, dd) >= today) add(yy, mm, dd); continue; }
+    if (iso(y, mm, dd) < today) add(y + 1, mm, dd); else add(y, mm, dd);
   }
   // "dia 21/11" é a data 21/11, não o dia 21 deste mês.
   for (const m of t.matchAll(/\bdia (\d{1,2})\b(?!\/)/g)) {
     const dd = Number(m[1]);
     if (dd < 1 || dd > 31) continue;
-    const d = iso(y, mo, dd);
-    out.add(d < today ? (mo === 12 ? iso(y + 1, 1, dd) : iso(y, mo + 1, dd)) : d);
+    if (iso(y, mo, dd) >= today) add(y, mo, dd); else if (mo === 12) add(y + 1, 1, dd); else add(y, mo + 1, dd);
   }
   return [...out].sort();
 }

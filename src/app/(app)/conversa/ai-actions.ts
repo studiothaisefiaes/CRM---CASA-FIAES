@@ -139,7 +139,7 @@ export async function prepareAiBookingAction(input: { id: string; dealId: string
  * "Confirmar e marcar" (Cati 30/10): marca e envia a confirmação num toque só. Marca antes de enviar: horário ocupado não vira mensagem.
  * Faltando dado, não marca nem envia: volta o que a folha "Marcar horário" precisa para abrir preenchida.
  */
-export type ConfirmarResult = { marcado: true; appointmentIds: string[]; enviada: boolean } | { marcado: false; motivo: string; booking: AiBooking };
+export type ConfirmarResult = { marcado: true; appointmentIds: string[]; enviada: boolean; /** Já estava marcado por este pedido: nada foi enviado de novo. */ jaMarcado?: boolean } | { marcado: false; motivo: string; booking: AiBooking };
 export async function confirmarEMarcarAction(input: { id: string; dealId: string; text: string }): Promise<AiResult<ConfirmarResult>> {
   try {
     const user = await assertPerm("agenda.marcar");
@@ -150,6 +150,8 @@ export async function confirmarEMarcarAction(input: { id: string; dealId: string
     const r = await confirmarEMarcar(id, dealId, { id: user.id, perms: user.perms });
     if (!r) return { ok: false, error: "Esta sugestão não tem horário para marcar." };
     if (!r.marcado) return { ok: true, data: { marcado: false, motivo: r.motivo, booking: { suggestionId: id, slot: r.slot, livre: r.livre, confirm: r.confirm } } };
+    // 02/11: toque repetido (ou outra aba) devolve o mesmo pedido: a confirmação já saiu da primeira vez e não sai de novo.
+    if (r.reused) return { ok: true, data: { marcado: true, appointmentIds: r.appointmentIds, enviada: false, jaMarcado: true } };
     await markSuggestion(id, dealId, "usada");
     revalidatePath("/agenda");
     const enviada = await sendFromCrm(dealId, text, user.id).then(() => true, (e) => { console.error("[confirmar e marcar] não enviou", dealId, e); return false; });

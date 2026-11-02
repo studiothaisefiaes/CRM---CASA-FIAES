@@ -52,7 +52,7 @@ export function AttendanceStrip({ items }: { items: AttendanceDue[] }) {
     setGone((g) => new Set(g).add(i.dealId));
     const name = i.name === i.phone ? formatPhoneClient(i.phone) : i.name;
     // Faltou tem Desfazer (QA r58, M-2): a conversa volta como estava e o item volta para a lista.
-    const undo = status === "faltou" && r.data?.changed ? { label: "Desfazer", onClick: () => start(async () => {
+    const undo = status === "faltou" && r.data?.changed && !r.data.cancelou ? { label: "Desfazer", onClick: () => start(async () => {
       const u = await undoMissedAttendanceAction(i.dealId);
       if (!u.ok) { toast(u.error, "error"); return; }
       setGone((g) => { const n = new Set(g); n.delete(i.dealId); return n; });

@@ -52,4 +52,13 @@ describe("confirmarEMarcar", () => {
     await desfazerMarcacao(dealId, rows.map((a) => a.id), actor, T0);
     expect((await db.select().from(appointments))[0]).toMatchObject({ status: "cancelado", cancelReason: "engano" });
   });
+  it("02/11: pedido repetido volta como já marcado; depois do Desfazer, recusa em vez de dizer marcado", async () => {
+    await db.update(professionalServices).set({ durationMin: 60 });
+    // Dois toques juntos (as duas conferências veem o horário livre): um marca, o outro volta como o mesmo pedido.
+    const both = await Promise.all([confirmarEMarcar(id, dealId, actor, T0), confirmarEMarcar(id, dealId, actor, T0)]);
+    expect(both.map((r) => r?.marcado && r.reused).sort()).toEqual([false, true]);
+    const rows = await db.select().from(appointments);
+    await desfazerMarcacao(dealId, rows.map((a) => a.id), actor, T0);
+    await expect(confirmarEMarcar(id, dealId, actor, T0)).rejects.toThrow("Esse horário foi desfeito");
+  });
 });

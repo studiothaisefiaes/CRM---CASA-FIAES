@@ -12,6 +12,7 @@ vi.mock("next/navigation", () => ({
 }));
 vi.mock("./use-live-alerts", () => ({ useLiveAlerts: (a: unknown[]) => ({ alerts: a, reload: vi.fn() }) }));
 vi.mock("./alerts-bell", () => ({ AlertsBell: () => null }));
+vi.mock("./comando-voz", () => ({ ComandoVoz: () => null }));
 vi.mock("./push-cleanup", () => ({ logoutAction: vi.fn() }));
 vi.mock("./availability-menu", () => ({ AvailabilityMenu: () => null, MobileAvailability: () => null }));
 vi.mock("./sound-hint", () => ({ SoundUnlockHint: () => null }));

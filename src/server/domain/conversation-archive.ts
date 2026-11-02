@@ -1,6 +1,7 @@
-import { and, eq, isNull, lt, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import { db, type Tx } from "../db";
-import { alerts, deals, tasks } from "../db/schema";
+import { alerts, deals, outbox, tasks } from "../db/schema";
+import { SCHEDULED_SOURCE } from "./scheduled";
 import { stopAttemptsTx } from "./attempts";
 import { completeTaskTx } from "./tasks";
 import { emit, logEvent } from "./events";
@@ -32,18 +33,25 @@ export async function archiveConversationTx(tx: Tx, dealId: string, userId: stri
  * A retomada com data à frente continua: é o combinado de voltar a falar (caso Aline, 20/10).
  */
 export async function closeOverdueResumesTx(tx: Tx, dealId: string, userId: string | null, now: Date): Promise<number> {
+  // O retorno também é retomada (Fila e Quadro já o contam em "Para retomar"): vencido, encerra junto (02/11).
   const overdue = await tx.select({ id: tasks.id }).from(tasks)
-    .where(and(eq(tasks.dealId, dealId), eq(tasks.kind, "proxima_acao"), isNull(tasks.doneAt), lt(tasks.dueAt, now)));
+    .where(and(eq(tasks.dealId, dealId), inArray(tasks.kind, ["proxima_acao", "retorno"]), isNull(tasks.doneAt), lt(tasks.dueAt, now)));
   if (!overdue.length) return 0;
   const [d] = await tx.select().from(deals).where(eq(deals.id, dealId));
   if (d?.followupTaskId && overdue.some((t) => t.id === d.followupTaskId)) await stopAttemptsTx(tx, d, userId, now);
   for (const t of overdue) await completeTaskTx(tx, t.id, userId, "cancelada", now);
+  // A mensagem programada ligada à retomada encerrada não sai mais (02/11): cancelada na mesma transação, como o `cancelScheduled`.
+  const cancelled = await tx.update(outbox).set({ status: "cancelled", error: "Retomada encerrada ao resolver a conversa." })
+    .where(and(eq(outbox.status, "pending"), sql`${outbox.options}->>'source' = ${SCHEDULED_SOURCE}`, inArray(sql`${outbox.options}->>'taskId'`, overdue.map((t) => t.id))))
+    .returning({ id: outbox.id, dealId: outbox.dealId });
+  for (const o of cancelled) await logEvent(tx, o.dealId, "agendada_cancelada", { outboxId: o.id, motivo: "resolvido" }, userId);
   return overdue.length;
 }
 
 /** Depois do commit do encerramento: avisa as telas e põe na fila a mensagem de encerramento (Lote 4; nasce desligada). Nunca lança. */
 export async function afterArchive(dealId: string): Promise<void> {
   await emit("lead_atualizado", { dealId });
+  await emit("agendada", { dealId }); // a mensagem programada da retomada vencida pode ter sido cancelada (02/11)
   try { const { afterConversationClosed } = await import("./auto-messages"); await afterConversationClosed(dealId); }
   catch (e) { console.error("[mensagem automática] encerramento não enfileirou", dealId, e instanceof Error ? e.message : e); }
 }

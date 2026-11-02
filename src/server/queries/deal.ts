@@ -92,10 +92,11 @@ export async function getDealDetail(id: string, opts: { money?: boolean; viewer?
     // Com o anúncio (nome atual da campanha) e a porta de entrada (26/10): o selo "Veio do anúncio" da ficha.
     db.select({ label: sql<string>`${SOURCE_EXPR("deals")}`, adId: deals.adId, entryPoint: deals.entryPoint, adName: adCampaigns.name, adTitle: adCampaigns.title, adBody: adCampaigns.body, adPost: adCampaigns.postUrl })
       .from(deals).leftJoin(adCampaigns, eq(adCampaigns.adId, deals.adId)).where(eq(deals.id, id)),
-    // A próxima ação: UMA aberta por lead (a mais próxima, se houver legado com mais de uma).
+    // A próxima ação: UMA aberta por lead (a mais próxima, se houver legado com mais de uma). Próxima ação ou retorno, a mesma retomada
+    // da Fila e do Quadro (02/11: o painel ignorava o retorno e a linha mostrava "Para retomar").
     db.select({ id: tasks.id, title: tasks.title, dueAt: tasks.dueAt, assigneeId: tasks.assigneeId, assigneeName: assignee.name }).from(tasks)
       .leftJoin(assignee, eq(assignee.id, tasks.assigneeId))
-      .where(and(eq(tasks.dealId, id), eq(tasks.kind, "proxima_acao"), isNull(tasks.doneAt))).orderBy(asc(tasks.dueAt)).limit(1),
+      .where(and(eq(tasks.dealId, id), inArray(tasks.kind, ["proxima_acao", "retorno"]), isNull(tasks.doneAt))).orderBy(asc(tasks.dueAt)).limit(1),
     db.select({ id: leadSources.id, label: leadSources.label, active: leadSources.active }).from(leadSources).orderBy(asc(leadSources.label)),
     clientContext(row.contact.id, id, { money }),
     tagsOf([row.contact.id]),

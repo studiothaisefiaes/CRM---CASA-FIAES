@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "../../db";
-import { appointments, deals, professionals, stages, users, lists } from "../../db/schema";
+import { appointments, contacts, deals, professionals, stages, users, lists } from "../../db/schema";
 import { resetDb } from "../../../../test/db";
 import { recordInbound } from "../deals";
 import { moveToKindTx } from "../deals";
@@ -51,5 +51,16 @@ describe("Remarcou no Ela veio?", () => {
   it("horário só na conversa: também sai de Agendado", async () => {
     expect(await markRescheduled(dealId, userId, at(2))).toEqual({ temNovo: false });
     expect(await kind()).not.toBe("agendado");
+  });
+  it("02/11: não mexe no horário de outra pessoa do mesmo número nem no de quem já chegou", async () => {
+    const [filha] = await db.insert(contacts).values({ name: "Bia", phoneE164: `pessoa:${contactId}`, sharesPhoneWith: contactId }).returning();
+    const [daFilha] = await db.insert(appointments).values({ contactId: filha.id, clientName: "Bia", professionalId: proId, serviceId, serviceLabel: "Corte", startsAt: at(1), durationMin: 60, status: "agendado", origin: "crm", externalKey: "crm:filha" }).returning();
+    const [chegou] = await db.insert(appointments).values({ contactId, clientName: "Paula", professionalId: proId, serviceId, serviceLabel: "Escova", startsAt: at(1), durationMin: 60, status: "chegou", origin: "crm", externalKey: "crm:chegou" }).returning();
+    const dela = await horario(at(1));
+    await markRescheduled(dealId, userId, at(2));
+    const rows = await db.select().from(appointments);
+    expect(rows.find((r) => r.id === dela)?.status).toBe("cancelado");
+    expect(rows.find((r) => r.id === daFilha.id)?.status).toBe("agendado");
+    expect(rows.find((r) => r.id === chegou.id)?.status).toBe("chegou");
   });
 });

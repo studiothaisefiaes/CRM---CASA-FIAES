@@ -274,6 +274,20 @@ export function garantirHorario(t: string, i: GarantiaInput): { texto: string; h
   return { texto: `${fica ? `${fica} ` : ""}${propostaTexto(opcao, fora)}`, horario: opcao, trocou: true };
 }
 
+/* ---------- Despedida não ganha horário ---------- */
+
+/**
+ * A cliente só agradeceu, concordou ou se despediu ("Muito obrigada! Bom final de semana", "Tudo bem. Obrigada", "Até lá"): a Casa não
+ * oferece horário nem puxa assunto (avaliação 02/11: a sugestão colava "Tenho sábado às 9h, posso reservar?" na despedida e a equipe apagava).
+ * Com pergunta ou hora no texto não é despedida.
+ */
+const DESPEDIDA = /^(?:(?:muito |mt |mto )?obrigad[ao]s?|agrade[cç]o|grata|valeu|tudo bem|t[aá] bom|ok(?:ay)?|certo|combinado|beleza|perfeito|entendi|ah sim|at[eé] (?:l[aá]|logo|mais|amanh[aã])|bom (?:fim|final) de semana|boa (?:noite|tarde)|tchau|beijos?|bjs?)(?=$|[^\p{L}])/iu;
+export function ehDespedida(t: string | null | undefined): boolean {
+  const s = (t ?? "").replace(/[\p{Extended_Pictographic}\p{Emoji_Modifier}\uFE0F\u200D]/gu, "").trim();
+  if (!s || s.length > 120 || s.includes("?") || mentionsTime(s)) return false;
+  return s.split(/[.!,\n]+/).map((x) => x.trim()).filter(Boolean).every((x) => DESPEDIDA.test(x) || /^(?:querida|meu bem|viu|rs+|kk+|amo)$/i.test(x));
+}
+
 /* ---------- Sem cumprimento no meio da conversa ---------- */
 
 /** "Oii, Fulana! Tudo bem?", "Bom dia, querida!", "Olá! Tudo certinho?" no começo da mensagem. */

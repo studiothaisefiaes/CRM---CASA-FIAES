@@ -42,3 +42,9 @@ it("QA r66 I-7: apagar para todos pede mensagem.apagar_todos; Finalizar e Faltou
   await agenda.setAppointmentStatusAction(U, "confirmado");
   expect(asked).toEqual(["mensagem.apagar_todos", "agenda.marcar", "agenda.marcar", "atendimento.ver"]);
 });
+
+it("02/11: Veio/Faltou em lote (Pendências, Fechar o dia) pedem agenda.marcar, como o de um horário", async () => {
+  await agenda.markManyAction([U], "compareceu");
+  await agenda.markManyAction([U], "faltou");
+  expect(asked).toEqual(["agenda.marcar", "agenda.marcar"]);
+});

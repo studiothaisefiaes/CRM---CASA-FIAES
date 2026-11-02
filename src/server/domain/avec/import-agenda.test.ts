@@ -102,6 +102,15 @@ describe("cancelamento sem hora: casa por cliente + dia + profissional (17/10: 3
     await importa("c.xlsx", C, [await cancelamento({ dia: "20/10/2026", cliente: "Ana Teste" })], { now: NOW });
     expect((await rows()).map((r) => [r.status, r.avecStatus])).toEqual([["confirmado", "cancelado"]]);
   });
+
+  it("Chegou do CRM e o Avec diz Pago: sobe para compareceu (auditoria 02/11); confirmado do CRM continua", async () => {
+    await importa("r.xlsx", AVEC_H.reservas, [reserva({ dia: "20/10/2026", hora: "10:00", cliente: "Ana Teste" }), reserva({ dia: "20/10/2026", hora: "11:00", cliente: "Bia Teste" })], { now: NOW });
+    const [a, b] = await rows();
+    await db.update(appointments).set({ status: "chegou", crmTouchedAt: NOW }).where(eq(appointments.id, a.id));
+    await db.update(appointments).set({ status: "confirmado", crmTouchedAt: NOW }).where(eq(appointments.id, b.id));
+    await importa("r2.xlsx", AVEC_H.reservas, [reserva({ dia: "20/10/2026", hora: "10:00", cliente: "Ana Teste", status: "Pago" }), reserva({ dia: "20/10/2026", hora: "11:00", cliente: "Bia Teste", status: "Pago" })], { now: NOW });
+    expect((await rows()).map((r) => [r.clientName, r.status, r.avecStatus])).toEqual([["Ana Teste", "compareceu", "compareceu"], ["Bia Teste", "confirmado", "compareceu"]]);
+  });
 });
 
 describe("baixa do Avec carimba a hora da conclusão (Fase B, Depois do atendimento)", () => {

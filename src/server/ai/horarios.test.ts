@@ -108,6 +108,12 @@ describe("janela pedida (dia e período) filtra as opções", () => {
     expect(parseWindow(["queria marcar sexta", "de manhã"], HOJE)).toMatchObject({ days: ["2026-10-16"], period: "manha" });
     expect(parseWindow(["Boa tarde, quanto custa a escova?"], HOJE)).toBeNull();
   });
+  it("02/11: data que não existe é descartada (31/11 não vira 01/12)", () => {
+    expect(parseWindow(["pode ser 31/11?"], HOJE)?.days ?? []).toEqual([]);
+    expect(parseWindow(["pode ser 31/11 ou 30/11?"], HOJE)).toMatchObject({ days: ["2026-11-30"] });
+    expect(parseWindow(["dia 31"], "2026-11-02")?.days ?? []).toEqual([]);
+    expect(parseWindow(["29/02"], HOJE)?.days ?? []).toEqual([]);
+  });
   const days: DayFree[] = [
     { day: "2026-10-16", pros: [{ name: "Cati", starts: [960] }, { name: "Gilvan", starts: [990] }] },
     { day: "2026-10-17", pros: [{ name: "Gilvan", starts: [540] }, { name: "Maiara", starts: [930] }] },

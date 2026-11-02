@@ -3,13 +3,13 @@ import { db } from "../../db";
 import { appointments, deals, stages } from "../../db/schema";
 import { cancelAppointmentsTx } from "./visits";
 import { afterAgendaChange } from "./notify";
-import { ACTIVE_STATUSES } from "@/lib/appointment-status";
 import { numberContactIds } from "../people-on-number";
 import { enterMissedTx } from "../funnel";
 import { replaceOpenTaskTx } from "../tasks";
 import { UserFacingError } from "../errors";
 
 const SAME_VISIT_MS = 12 * 3_600_000;
+const NOT_STARTED = ["agendado", "confirmado", "solicitado"];
 
 /**
  * "Remarcou" no "Ela veio?" (Cati 30/10): nem veio nem faltou. Os horários vencidos daquela visita saem com o motivo "remarcado", sem contar
@@ -21,8 +21,10 @@ export async function markRescheduled(dealId: string, userId: string, now = new 
     if (!d?.scheduledAt) throw new UserFacingError("Só dá para remarcar uma conversa com horário marcado.");
     const ids = await numberContactIds(d.contactId, tx);
     const at = d.scheduledAt.getTime();
+    // 02/11: só os da cliente da conversa (não os de outra pessoa do mesmo número) e só os que ainda não começaram: Chegou e Em
+    // atendimento querem dizer que ela veio, então não saem como "remarcado".
     const rows = await tx.select({ id: appointments.id, startsAt: appointments.startsAt }).from(appointments)
-      .where(and(inArray(appointments.contactId, ids), isNull(appointments.avecTwinOf), inArray(appointments.status, [...ACTIVE_STATUSES])));
+      .where(and(eq(appointments.contactId, d.contactId), isNull(appointments.avecTwinOf), inArray(appointments.status, NOT_STARTED)));
     const vencidos = rows.filter((a) => a.startsAt <= now && Math.abs(a.startsAt.getTime() - at) <= SAME_VISIT_MS);
     const days = new Set<string>();
     let dealIds: string[] = [];

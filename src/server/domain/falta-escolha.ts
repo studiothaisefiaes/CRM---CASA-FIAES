@@ -5,6 +5,7 @@ import { appointments, deals } from "../db/schema";
 import { cancelRemarcarTx } from "./tasks";
 import { cancelAppointments } from "./agenda/visits";
 import type { Actor } from "./agenda/actor";
+import { markAttendance } from "./updates";
 
 /**
  * Quando a atendente clica em "Faltou" o diálogo pergunta o que houve (20/10): ela só não veio, ou cancelou? E a conversa fica com "Remarcar"?
@@ -43,12 +44,32 @@ export async function semRemarcarDoHorario(appointmentId: string, userId: string
   for (const d of open) await semRemarcar(d.id, userId);
 }
 
-/** Pela conversa (Hoje, Fila): cancela o último horário já passado da cliente que ainda não tinha desfecho. Se não houver, não faz nada. */
-export async function cancelarUltimoPassado(dealId: string, actor: Actor, now = new Date()): Promise<void> {
+/**
+ * Pela conversa (Hoje, Fila): cancela o último horário já passado da cliente que ainda não tinha desfecho. Devolve se cancelou algum.
+ * 02/11: o erro do cancelar (visita já paga) chega à tela; antes era engolido e a escolha "Cancelou" sumia calada.
+ */
+export async function cancelarUltimoPassado(dealId: string, actor: Actor, now = new Date()): Promise<boolean> {
   const [d] = await db.select({ contactId: deals.contactId }).from(deals).where(eq(deals.id, dealId));
-  if (!d) return;
+  if (!d) return false;
   const [a] = await db.select({ id: appointments.id }).from(appointments)
-    .where(and(eq(appointments.contactId, d.contactId), lt(appointments.startsAt, now), inArray(appointments.status, ["agendado", "confirmado", "chegou", "conferir"])))
+    .where(and(eq(appointments.contactId, d.contactId), lt(appointments.startsAt, now), isNull(appointments.avecTwinOf), inArray(appointments.status, ["agendado", "confirmado", "chegou", "conferir"])))
     .orderBy(desc(appointments.startsAt)).limit(1);
-  if (a) await cancelAppointments({ appointmentId: a.id, scope: "este", reason: "cliente_desmarcou", note: null, via: "recepcao" }, actor).catch(() => undefined);
+  if (!a) return false;
+  await cancelAppointments({ appointmentId: a.id, scope: "este", reason: "cliente_desmarcou", note: null, via: "recepcao" }, actor, now);
+  return true;
+}
+
+/**
+ * "Faltou" pela conversa (Fila, Hoje e o item da conversa na Agenda), 02/11: a escolha do diálogo ("Cancelou", "não remarcar") só valia
+ * na Agenda; aqui virava falta com Remarcar de qualquer jeito. Cancelou: o último horário passado dela vira Cancelado (não conta falta);
+ * sem horário na agenda, marca a falta como antes. Sem remarcar: o "Remarcar" da conversa sai. Sem escolha, nada muda.
+ */
+export async function faltaPelaConversa(dealId: string, escolha: FaltaEscolha | null, actor: Actor, now = new Date()): Promise<{ changed: boolean; remarcar: boolean; cancelou?: boolean }> {
+  if (escolha?.t === "cancelou" && (await cancelarUltimoPassado(dealId, actor, now))) {
+    if (!escolha.r) await semRemarcar(dealId, actor.id);
+    return { changed: true, remarcar: escolha.r, cancelou: true };
+  }
+  const r = await markAttendance(dealId, "faltou", actor.id, now);
+  if (escolha && !escolha.r && r.changed) { await semRemarcar(dealId, actor.id); return { ...r, remarcar: false }; }
+  return r;
 }

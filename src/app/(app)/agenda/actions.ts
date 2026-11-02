@@ -224,9 +224,12 @@ async function eachId(ids: string[], fn: (id: string) => Promise<unknown>): Prom
   }
   return out;
 }
-/** Pendências › Sem baixa: "Veio" (Finalizado) ou "Faltou", um ou em lote. Mesma permissão do Compareceu/Faltou de um. */
+/**
+ * Pendências › Sem baixa: "Veio" (Finalizado) ou "Faltou", um ou em lote. Mesma permissão do Compareceu/Faltou de um (02/11: pedia só
+ * atendimento.ver; em lote dava para finalizar e marcar falta sem poder fazer isso num horário só).
+ */
 export const markManyAction = async (ids: string[], status: "compareceu" | "faltou") =>
-  run("atendimento.ver", async (u) => {
+  run("agenda.marcar", async (u) => {
     const s = z.enum(["compareceu", "faltou"]).parse(status);
     const escolha = s === "faltou" ? await lerEscolhaFalta() : null;
     return eachId(ids, async (id) => {

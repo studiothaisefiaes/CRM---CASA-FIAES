@@ -184,7 +184,8 @@ async function lightRows(conds: SQL[], opts: { lastOfContact?: boolean; limit?: 
     .innerJoin(stages, eq(stages.id, deals.stageId))
     .leftJoin(users, eq(users.id, deals.ownerId))
     .leftJoin(sql`lateral (select m.created_at, m.direction from messages m where m.deal_id = ${deals.id} and m.hidden_at is null order by m.created_at desc, m.id desc limit 1) lm`, sql`true`)
-    .leftJoin(sql`lateral (select t.due_at from tasks t where t.deal_id = ${deals.id} and t.done_at is null and t.kind in ('proxima_acao', 'retorno', 'comparecimento') order by t.due_at asc limit 1) nt`, sql`true`)
+    // A retomada (o "Para retomar" da linha): próxima ação e retorno, como o Quadro e o painel. Comparecimento não é retomada (02/11).
+    .leftJoin(sql`lateral (select t.due_at from tasks t where t.deal_id = ${deals.id} and t.done_at is null and t.kind in ('proxima_acao', 'retorno') order by t.due_at asc limit 1) nt`, sql`true`)
     .where(and(...conds))
     .orderBy(asc(deals.awaitingReplySince), asc(deals.createdAt));
   return (opts.limit ? await q.limit(opts.limit) : await q) as unknown as Light[];
@@ -205,7 +206,7 @@ async function details(ids: string[]) {
     .leftJoin(sql`lateral (select m.body, m.kind, m.direction, m.sent_by_user_id, m.sent_via, m.call, m.media_duration_sec, m.transcript,
         case when m.kind = 'call' then (select coalesce(nullif(n.subject, ''), n.body) from contact_notes n where n.message_id = m.id order by n.created_at desc limit 1) end as call_note
       from messages m where m.deal_id = ${deals.id} order by m.created_at desc, m.id desc limit 1) lm`, sql`true`)
-    .leftJoin(sql`lateral (select t.title from tasks t where t.deal_id = ${deals.id} and t.done_at is null and t.kind in ('proxima_acao', 'retorno', 'comparecimento') order by t.due_at asc limit 1) nt`, sql`true`)
+    .leftJoin(sql`lateral (select t.title from tasks t where t.deal_id = ${deals.id} and t.done_at is null and t.kind in ('proxima_acao', 'retorno') order by t.due_at asc limit 1) nt`, sql`true`)
     .where(inArray(deals.id, ids));
   return new Map(rows.map(({ lastCall, lastCallNote, lastDirection, ...r }) => [r.id, r.lastKind === "call" ? { ...r, lastMessage: callPreview(lastCall, lastCallNote, r.lastMessage, lastDirection ?? "in") } : r]));
 }
@@ -406,9 +407,6 @@ export async function getQueue(user: Who, opts: QueueOptions = {}): Promise<Queu
   }
   conds.push(...tagConds);
   if (isUuid(opts.setor)) conds.push(eq(deals.teamId, opts.setor));
-  // Conversa arquivada (atendimento terminado) fica fora da Fila e tem visão própria; volta sozinha quando alguém escreve.
-  const archivedConds = [...conds, isNotNull(deals.conversationArchivedAt)];
-  conds.push(isNull(deals.conversationArchivedAt));
   // Dona: a gestão filtra por qualquer pessoa (painel Filtros ou link de relatório); a atendente já vê só as dela e as sem dona.
   if (gestor && opts.dono && isUuid(opts.dono)) conds.push(eq(deals.ownerId, opts.dono));
   if (opts.dono === "sem") conds.push(isNull(deals.ownerId));
@@ -422,6 +420,10 @@ export async function getQueue(user: Who, opts: QueueOptions = {}): Promise<Queu
   if (opts.fonte) conds.push(sql`${SOURCE_EXPR("deals")} = ${opts.fonte}`);
   const adCond = adFilterCond(opts.anuncio);
   if (adCond) conds.push(adCond);
+  // Conversa arquivada (atendimento terminado) fica fora da Fila e tem visão própria; volta sozinha quando alguém escreve.
+  // Com os mesmos filtros (dona, dias, etapa, origem, anúncio): antes a aba Todas filtrada trazia as Resolvidas de todas (02/11).
+  const archivedConds = [...conds, isNotNull(deals.conversationArchivedAt)];
+  conds.push(isNull(deals.conversationArchivedAt));
 
   const reengage = opts.view === "sem-contato-90d";
   const archivedView = opts.view === "arquivadas";
@@ -435,19 +437,21 @@ export async function getQueue(user: Who, opts: QueueOptions = {}): Promise<Queu
   const listView = opts.view === "equipe" ? teamConds : opts.view === "fornecedores" ? supplierConds : opts.view === "nao-cliente" ? notClientConds : null;
   // Encerrada em que a cliente escreveu só "obrigada"/figurinha (continua encerrada, regra do remarketing): enquanto ninguém abre,
   // aparece também em Todas e Não lidas, como não lida. Antes ficava escondida em Encerradas e ninguém via a mensagem.
-  const archivedUnreadConds = [...archivedConds, sql`${deals.lastInboundAt} > ${deals.conversationArchivedAt}`, sql`${UNREAD} > 0`];
+  const newSinceResolved = sql`(${deals.lastInboundAt} is not null and ${deals.lastInboundAt} > ${deals.conversationArchivedAt} and ${UNREAD} > 0)`;
+  const archivedUnreadConds = [...archivedConds, newSinceResolved];
   const countOf = (cs: SQL[]) => db.select({ n: sql<number>`count(*)::int`, unread: sql<number>`(count(*) filter (where ${UNREAD} > 0))::int` }).from(deals)
     .innerJoin(contacts, eq(contacts.id, deals.contactId)).innerJoin(stages, eq(stages.id, deals.stageId)).where(and(...cs)).then((r) => r[0] ?? { n: 0, unread: 0 });
   // "Todas" é literalmente todas (20/10, pedido do dono): na aba Todas, sem foco nem "Não lidas", as Resolvidas entram na mesma lista, na ordem do
   // WhatsApp (as resolvidas que já têm mensagem nova continuam vindo pelas linhas abertas).
   const todasTab = (!opts.view || opts.view === "todos") && !opts.aba && !opts.foco && !opts.filtro;
-  const resolvedExtra = todasTab ? lightRows([...archivedConds, sql`not (${deals.lastInboundAt} is not null and ${deals.lastInboundAt} > ${deals.conversationArchivedAt} and ${UNREAD} > 0)`,
+  const resolvedExtra = todasTab ? lightRows([...archivedConds, sql`not ${newSinceResolved}`,
     ...(opts.q?.trim() ? [qCond(opts.q)] : [])], { limit: limit }) : Promise.resolve([] as Light[]);
   // "Para retomar" também pega a resolvida que tem retomada aberta (20/10: a Sara marcou a retomada e clicou em Resolver; a conversa sumia).
   // Vencida e com conversa depois não conta (ver `retomadaSuperada`).
   const openResume = sql`exists (select 1 from tasks rt where rt.deal_id = ${deals.id} and rt.done_at is null and rt.kind in ('proxima_acao', 'retorno')
     and (rt.due_at >= ${now.toISOString()}::timestamptz or rt.due_at >= greatest(coalesce(${deals.lastInboundAt}, '-infinity'::timestamptz), coalesce(${deals.lastOutboundAt}, '-infinity'::timestamptz))))`;
-  const resolvedResumeConds = [...archivedConds, openResume];
+  // A resolvida com mensagem nova já vem pelas linhas abertas (`archivedUnreadConds`): fora daqui, senão contava e aparecia duas vezes (02/11).
+  const resolvedResumeConds = [...archivedConds, openResume, sql`not ${newSinceResolved}`];
   // Equipe com mensagem nova (22/10: o áudio da Thaíse às 10:01 só foi visto às 10:36, na aba Equipe; o aviso verde do topo passou batido):
   // enquanto ninguém abre, entra também no topo de Todas e Não lidas, com a etiqueta Equipe. Lida, volta a morar só na aba Equipe.
   const teamInMain = (!opts.view || opts.view === "todos") && !opts.foco && !opts.filtro && (!opts.aba || opts.aba === "nao-lidas")

@@ -55,7 +55,9 @@ export function boardConds(filter: BoardFilter = {}, viewer?: Who): { conds: SQL
   const conds: SQL[] = [or(isNull(deals.closedAt), gte(deals.closedAt, since))!, isNull(deals.archivedAt), eq(contacts.kind, "cliente"),
     // Conversa encerrada (Encerrar conversa) sai do Quadro e da Jornada enquanto o lead está aberto; fechados e perdidos seguem na coluna deles.
     // 20/10: a resolvida com retomada aberta continua no Quadro (coluna "Para retomar").
-    or(isNotNull(deals.closedAt), isNull(deals.conversationArchivedAt), sql`exists (select 1 from tasks rt where rt.deal_id = ${deals.id} and rt.done_at is null and rt.kind in ('proxima_acao', 'retorno'))`)!];
+    // 02/11: a mesma regra do selo (`retomadaSuperada`, na retomada mais próxima): vencida e com conversa depois não segura a resolvida no Quadro.
+    or(isNotNull(deals.closedAt), isNull(deals.conversationArchivedAt), sql`(select min(rt.due_at) from tasks rt where rt.deal_id = ${deals.id} and rt.done_at is null and rt.kind in ('proxima_acao', 'retorno'))
+      >= least(${new Date().toISOString()}::timestamptz, coalesce((select max(sm.created_at) from ${messages} sm where sm.deal_id = ${deals.id}), '-infinity'::timestamptz))`)!];
   const attendant = !!viewer && !can(viewer.perms, "atendimento.todas");
   const onlyOwn = attendant && !!filter.filtro;
   if (attendant) conds.push(onlyOwn ? eq(deals.ownerId, viewer.id) : or(eq(deals.ownerId, viewer.id), isNull(deals.ownerId))!);

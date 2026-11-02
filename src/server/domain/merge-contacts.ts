@@ -252,7 +252,9 @@ export async function mergeContacts(i: { keepId: string; dropId: string }, userI
 
     const target = keepOpen ?? dropOpen ?? null;
     if (target) {
-      await recomputeWaitTx(tx, target);
+      // Continua Resolvida só se as duas conversas abertas estavam Resolvidas; a espera que reabre tira do Resolvido (02/11).
+      const opened = [keepOpen, dropOpen].filter((d) => !!d);
+      await recomputeWaitTx(tx, target, { keepResolved: opened.every((d) => !!d.conversationArchivedAt) });
       await logEvent(tx, target.id, "contato_mesclado", { de: D }, userId);
     }
     await tx.insert(auditLog).values({ userId, action: "cadastros_unidos", entity: "contacts", entityId: K, data: { saiu: D, nome: drop.name, levou: moved } });

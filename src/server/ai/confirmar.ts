@@ -28,7 +28,7 @@ export function maisDeUmServico(textos: string[], slotLabel: string | null, labe
   });
 }
 
-export type Confirmar = { marcado: true; appointmentIds: string[] } | { marcado: false; motivo: string; slot: ProposedSlot; livre: boolean | null; confirm: string };
+export type Confirmar = { marcado: true; appointmentIds: string[]; /** O mesmo pedido de antes: já estava marcado (a confirmação não sai de novo). */ reused: boolean } | { marcado: false; motivo: string; slot: ProposedSlot; livre: boolean | null; confirm: string };
 
 /**
  * "Confirmar e marcar" (Cati 30/10). Só marca sem a folha com o horário combinado, livre, profissional e serviço conhecidos, tempo cadastrado
@@ -54,7 +54,13 @@ export async function confirmarEMarcar(id: string, dealId: string, actor: Actor,
   if (maisDeUmServico(textos, slot.serviceLabel, servicos.map((s) => s.label))) return nao("A conversa fala de mais de um serviço.");
   const r = await createVisit({ requestKey: id, client: { contactId: deal!.contactId }, dealId, startsAt: new Date(slotMs(slot.day, slot.time)).toISOString(),
     items: [{ serviceId: slot.serviceId, professionalId: slot.professionalId, preference: "escolhida" }] }, actor, now);
-  return { marcado: true, appointmentIds: r.appointmentIds };
+  // 02/11: o mesmo pedido de novo devolve a visita de antes sem olhar a situação. Depois do Desfazer, os horários estão cancelados:
+  // não diz "marcado" (nem envia a confirmação de novo) para um horário que não está na agenda.
+  if (r.reused) {
+    const rows = r.appointmentIds.length ? await db.select({ status: appointments.status }).from(appointments).where(inArray(appointments.id, r.appointmentIds)) : [];
+    if (!rows.length || rows.some((a) => a.status === "cancelado")) throw new UserFacingError("Esse horário foi desfeito. Para marcar de novo, use Marcar horário.");
+  }
+  return { marcado: true, appointmentIds: r.appointmentIds, reused: r.reused };
 }
 
 /** Desfazer: só horários da cliente desta conversa. */

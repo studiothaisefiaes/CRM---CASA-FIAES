@@ -1613,7 +1613,7 @@ export const aiSuggestions = pgTable("ai_suggestions", {
   costUsdMicros: integer("cost_usd_micros").notNull().default(0),
   /** "auto": a 1ª sugestão da mensagem (gerada ao abrir a conversa, uma vez só); "outra": a atendente pediu outra;
    *  "programada": "Escrever com IA" no Retomar/Programar mensagem (sem conversa nem mensagem ligadas). */
-  origin: text("origin").$type<"auto" | "outra" | "programada">().notNull().default("auto"),
+  origin: text("origin").$type<"auto" | "outra" | "programada" | "comando">().notNull().default("auto"),
   /** O pedido (0047): "" = sugestão comum; senão a mensagem citada e o tema da atendente ("<id da citada>|<tema>"). Entra na chave da 1ª sugestão. */
   pedido: text("pedido").notNull().default(""),
   /** O horário que a sugestão propôs (0050), já conferido no servidor: dia, hora, profissional, serviço e duração. Vazio = sem proposta. */

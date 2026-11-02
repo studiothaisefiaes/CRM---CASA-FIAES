@@ -34,9 +34,11 @@ import { markAiSuggestionAction, type AiBooking } from "@/app/(app)/conversa/ai-
 import type { BookingInitial } from "@/components/agenda/booking-sheet";
 
 /** O aviso diz o que aconteceu: registrou, criou o Remarcar ou manteve a próxima ação que já existia. */
-export function attendanceToast(name: string, status: "compareceu" | "faltou", r?: { changed: boolean; remarcar: boolean }): string {
+export function attendanceToast(name: string, status: "compareceu" | "faltou", r?: { changed: boolean; remarcar: boolean; cancelou?: boolean }): string {
   if (!r?.changed) return "Já estava registrado";
   if (status === "compareceu") return `${name} veio`;
+  // 02/11: "Cancelou" no diálogo do Faltou: o horário virou Cancelado, sem contar falta (o Desfazer da falta não vale aqui).
+  if (r.cancelou) return r.remarcar ? `${name} cancelou · combinado: Remarcar` : `${name} cancelou`;
   return r.remarcar ? `${name} faltou · combinado: Remarcar` : `${name} faltou · o combinado que já existia foi mantido`;
 }
 
@@ -190,7 +192,7 @@ export function useLeadActions({ d, name, viewer, reload }: { d: SheetDeal | nul
       if (!r.ok) { toast(r.error, "error"); return; }
       const id = d.deal.id;
       // Faltou tem Desfazer (QA r58, M-2): a conversa volta como estava (etapa, combinados).
-      const undo = status === "faltou" && r.data?.changed ? { label: "Desfazer", onClick: () => start(async () => {
+      const undo = status === "faltou" && r.data?.changed && !r.data.cancelou ? { label: "Desfazer", onClick: () => start(async () => {
         const u = await undoMissedAttendanceAction(id);
         toast(u.ok ? "Desfeito: a falta saiu" : u.error, u.ok ? "ok" : "error");
         if (u.ok) await reload();

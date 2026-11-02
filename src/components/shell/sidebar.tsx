@@ -9,6 +9,7 @@ import { IconArrowRight, IconLogout, IconMore } from "@/components/icons";
 import { activeNav, navFor, type NavItem } from "./nav";
 import { Sheet } from "@/components/ui/sheet";
 import { AlertsBell } from "./alerts-bell";
+import { ComandoVoz } from "./comando-voz";
 import { DemoBadge } from "./demo-badge";
 import { SoundUnlockHint } from "./sound-hint";
 import { useLiveAlerts } from "./use-live-alerts";
@@ -45,7 +46,10 @@ export function Sidebar({ user, alerts: initialAlerts, demo = false, caixaOn = f
       <aside className={cn("ds-congelada hidden lg:flex fixed inset-y-0 left-0 flex-col bg-paper-2 border-r border-line z-30 transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]", collapsed ? "w-[72px]" : "w-[232px]")}>
         <div className={cn("relative flex items-center pt-5 pb-6", collapsed ? "flex-col gap-3 px-2" : "justify-between px-5")}>
           <Link href="/" className="font-display text-xl leading-none whitespace-nowrap" title="Casa Fiaes">{collapsed ? <>C<em className="text-gold-ink">F</em></> : <>Casa <em className="text-gold-ink">Fiaes</em></>}</Link>
-          <AlertsBell alerts={alerts} reload={reload} gestao={can(user.perms, "alertas.escalada")} />
+          <span className={cn("flex items-center", collapsed ? "flex-col gap-1" : "gap-1")}>
+            {can(user.perms, "atendimento.ver") && <ComandoVoz />}
+            <AlertsBell alerts={alerts} reload={reload} gestao={can(user.perms, "alertas.escalada")} />
+          </span>
           {/* Fora do fluxo: ao sumir (o próprio toque libera o som) nada da barra se mexe sob o cursor. */}
           {!collapsed && <SoundUnlockHint show={hasUnread} className="absolute right-3 top-14 lg:min-h-6" />}
         </div>
@@ -83,6 +87,7 @@ export function Sidebar({ user, alerts: initialAlerts, demo = false, caixaOn = f
         </div>
         <div className="flex items-center gap-1">
           <SoundUnlockHint show={hasUnread} short />
+          {can(user.perms, "atendimento.ver") && <ComandoVoz compact />}
           <AlertsBell alerts={alerts} reload={reload} gestao={can(user.perms, "alertas.escalada")} />
           <form action={logoutAction}><button className="size-11 grid place-items-center rounded-[var(--radius-control)] text-muted" aria-label="Sair"><IconLogout size={17} /></button></form>
         </div>

@@ -45,6 +45,31 @@ export async function pairAvecTwins(tx: Tx, opts: { from: Date }): Promise<{ pai
   return { paired };
 }
 
+/** A partir de quando a última importação não conseguiu parear (02/11): a próxima começa dali. */
+export const TWINS_PENDING_KEY = "avec_gemeos_pendente";
+
+/**
+ * Os gêmeos depois de uma importação (02/11). Se o pareamento falhava, as reservas daquele lote nunca mais eram conferidas (cada
+ * importação só olha o que ela trouxe) e ficavam duplicadas na grade. Agora a falha guarda de onde começar e a próxima importação
+ * confere desde lá (o lote dela e os que ficaram sem parear); deu certo, a marca sai. O erro continua indo para quem chamou.
+ */
+export async function pairAvecTwinsAfterImport(startedAt: Date): Promise<{ paired: number }> {
+  const [p] = await db.select({ value: settings.value }).from(settings).where(eq(settings.key, TWINS_PENDING_KEY));
+  const pending = typeof p?.value === "string" ? new Date(p.value) : null;
+  const from = pending && Number.isFinite(pending.getTime()) && pending < startedAt ? pending : startedAt;
+  try {
+    return await db.transaction(async (tx) => {
+      const r = await pairAvecTwins(tx, { from });
+      await tx.delete(settings).where(eq(settings.key, TWINS_PENDING_KEY));
+      return r;
+    });
+  } catch (e) {
+    await db.insert(settings).values({ key: TWINS_PENDING_KEY, value: from.toISOString() })
+      .onConflictDoUpdate({ target: settings.key, set: { value: from.toISOString(), updatedAt: new Date() } }).catch(() => undefined);
+    throw e;
+  }
+}
+
 /** 18/10: o "Atendimento" só se junta a horário do Avec a até 2 h dele (antes: qualquer horário do mesmo dia). */
 export const PLACEHOLDER_WINDOW_MS = 2 * 60 * 60_000;
 

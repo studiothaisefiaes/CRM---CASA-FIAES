@@ -28,6 +28,10 @@ const FILL: (keyof NewAppointment & string)[] = ["contactId", "clientName", "pro
 function mergeAppointment(old: Record<string, unknown>, inc: NewAppointment, opts: { revive?: boolean; now?: Date } = {}): Partial<NewAppointment> {
   if (old.crmTouchedAt) {
     const avec = inc.avecStatus ?? inc.status;
+    // Auditoria 02/11: 25 "Chegou" do CRM ficavam presos com o Avec dizendo Pago (e a conversa parada em Na Casa). O Chegou foi do CRM e o
+    // pagamento no Avec prova o fim, como a baixa da parte B: sobe para compareceu, carimbando a hora. Nunca muda outro status mexido no CRM.
+    if (inc.status === "compareceu" && (old.status === "chegou" || old.status === "em_atendimento"))
+      return { status: "compareceu", avecStatus: avec, ...(old.finishedAt ? {} : { finishedAt: inc.finishedAt ?? opts.now ?? new Date() }) };
     return old.avecStatus === avec ? {} : { avecStatus: avec };
   }
   const patch: Partial<NewAppointment> = fillEmpty(old, inc, FILL);

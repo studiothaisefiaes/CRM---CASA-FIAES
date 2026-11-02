@@ -257,8 +257,12 @@ export async function createVisitTx(tx: Tx, raw: CreateVisitInput, actor: Actor,
   const plannedStarts = planned.map((p) => p.start.getTime());
   for (const [k, p] of planned.entries()) {
     if (!p.professionalId) {
-      // A do serviço "ao mesmo tempo" e as auxiliares deste serviço não são escolhidas para atender.
-      const exclude = [...(p.mode === "junto" && decided[k - 1] ? [decided[k - 1].professionalId] : []), ...p.aux.map((a) => a.id)];
+      // A do serviço "ao mesmo tempo" e as auxiliares deste serviço não são escolhidas para atender. 02/11: nem quem está (principal ou
+      // auxiliar) em outro serviço da visita que se cruza com este (antes, só o imediatamente anterior "ao mesmo tempo").
+      const end = p.start.getTime() + p.durationMin * 60_000;
+      const busy = planned.flatMap((q, j) => (j !== k && q.start.getTime() < end && p.start.getTime() < q.start.getTime() + q.durationMin * 60_000
+        ? [...(j < k ? [decided[j].professionalId] : q.professionalId ? [q.professionalId] : []), ...q.aux.map((a) => a.id)] : []));
+      const exclude = [...(p.mode === "junto" && decided[k - 1] ? [decided[k - 1].professionalId] : []), ...busy, ...p.aux.map((a) => a.id)];
       const pick = await pickAnyPro(tx, p, client.id, now, candidates.get(k) ?? [], exclude);
       // 0084: o tempo e o preço de quem foi escolhida; os serviços seguintes andam junto.
       p.durationMin = pick.durationMin;
@@ -274,10 +278,13 @@ export async function createVisitTx(tx: Tx, raw: CreateVisitInput, actor: Actor,
     if (planned.some((p) => dayOf(p.start) !== day)) throw new UserFacingError("Todos os serviços da visita precisam ser no mesmo dia.");
     await assertNotDuplicateTx(tx, client.id, planned);
   }
-  // 0089: as auxiliares, com o período final de cada serviço (depois do "Qualquer uma"). Ninguém em dois serviços que se cruzam na visita.
-  if (planned.some((p) => p.aux.length)) {
+  // 0089: ninguém em dois serviços que se cruzam na visita, com o período final de cada serviço (depois do "Qualquer uma"). 02/11: confere
+  // sempre, não só com auxiliar: a mesma profissional em dois serviços "ao mesmo tempo" (não vizinhos, ou escolhida no "Qualquer uma") passava.
+  if (planned.length > 1) {
     const mainNames = new Map((await tx.select({ id: professionals.id, name: professionals.name }).from(professionals).where(inArray(professionals.id, decided.map((d) => d.professionalId)))).map((p) => [p.id, p.name]));
     assertNoSelfOverlap(planned.map((p, k) => ({ start: p.start, durationMin: p.durationMin, people: [{ id: decided[k].professionalId, name: mainNames.get(decided[k].professionalId) ?? "A profissional" }, ...p.aux] })));
+  }
+  if (planned.some((p) => p.aux.length)) {
     for (const [k, p] of planned.entries()) {
       if (!p.aux.length) continue;
       const r = await checkAuxiliariesTx(tx, p.aux, { startsAt: p.start, durationMin: p.durationMin, bufferMin: p.service.bufferMin, parallelOk: p.service.parallelOk, fitIn: !!input.fitIn, actor, now },
@@ -422,7 +429,8 @@ export async function rescheduleAppointment(id: string, raw: RescheduleInput, ac
       const [old] = await tx.select({ name: professionals.name }).from(professionals).where(eq(professionals.id, a.professionalId));
       throw new UserFacingError(`Ela pediu a ${old?.name ?? "outra profissional"}. Confirme a troca de profissional.`);
     }
-    if (a.serviceId) await assertProfessionalFor(tx, proId, a.serviceId);
+    // 02/11: sempre (antes só com serviço): horário sem serviço (Avec, "Atendimento") ia para uma profissional inativa.
+    await assertProfessionalFor(tx, proId, a.serviceId);
     // O tempo digitado vence o da profissional.
     const terms = await termsWithProTx(tx, a, proId);
     const durationMin = input.durationMin ?? terms.durationMin;

@@ -61,7 +61,9 @@ export async function mergeLidInto(lid: string, phone: string): Promise<LidMerge
     await tx.delete(contacts).where(eq(contacts.id, hidden.id));
     await tx.update(contacts).set({ waLid: lid, name: sql`coalesce(${contacts.name}, ${hidden.name})` }).where(eq(contacts.id, real.id));
     if (keep) {
-      await recomputeWaitTx(tx, keep);
+      // Continua Resolvida só se todas as conversas abertas juntadas estavam Resolvidas (02/11).
+      const opened = [realOpen, hiddenOpen].filter((d) => !!d);
+      await recomputeWaitTx(tx, keep, { keepResolved: opened.length > 0 && opened.every((d) => !!d.conversationArchivedAt) });
       await logEvent(tx, keep.id, "contato_mesclado", { lid });
     }
     return { merged: true, dealId: keep?.id ?? null };
@@ -71,20 +73,34 @@ export async function mergeLidInto(lid: string, phone: string): Promise<LidMerge
 }
 
 /**
- * Recalcula a espera pela conversa inteira (depois de juntar mensagens de dois contatos): a última mensagem da cliente sem resposta
- * depois dela. Respondida: os avisos de espera da conversa ficam resolvidos. Usado pelo @lid e pelo Unir cadastros.
+ * Resposta de verdade da Casa (02/11): gente da equipe (CRM ou celular), sem falhar. Automática (fora do horário, boas-vindas, menu,
+ * lembrete) e ligação registrada não respondem a cliente, a mesma regra de `recordOutbound`.
  */
-export async function recomputeWaitTx(tx: Tx, target: { id: string; awaitingReplySince: Date | null }) {
+const HUMAN_REPLY = sql`direction = 'out' and status <> 'failed' and kind <> 'call' and (sent_by_user_id is not null or from_phone)`;
+
+/**
+ * Recalcula a espera pela conversa inteira (depois de juntar mensagens de dois contatos): a primeira mensagem da cliente sem resposta
+ * humana depois dela. Respondida: os avisos de espera da conversa ficam resolvidos. Usado pelo @lid e pelo Unir cadastros.
+ * `keepResolved`: todas as conversas juntadas estavam Resolvidas, então continua Resolvida e sem espera. Senão, se a espera reabre, a
+ * conversa sai do Resolvido, como em `recordInbound` (02/11: a cliente esperando no número oculto sumia dentro da conversa Resolvida).
+ */
+export async function recomputeWaitTx(tx: Tx, target: { id: string; awaitingReplySince: Date | null }, opts: { keepResolved?: boolean } = {}) {
   const [last] = (await tx.execute(sql`select
       (select max(created_at) from messages where deal_id = ${target.id} and direction = 'in') as last_in,
       (select max(created_at) from messages where deal_id = ${target.id} and direction = 'out') as last_out,
+      (select max(created_at) from messages where deal_id = ${target.id} and ${HUMAN_REPLY}) as last_reply,
       (select min(created_at) from messages where deal_id = ${target.id} and direction = 'in'
-         and created_at > coalesce((select max(created_at) from messages where deal_id = ${target.id} and direction = 'out'), '-infinity'::timestamptz)) as first_unanswered`)).rows as { last_in: Date | null; last_out: Date | null; first_unanswered: Date | null }[];
-  const lastIn = last?.last_in ? new Date(last.last_in) : null, lastOut = last?.last_out ? new Date(last.last_out) : null;
-  const answered = !!lastOut && (!lastIn || lastOut >= lastIn);
+         and created_at > coalesce((select max(created_at) from messages where deal_id = ${target.id} and ${HUMAN_REPLY}), '-infinity'::timestamptz)) as first_unanswered`)).rows as { last_in: Date | null; last_out: Date | null; last_reply: Date | null; first_unanswered: Date | null }[];
+  const lastIn = last?.last_in ? new Date(last.last_in) : null, lastOut = last?.last_out ? new Date(last.last_out) : null, lastReply = last?.last_reply ? new Date(last.last_reply) : null;
+  const answered = !!lastReply && (!lastIn || lastReply >= lastIn);
+  const [d] = await tx.select({ resolvedAt: deals.conversationArchivedAt }).from(deals).where(eq(deals.id, target.id));
+  const stayResolved = !!d?.resolvedAt && !!opts.keepResolved;
+  const awaiting = answered || stayResolved ? null : (last?.first_unanswered ? new Date(last.first_unanswered) : target.awaitingReplySince);
+  const reopen = !!d?.resolvedAt && !!awaiting;
   await tx.update(deals).set({
-    lastInboundAt: lastIn, lastOutboundAt: lastOut,
-    awaitingReplySince: answered ? null : (last?.first_unanswered ? new Date(last.first_unanswered) : target.awaitingReplySince),
+    lastInboundAt: lastIn, lastOutboundAt: lastOut, awaitingReplySince: awaiting,
+    ...(reopen ? { conversationArchivedAt: null } : {}),
   }).where(eq(deals.id, target.id));
+  if (reopen) await logEvent(tx, target.id, "conversa_desarquivada", { motivo: "contato_mesclado" });
   if (answered) await tx.update(alerts).set({ resolvedAt: new Date(), readAt: sql`coalesce(${alerts.readAt}, now())` }).where(and(eq(alerts.dealId, target.id), isNull(alerts.resolvedAt)));
 }

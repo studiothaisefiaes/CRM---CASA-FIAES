@@ -85,6 +85,7 @@ export function AiSuggestion({ dealId, replyTo = null, onBook }: { dealId: strin
     if (!r.data.marcado) { toast(`${r.data.motivo} Confira na folha.`); onBook(r.data.booking, () => {}); return; }
     const ids = r.data.appointmentIds;
     setV({ state: "pode_pedir", again: true });
+    if (r.data.jaMarcado) { toast("Esse horário já estava marcado. A confirmação não foi enviada de novo."); return; }
     if (!r.data.enviada) { toast("Marcado na agenda, mas a mensagem não saiu. Envie pela caixa.", "error"); offerDraft(dealId, shown); return; }
     toast("Marcado na agenda e confirmação enviada", "ok", { label: "Desfazer", onClick: () => void desfazerMarcacaoAction({ dealId, appointmentIds: ids }).then((u) => {
       toast(u.ok ? "Horário retirado da agenda. A mensagem já tinha saído: avise a cliente." : u.error, u.ok ? "ok" : "error");

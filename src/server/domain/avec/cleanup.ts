@@ -181,7 +181,7 @@ async function baixas(apply: boolean, now: Date, batch: number) {
   };
   // Comanda do caixa do CRM no dia, sem venda do Avec: só a parte B.
   const crmOnly = (await db.execute(sql`select distinct contact_id::text as "contactId", day::text as day from comandas c
-    where c.contact_id is not null and c.cancelled_at is null and c.status <> 'cancelada'
+    where c.contact_id is not null and c.cancelled_at is null and c.status <> 'cancelada' and coalesce(c.total_cents, 0) > 0 /* comanda vazia não prova que veio (auditoria 02/11) */
       and not exists (select 1 from sales_items s where s.contact_id = c.contact_id and s.sold_on = c.day)
       and not exists (select 1 from sales_payments p where p.contact_id = c.contact_id and coalesce(p.comanda_on, p.paid_on) = c.day)`)).rows as { contactId: string; day: string }[];
   let chegouEsquecido = 0;

@@ -28,6 +28,7 @@ import { markProposalSent, markWaitingForClient } from "@/server/domain/funnel";
 import { emit } from "@/server/domain/events";
 import { resolveAlerts } from "@/server/domain/alert-actions";
 import { assertCanActOnDeal } from "@/server/domain/deal-scope";
+import { faltaPelaConversa, lerEscolhaFalta } from "@/server/domain/falta-escolha";
 
 export type ActionResult<T = undefined> = { ok: true; data?: T } | { ok: false; error: string };
 /** Erro para a tela: texto do domínio ou da regra; SQL, rede e bugs vão para o log e viram "Não deu certo. Tente de novo." */
@@ -331,13 +332,17 @@ export async function completeTaskAction(taskId: string): Promise<ActionResult> 
   } catch (e) { return safe(e, "Não foi possível concluir. Tente de novo."); }
 }
 
-/** "Compareceu" / "Faltou". Quem faltou ganha a próxima ação "Remarcar". */
-export async function setAttendanceAction(dealId: string, status: "compareceu" | "faltou"): Promise<ActionResult<{ changed: boolean; remarcar: boolean }>> {
+/**
+ * "Compareceu" / "Faltou". Quem faltou ganha a próxima ação "Remarcar". 02/11: o Faltou respeita a escolha do diálogo ("Cancelou", "não
+ * remarcar"), pelo mesmo caminho da Agenda (`faltaPelaConversa`).
+ */
+export async function setAttendanceAction(dealId: string, status: "compareceu" | "faltou"): Promise<ActionResult<{ changed: boolean; remarcar: boolean; cancelou?: boolean }>> {
   try {
     const user = await assertPerm("atendimento.ver");
     const id = uuid.parse(dealId);
     await assertCanActOnDeal(user, id);
-    const r = await markAttendance(id, z.enum(["compareceu", "faltou"]).parse(status), user.id);
+    const s = z.enum(["compareceu", "faltou"]).parse(status);
+    const r = s === "faltou" ? await faltaPelaConversa(id, await lerEscolhaFalta(), { id: user.id, perms: user.perms }) : await markAttendance(id, s, user.id);
     revalidateLead();
     return { ok: true, data: r };
   } catch (e) { return safe(e, "Não foi possível registrar. Tente de novo."); }

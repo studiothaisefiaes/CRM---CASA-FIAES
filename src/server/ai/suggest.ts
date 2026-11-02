@@ -11,7 +11,7 @@ import { ACTIVE_STATUSES } from "@/lib/appointment-status";
 import { stripSignature } from "@/lib/signature";
 import { displayName } from "@/lib/display-name";
 import { AiError, callLegivel, callSuggestion, type CallResult } from "./client";
-import { garantirHorario, pareceRobo, semCumprimento, vaiVerificar } from "./pos";
+import { ehDespedida, garantirHorario, pareceRobo, semCumprimento, vaiVerificar } from "./pos";
 import { getAiManual } from "./manual";
 import { listPackageDefs } from "../domain/caixa/packages";
 import { iaPodeIndicar, normalizeReplyLabel, quickReplyAttachment, quickReplyIaQuando } from "../domain/quick-replies";
@@ -294,6 +294,8 @@ async function freeHoursFor(d: Pick<DealRow, "id" | "contactId" | "serviceId">, 
   const texts = quoted ? [(quoted.kind === "audio" ? quoted.transcript : quoted.body) ?? ""] : pendingClientTexts(c.messages);
   if (c.pedido?.tema) texts.push(c.pedido.tema);
   if (!asksForSlots(texts) && !force) return null;
+  // Despedida no fim (02/11): nada de horário colado no "obrigada, bom fim de semana".
+  if (!force && !quoted && !c.pedido?.tema && texts.length && texts.every(ehDespedida)) return null;
   try {
     // O assunto Método também vem do resto da conversa (as mensagens recentes, das duas).
     const r = await freeHoursLine({ contactId: d.contactId, dealServiceId: force?.serviceId ?? d.serviceId, texts: [...(force?.texts ?? []), ...texts], now, context: c.messages.slice(-12).map(textOf) });

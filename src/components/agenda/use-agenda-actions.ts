@@ -48,7 +48,7 @@ export function useAgendaActions(nowMs: number): AgendaActions {
       if (!r.ok) { toast(r.error, "error"); return; }
       setMarked((m) => ({ ...m, [i.key]: { status, dbStatus: null } }));
       const dealId = i.dealId;
-      const undoLead = status === "faltou" && r.data?.changed ? { label: "Desfazer", onClick: () => start(async () => {
+      const undoLead = status === "faltou" && r.data?.changed && !r.data.cancelou ? { label: "Desfazer", onClick: () => start(async () => {
         const u = await undoMissedAttendanceAction(dealId);
         if (!u.ok) { toast(u.error, "error"); return; }
         setMarked((m) => { const n = { ...m }; delete n[i.key]; return n; });

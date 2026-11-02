@@ -16,6 +16,7 @@ import { agendaLockKeys, lockKeyTx } from "./locks";
 import { checkSlotTx } from "./slots";
 import { termsWithProTx, type ProTerms } from "./visits";
 import { afterAgendaChange } from "./notify";
+import { auxiliaryIdsTx, validateAuxiliariesTx } from "./appointment-assistants";
 import type { Actor } from "./actor";
 
 /**
@@ -85,6 +86,10 @@ async function verdictTx(tx: Tx, a: Appt, toId: string, toName: string, now: Dat
     try { await assertProfessionalFor(tx, toId, a.serviceId); }
     catch (e) { if (e instanceof UserFacingError) return { ok: false, reason: firstSentence(e.message) }; throw e; }
   }
+  // 02/11: a nova já é auxiliar deste horário: ficaria principal e auxiliar ao mesmo tempo. Recusa como o Remarcar (`validateAuxiliariesTx`).
+  const aux = await auxiliaryIdsTx(tx, a.id);
+  try { await validateAuxiliariesTx(tx, aux, toId, new Set(aux)); }
+  catch (e) { if (e instanceof UserFacingError) return { ok: false, reason: e.message }; throw e; }
   const terms = await termsWithProTx(tx, a, toId);
   if (terms.durationMin == null) return { ok: false, reason: `${a.serviceLabel} não tem duração cadastrada: remarque este pela Agenda.` };
   const check = await checkSlotTx(tx, { professionalId: toId, startsAt: a.startsAt, durationMin: terms.durationMin, bufferMin: terms.bufferMin, clientId: a.contactId, ignoreAppointmentId: a.id, now, parallelOk: terms.parallelOk });

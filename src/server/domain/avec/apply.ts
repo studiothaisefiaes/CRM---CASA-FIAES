@@ -19,7 +19,7 @@ import { importPackageUses, importPackages, importPayments, importSalesItems } f
 import { closeFromAvecSales } from "./sales-close";
 import { emptyFunnelSync, syncFunnelFromAgenda, type FunnelSyncResult } from "./funnel-sync";
 import { refreshContactStats, type RefreshResult } from "../contact-stats";
-import { absorbCrmPlaceholders, dbNow, pairAvecTwins } from "../agenda/twins";
+import { absorbCrmPlaceholders, dbNow, pairAvecTwinsAfterImport } from "../agenda/twins";
 
 /**
  * Aplica um relatório do Avec: saneia (tira CPF, RG, endereço, banco) ANTES de gravar qualquer coisa, guarda a tabela saneada em
@@ -141,7 +141,8 @@ export async function applyAvecFiles(files: AvecFileInput[], opts: { now?: Date 
     }
   }
   // 6B: reservas do Avec que acabaram de entrar e já existem no CRM viram gêmeas (antes do funil, que ignora gêmeas). Falhar aqui não desfaz a importação.
-  await db.transaction((tx) => pairAvecTwins(tx, { from: startedAt })).catch((e) => console.error("[avec → gêmeos]", e));
+  // 02/11: o que não pareou por erro é conferido de novo na próxima importação (`pairAvecTwinsAfterImport`).
+  await pairAvecTwinsAfterImport(startedAt).catch((e) => console.error("[avec → gêmeos]", e));
   // 17/10: o "Atendimento" do lead se junta à visita do Avec da mesma cliente no dia. Falhar aqui não desfaz a importação.
   await db.transaction((tx) => absorbCrmPlaceholders(tx, { now: opts.now ?? new Date() })).catch((e) => console.error("[avec → Atendimento da conversa]", e));
   // A agenda que entrou move o funil (decisão 4: só de quem conversou nos últimos 30 dias). Falhar aqui não desfaz a importação.

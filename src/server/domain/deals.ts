@@ -67,6 +67,21 @@ export function detectOrigin(input: { body?: string | null; hasAdReferral?: bool
  * Distribuição desligada: quem recebe a conversa nova é quem tem "Receber leads da distribuição" e menos leads abertos.
  * Ninguém com essa permissão (só a gestão ativa): fica Sem dono. A gestão nunca recebe conversa sozinha (pedido da Casa, 14/10).
  */
+/**
+ * Resolve os alertas de espera da conversa: os de espera (wait_key = "<dealId>:<desde>") e, por compatibilidade, os anteriores à chave.
+ * Lembretes de tarefa (wait_key "task:<id>") não são espera: só se resolvem ao concluir a tarefa (mesma regra de `lateWhere`).
+ * `clientMessage`: também o aviso "a cliente escreveu" (resposta de gente da Casa).
+ */
+async function resolveWaitAlertsTx(tx: Tx, dealId: string, clientMessage: boolean) {
+  const resolvedNow = new Date(); // hora real da resolução (a mensagem pode ter chegado atrasada)
+  await tx.update(alerts).set({ resolvedAt: resolvedNow, readAt: sql`coalesce(${alerts.readAt}, ${resolvedNow.toISOString()}::timestamptz)` })
+    .where(and(sql`${alerts.resolvedAt} is null`, or(
+      and(eq(alerts.dealId, dealId), isNotNull(alerts.waitKey), notLike(alerts.waitKey, "task:%")),
+      and(eq(alerts.dealId, dealId), eq(alerts.type, "sem_resposta_minutos"), isNull(alerts.waitKey)),
+      ...(clientMessage ? [and(eq(alerts.dealId, dealId), eq(alerts.type, "mensagem_cliente"))] : []),
+    )));
+}
+
 /** Tudo o que a cliente mandou nesta conversa é só link? */
 async function onlyLinksSoFarTx(tx: Tx, dealId: string): Promise<boolean> {
   const [r] = await tx.select({ total: sql<number>`count(*)::int`, links: sql<number>`(count(*) filter (where ${messages.kind} = 'text' and ${messages.body} ~* ${SO_LINK_SQL}))::int` })
@@ -391,7 +406,8 @@ export async function recordOutbound(input: OutboundInput) {
       dealId = created.id;
     }
     if (!dealId) return { skipped: "sem_lead_aberto" as const };
-    const [deal] = await tx.select().from(deals).where(eq(deals.id, dealId));
+    // Trava a conversa (02/11): a mensagem da cliente que chega ao mesmo tempo espera, e a espera lida aqui é a de verdade.
+    const [deal] = await tx.select().from(deals).where(eq(deals.id, dealId)).for("update");
     if (!deal) return { skipped: "sem_lead_aberto" as const };
 
     const [msg] = input.claimMessageId
@@ -412,7 +428,11 @@ export async function recordOutbound(input: OutboundInput) {
     if (input.automated || stale) {
       await tx.update(deals).set({ lastOutboundAt: sql`greatest(${deals.lastOutboundAt}, ${at.toISOString()}::timestamptz)` }).where(eq(deals.id, dealId));
       // A cliente nova só mandou um link e a automática já respondeu (Cati 31/10, Iara): a vez é dela, não é atraso da Casa.
-      if (input.automated && deal.awaitingReplySince && !deal.firstResponseAt && await onlyLinksSoFarTx(tx, dealId)) await tx.update(deals).set({ awaitingReplySince: null }).where(eq(deals.id, dealId));
+      // Os avisos de espera dela se resolvem junto (02/11: o aviso ficava órfão no sino); o "a cliente escreveu" fica, a automática não é resposta.
+      if (input.automated && deal.awaitingReplySince && !deal.firstResponseAt && await onlyLinksSoFarTx(tx, dealId)) {
+        await tx.update(deals).set({ awaitingReplySince: null }).where(eq(deals.id, dealId));
+        await resolveWaitAlertsTx(tx, dealId, false);
+      }
       await logEvent(tx, dealId, "mensagem_enviada", { messageId: msg.id, ...(input.automated ? { automatica: true } : { atrasada: true }) }, null);
       return { dealId, messageId: msg.id, warned: false };
     }
@@ -429,7 +449,10 @@ export async function recordOutbound(input: OutboundInput) {
       }, responder);
     }
     await tx.update(deals).set({
-      lastOutboundAt: at, awaitingReplySince: null, conversationArchivedAt: null, // a Casa escreveu: a conversa arquivada volta
+      // Eco atrasado não volta o relógio e só zera a espera que começou antes dele (02/11).
+      lastOutboundAt: sql`greatest(${deals.lastOutboundAt}, ${at.toISOString()}::timestamptz)`,
+      awaitingReplySince: sql`case when ${deals.awaitingReplySince} <= ${at.toISOString()}::timestamptz then null else ${deals.awaitingReplySince} end`,
+      conversationArchivedAt: null, // a Casa escreveu: a conversa arquivada volta
       firstResponseAt: deal.firstResponseAt ?? (deal.awaitingReplySince ? at : null),
       // Quem responde assume (Cati 29/10: "se eu já estou falando com ela, tem que mudar para quem está atendendo"): a conversa passa para quem
       // escreveu pelo CRM ou assinou no celular (equipe ativa). Sem autora (áudio sem assinatura), continua com a dona.
@@ -442,17 +465,8 @@ export async function recordOutbound(input: OutboundInput) {
     let warned = false;
     if (authorId && deal.ownerId && authorId !== deal.ownerId) warned = await warnOwnerRepliedByOther(tx, { dealId, ownerId: deal.ownerId, authorId, at });
     await logEvent(tx, dealId, "mensagem_enviada", { messageId: msg.id, fromPhone: !!input.fromPhone }, authorId);
-    // Respondeu: os alertas de espera deste lead se resolvem sozinhos.
-    const resolvedNow = new Date(); // hora real da resolução (a mensagem pode ter chegado atrasada)
-    await tx.update(alerts).set({ resolvedAt: resolvedNow, readAt: sql`coalesce(${alerts.readAt}, ${resolvedNow.toISOString()}::timestamptz)` })
-      .where(and(sql`${alerts.resolvedAt} is null`, or(
-        // alertas de espera deste lead (wait_key = "<dealId>:<desde>") e, por compatibilidade, os anteriores à chave
-        // (lembretes de tarefa, wait_key "task:<id>", não são espera: só se resolvem ao concluir a tarefa — mesma regra de `lateWhere`)
-        and(eq(alerts.dealId, dealId), isNotNull(alerts.waitKey), notLike(alerts.waitKey, "task:%")),
-        and(eq(alerts.dealId, dealId), eq(alerts.type, "sem_resposta_minutos"), isNull(alerts.waitKey)),
-        // o aviso "a cliente escreveu" (só o automático não conta como resposta)
-        ...(input.automated ? [] : [and(eq(alerts.dealId, dealId), eq(alerts.type, "mensagem_cliente"))]),
-      )));
+    // Respondeu: os alertas de espera deste lead se resolvem sozinhos (e o "a cliente escreveu": só o automático não conta como resposta).
+    await resolveWaitAlertsTx(tx, dealId, !input.automated);
 
     if (stage?.kind === "lead") await moveToKindTx(tx, dealId, "atendimento", input.userId ?? null, "respondido", at);
     // Atendida: a Casa retomou a conversa (pós-atendimento feito e conversa parada há 12 h ou mais): volta para Em conversa (Cati 23/10, Virna).
