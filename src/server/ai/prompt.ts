@@ -434,7 +434,7 @@ function continuarLines(c: ConversationData): string[] {
   return ["<tarefa>",
     `Escreva a PRÓXIMA mensagem da Casa nesta conversa, continuando de onde ela parou: responda ao que a cliente acabou de dizer (depois da última fala da Casa): ${clip(burst.map((b) => `"${b}"`).join(" "), 900)}`,
     "Use o que já foi dito, combinado e enviado na conversa: não repita pergunta que ela já respondeu nem informação que a Casa já deu (valor, endereço, confirmação, explicação); não volte ao começo, não se apresente de novo e não contradiga o que a Casa já disse ou ofereceu. Se ela respondeu a uma pergunta ou oferta da Casa, siga a partir da resposta dela.",
-    "Se ela só agradeceu, concordou ou se despediu, responda curto e acolhedor (1 a 2 frases), sem puxar assunto novo e sem pergunta.",
+    "Se ela só agradeceu, concordou, confirmou presença, avisou que está chegando ou se despediu: responda com UMA frase curta (até 10 palavras, ex.: \"Maravilha, Fulana! Te aguardamos 💛\", \"Imagina, querida! Até logo 🥰\"), sem repetir dia, hora ou serviço, sem puxar assunto novo, sem oferecer horário e sem pergunta.",
     // O aviso do contexto ("já mandou 2 fotos") ficava longe do fim e a IA pedia as fotos de novo (P16, 20/10): aqui, na tarefa, perto da resposta.
     ...(c.cliente && c.cliente.fotos > 0 ? [`Ela já mandou ${c.cliente.fotos === 1 ? "foto" : "fotos"} nesta conversa: NÃO peça foto nem referência de novo; use as que ela mandou.`] : []),
     "</tarefa>"];

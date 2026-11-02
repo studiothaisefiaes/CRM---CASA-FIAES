@@ -128,12 +128,14 @@ export type AvecDivergence = {
 
 /** "Conferir com o Avec" (6.4, regra 12): só leitura. A recepção decide o que fazer; o sistema não corrige sozinho. */
 export async function listAvecDivergences(range: { from: Date; to: Date }): Promise<AvecDivergence[]> {
-  const rows = await db.select({
+  // 02/11: o modo da agenda é lido junto com os horários (antes, em fila depois deles).
+  const [rows, [mode]] = await Promise.all([db.select({
     id: appointments.id, contactId: appointments.contactId, clientName: appointments.clientName, contactName: contacts.name, serviceId: appointments.serviceId,
     serviceLabel: appointments.serviceLabel, startsAt: appointments.startsAt, status: appointments.status, avecStatus: appointments.avecStatus, origin: appointments.origin,
     crmTouchedAt: appointments.crmTouchedAt, avecTwinOf: appointments.avecTwinOf, createdAt: appointments.createdAt, avecReview: appointments.avecReview, avecUnclosedAt: appointments.avecUnclosedAt,
   }).from(appointments).leftJoin(contacts, eq(contacts.id, appointments.contactId))
-    .where(and(gte(appointments.startsAt, range.from), lt(appointments.startsAt, range.to), notInArray(appointments.status, WAIT)));
+    .where(and(gte(appointments.startsAt, range.from), lt(appointments.startsAt, range.to), notInArray(appointments.status, WAIT))),
+  db.select().from(settings).where(eq(settings.key, "agenda_modo"))]);
   type Row = (typeof rows)[number];
   const byId = new Map(rows.map((r) => [r.id, r]));
   const nameOf = (r: Row) => r.contactName?.trim() || r.clientName?.trim() || "Sem nome";
@@ -159,12 +161,14 @@ export async function listAvecDivergences(range: { from: Date; to: Date }): Prom
   }
   const crmOwned = rows.filter((r) => !r.avecTwinOf && (r.origin === "crm" || r.crmTouchedAt) && statusGroup(r.status) === "ativo");
   const avecPlain = rows.filter((r) => r.origin === "avec" && !r.crmTouchedAt && !r.avecTwinOf && statusGroup(r.status) === "ativo");
-  for (const x of crmOwned) for (const y of avecPlain) {
-    if (dayOf(x.startsAt) === dayOf(y.startsAt) && x.startsAt.getTime() !== y.startsAt.getTime() && sameClient(x, y) && sameService(x, y)) {
+  // 02/11: compara só com os do mesmo dia (antes, cada horário do CRM contra todos os do Avec dos 67 dias). Mesma ordem de saída.
+  const avecByDay = new Map<string, Row[]>();
+  for (const y of avecPlain) { const d = dayOf(y.startsAt); const list = avecByDay.get(d); if (list) list.push(y); else avecByDay.set(d, [y]); }
+  for (const x of crmOwned) for (const y of avecByDay.get(dayOf(x.startsAt)) ?? []) {
+    if (x.startsAt.getTime() !== y.startsAt.getTime() && sameClient(x, y) && sameService(x, y)) {
       out.push({ kind: "horario_diferente", ...base(x, y), avecStatus: y.status });
     }
   }
-  const [mode] = await db.select().from(settings).where(eq(settings.key, "agenda_modo"));
   if (mode?.value === "so_crm") {
     for (const y of rows.filter((r) => r.origin === "avec" && !r.avecTwinOf && r.createdAt > mode.updatedAt)) out.push({ kind: "criado_depois_da_virada", ...base(y, y), avecStatus: y.status });
   }

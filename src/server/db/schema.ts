@@ -301,6 +301,8 @@ export const deals = pgTable("deals", {
   // Relatórios por período (criados e fechados no intervalo).
   index("deals_created_at_idx").on(t.createdAt),
   index("deals_closed_at_idx").on(t.closedAt),
+  // 0099 (02/11): os leads com horário da Agenda filtram por scheduled_at (antes lia todos os deals).
+  index("deals_scheduled_live_idx").on(t.scheduledAt).where(sql`${t.scheduledAt} is not null and ${t.archivedAt} is null`),
   // Nunca dois leads abertos para o mesmo contato.
   uniqueIndex("deals_one_open_per_contact").on(t.contactId).where(sql`${t.closedAt} is null and ${t.archivedAt} is null`),
 ]);
@@ -935,6 +937,8 @@ export const appointments = pgTable("appointments", {
   index("appointments_contact_starts_idx").on(t.contactId, t.startsAt),
   index("appointments_twin_idx").on(t.avecTwinOf).where(sql`${t.avecTwinOf} is not null`),
   index("appointments_series_idx").on(t.seriesId).where(sql`${t.seriesId} is not null`),
+  // 0099 (02/11): "Pedidos do site" e a expiração deles procuram status = 'solicitado' (antes varria todos os horários).
+  index("appointments_solicitado_idx").on(t.startsAt).where(sql`${t.status} = 'solicitado'`),
 ]);
 
 /**
@@ -1403,7 +1407,9 @@ export const salesPayments = pgTable("sales_payments", {
   method: text("method"),
   valueCents: integer("value_cents").notNull(),
   externalKey: text("external_key").notNull(),
-}, (t) => [uniqueIndex("sales_payments_external_uq").on(t.externalKey), index("sales_payments_contact_idx").on(t.contactId)]);
+}, (t) => [uniqueIndex("sales_payments_external_uq").on(t.externalKey), index("sales_payments_contact_idx").on(t.contactId),
+  // 0099 (02/11): o "Crédito no Avec" do Já pagaram lia todos os pagamentos; o predicado é o mesmo texto da consulta (caixa/paid.ts).
+  index("sales_payments_credito_cliente_idx").on(t.contactId).where(sql`${t.contactId} is not null and translate(lower(${t.method}), 'áéíóúâêôãõç', 'aeiouaeoaoc') like '%credito cliente%'`)]);
 
 /** Relatório do Avec como chegou, JÁ SANEADO (sem CPF, RG, endereço, banco): para rever e baixar. Mesmo conteúdo não é guardado 2x. */
 export const avecReports = pgTable("avec_reports", {

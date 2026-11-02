@@ -282,6 +282,9 @@ export function garantirHorario(t: string, i: GarantiaInput): { texto: string; h
  * Com pergunta ou hora no texto não é despedida.
  */
 const DESPEDIDA = /^(?:(?:muito |mt |mto )?obrigad[ao]s?|agrade[cç]o|grata|valeu|tudo bem|t[aá] bom|ok(?:ay)?|certo|combinado|beleza|perfeito|entendi|ah sim|at[eé] (?:l[aá]|logo|mais|amanh[aã])|bom (?:fim|final) de semana|boa (?:noite|tarde)|tchau|beijos?|bjs?)(?=$|[^\p{L}])/iu;
+/** Agradece ou se despede de verdade ("obrigada", "bom fim de semana", "até lá"): diferente do "ok"/"certo" solto, que pode ser esperar a Casa. */
+const ADEUS = /obrigad|agrade[cç]|grat[ao]\b|valeu|at[eé] (?:l[aá]|logo|mais|breve|amanh)|fi(?:m|nal) de semana|tchau|beij|bjs/iu;
+export const ehAdeus = (t: string | null | undefined) => ehDespedida(t) && ADEUS.test(t ?? "");
 export function ehDespedida(t: string | null | undefined): boolean {
   const s = (t ?? "").replace(/[\p{Extended_Pictographic}\p{Emoji_Modifier}\uFE0F\u200D]/gu, "").trim();
   if (!s || s.length > 120 || s.includes("?") || mentionsTime(s)) return false;

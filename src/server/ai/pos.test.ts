@@ -371,3 +371,14 @@ describe("despedida não ganha horário (avaliação 02/11)", () => {
     for (const t of ["Hoje tem?", "Concordo", "Obrigada! Tem horário sábado?", "obrigada, pode ser às 10h", "Quero marcar", "Seria para minha mãe kkk"]) expect(ehDespedida(t), t).toBe(false);
   });
 });
+
+describe("adeus de verdade (02/11, avaliação r113)", () => {
+  it("obrigada/bom fim de semana é adeus; ok/certo sozinho não", async () => {
+    const { ehAdeus } = await import("./pos");
+    expect(ehAdeus("Tudo bem. Obrigada")).toBe(true);
+    expect(ehAdeus("Muito obrigada pela atenção! Bom final de semana!💐")).toBe(true);
+    expect(ehAdeus("Ok, obrigada até breve 😊")).toBe(true);
+    expect(ehAdeus("ok")).toBe(false);
+    expect(ehAdeus("Certo")).toBe(false);
+  });
+});

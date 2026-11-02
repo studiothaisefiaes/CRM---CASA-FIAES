@@ -125,7 +125,7 @@ describe("parte da conversa", () => {
     ] });
     expect(u).toMatch(/<tarefa>\nEscreva a PRÓXIMA mensagem da Casa nesta conversa[^\n]*"\(respondendo a: "Às 10h, fica bom para você\?"\) Fica sim"/);
     expect(u).toContain("não repita pergunta que ela já respondeu nem informação que a Casa já deu");
-    expect(u).toContain("Se ela só agradeceu, concordou ou se despediu, responda curto");
+    expect(u).toContain("Se ela só agradeceu, concordou, confirmou presença");
     // A Casa por último: a tarefa é outra (a próxima mensagem natural), sem o bloco de continuar.
     const casa = buildUser({ ...base, messages: [{ direction: "out", kind: "text", body: "Oi!", transcript: null, at: now }] });
     expect(casa).not.toContain("<tarefa>");

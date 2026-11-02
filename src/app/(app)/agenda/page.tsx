@@ -77,41 +77,67 @@ export default async function AgendaPage({ searchParams }: PageProps<"/agenda">)
   const range = agendaRange({ d: sp.d, v: sp.v }, now);
   const withValues = can(user.perms, "valores.ver");
   const canBook = can(user.perms, "agenda.marcar");
-  const canCaixa = can(user.perms, "caixa.operar") && (await getCaixaMode()) === "crm";
-  const [pros, waitlist, paidCount, mode, casa, services, leaveRequests, onlineRequests, prefs] = await Promise.all([
+  const caixaPerm = can(user.perms, "caixa.operar"), marcador = can(user.perms, "agenda.marcador"), wantRepeat = canBook && can(user.perms, "agenda.repetir");
+  const todayFrom = agendaRange({}, now).from;
+  const abaRaw = sp.aba === "pacotes" ? "pagos" : sp.aba;
+  const pedidosOpen = sp.pedidos === "folga" || sp.pedidos === "site" ? sp.pedidos : null;
+  // 02/11 (velocidade): tudo o que a tela lê sai numa leva só (antes eram ~15 idas ao banco em fila). O que dependia do modo do caixa, do
+  // modo da agenda ou das funções é lido já pela permissão e descartado depois pela mesma regra de antes; a tela recebe os mesmos dados.
+  const [caixaMode, funcoes, pros, waitlist, paidCount, mode, casa, servicesAll, leaveRequests, onlineRequests, prefs, labelList, typeList, alertHorario,
+    repeatConfig, prices, proTerms, caixaRecAll, comandaAll, avecAll, pendItems, confirmByPhone, paidRows, view] = await Promise.all([
+    caixaPerm ? getCaixaMode() : null,
+    // Uma leitura das funções para a página toda (antes 4, uma por pedaço).
+    getFuncoes(),
     // Nome da profissional em Título na tela ("BEBEL" → "Bebel"); o cadastro guarda como veio.
     listProfessionals().then((list) => list.map((p) => ({ ...p, name: displayName(p.name), role: p.role ? displayName(p.role) : null }))),
-    listWaitlist({ from: agendaRange({}, now).from }), countPaidNotUsed(now), getAgendaMode(), getBusinessHours(),
-    canBook || canCaixa ? listBookableServices() : [],
+    listWaitlist({ from: todayFrom }), countPaidNotUsed(now), getAgendaMode(), getBusinessHours(),
+    canBook || caixaPerm ? listBookableServices() : [],
     canBook ? listLeaveRequests() : [], canBook ? listOnlineRequests() : [],
     getAgendaPrefs(user.id),
+    // Fase C (item 19): marcador e tipo só com a permissão agenda.marcador e a função ligada; só os ativos entram na escolha.
+    marcador ? listAppointmentLabels() : [], marcador ? getVisitTypes() : [],
+    clientAlertFor("horario"),
+    wantRepeat ? getRepetirConfig() : null,
+    // Preço do catálogo: o mesmo para o Marcar e para os cartões do Dia (antes lido duas vezes).
+    withValues ? listServicePrices() : null,
+    canBook ? listBookingTerms(withValues) : ({} as Awaited<ReturnType<typeof listBookingTerms>>),
+    canBook && caixaPerm ? getCaixaRecursos() : null,
+    caixaPerm ? buildComandaCatalog(user) : null,
+    canBook ? Promise.all([
+      listAvecDivergences({ from: new Date(todayFrom.getTime() - 7 * 86_400_000), to: new Date(todayFrom.getTime() + 60 * 86_400_000) }), listAvecRejected(now),
+    ]) : null,
+    // Pendências: sem baixa da semana (P6: antes só ontem e hoje), falta pagar de hoje (caixa no CRM), lista de espera, pedidos, já pagaram, Avec.
+    getAgenda(noBaixaRange(today), now), listConfirmByPhone(now),
+    !pedidosOpen && abaRaw === "pagos" ? listPaidNotUsed(paidFilterOf(PAID_CHIPS.some((c) => c.value === sp.f) ? (sp.f as PaidChip) : null, withValues), now) : null,
+    // O corpo da visão (Dia, Semana ou Lista) entra na mesma leva.
+    range.view === "dia"
+      ? Promise.all([getAgenda(range, now), listAgendaBlocks({ from: range.from, to: new Date(range.from.getTime() + 86_400_000) }), dayAcks(range.day)])
+        .then(([all, rawBlocks, acks]) => ({ view: "dia" as const, all, rawBlocks, acks }))
+      : range.view === "semana" ? getAgendaWeekByPro(range).then((rows) => ({ view: "semana" as const, rows }))
+      : getAgenda(range, now).then((all) => ({ view: "lista" as const, all })),
   ]);
-  // Fase C (item 19): marcador e tipo só com a permissão agenda.marcador e a função ligada; só os ativos entram na escolha.
-  const [funcoes, labelList, typeList] = can(user.perms, "agenda.marcador") ? await Promise.all([getFuncoes(), listAppointmentLabels(), getVisitTypes()]) : [null, [], []];
-  const alertHorario = await clientAlertFor("horario");
+  const canCaixa = caixaPerm && caixaMode === "crm";
+  const services = canBook || canCaixa ? servicesAll : [];
+  const labelFuncoes = marcador ? funcoes : null;
   // Item 23a: a chave Repetir só com agenda.repetir, quem marca e a função ligada; os limites da Casa vêm de Configurações.
-  const repeat = canBook && can(user.perms, "agenda.repetir") && (await getFuncoes()).repetir ? await getRepetirConfig() : null;
+  const repeat = wantRepeat && funcoes.repetir ? repeatConfig : null;
   // Item 23b: Passar o dia só com agenda.passar_dia e a função ligada (o servidor confere de novo); nunca num dia que já passou.
-  const transfer = can(user.perms, "agenda.passar_dia") && (await getFuncoes()).passar_dia
+  const transfer = can(user.perms, "agenda.passar_dia") && funcoes.passar_dia
     ? { day: range.day < today ? today : range.day, pros: pros.filter((p) => p.active).map((p) => ({ id: p.id, name: p.name })) } : null;
   const showAvec = canBook && mode !== "consulta";
   // Marcar (20/10): preço do catálogo e o tempo/preço de cada profissional; as fixas de cada principal; o limite de assistentes da comanda.
-  const [servicePrices, proTerms, funcoesAll, caixaRec] = canBook
-    ? await Promise.all([withValues ? listServicePrices() : Promise.resolve(null), listBookingTerms(withValues), getFuncoes(), canCaixa ? getCaixaRecursos() : Promise.resolve(null)])
-    : [null, {} as Awaited<ReturnType<typeof listBookingTerms>>, null, null];
+  const servicePrices = canBook ? prices : null;
+  const caixaRec = canBook && canCaixa ? caixaRecAll : null;
   const catalog: AgendaCatalog = {
     services: services.map((s) => ({ ...s, priceCents: servicePrices?.[s.id] ?? null })),
     professionals: pros.map((p) => ({ id: p.id, name: p.name, active: p.active, serviceIds: p.serviceIds, assistantOf: p.assistantOf, ...(proTerms[p.id] ? { terms: proTerms[p.id] } : {}) })), canMark: canBook,
-    perProTerms: !!funcoesAll?.preco_por_profissional, comandaAssistantsMax: caixaRec?.assistentes ? caixaRec.assistentesMax : null,
+    perProTerms: canBook && !!funcoes.preco_por_profissional, comandaAssistantsMax: caixaRec?.assistentes ? caixaRec.assistentesMax : null,
     canFitIn: can(user.perms, "agenda.encaixar"), canEditConfig: can(user.perms, "config.diaadia"), agendaMode: mode, canCaixa,
-    labels: funcoes?.marcadores ? labelList.map(({ id, name, color }) => ({ id, name, color })) : [], visitTypes: funcoes?.tipo_horario ? typeList.filter((t) => t.active).map(({ value, label }) => ({ value, label })) : [],
+    labels: labelFuncoes?.marcadores ? labelList.map(({ id, name, color }) => ({ id, name, color })) : [], visitTypes: labelFuncoes?.tipo_horario ? typeList.filter((t) => t.active).map(({ value, label }) => ({ value, label })) : [],
     clientAlert: alertHorario, repeat,
   };
-  const comandaCatalog: ComandaCatalog | null = canCaixa ? await buildComandaCatalog(user) : null;
-  const todayFrom = agendaRange({}, now).from;
-  const [divergences, rejected] = showAvec ? await Promise.all([
-    listAvecDivergences({ from: new Date(todayFrom.getTime() - 7 * 86_400_000), to: new Date(todayFrom.getTime() + 60 * 86_400_000) }), listAvecRejected(now),
-  ]) : [[], []];
+  const comandaCatalog: ComandaCatalog | null = canCaixa ? comandaAll : null;
+  const [divergences, rejected] = showAvec && avecAll ? avecAll : [[], []];
   const sel = parseSel(sp.p, pros.map((p) => p.id));
   const highlight = typeof sp.destaque === "string" ? sp.destaque : null;
 
@@ -138,15 +164,11 @@ export default async function AgendaPage({ searchParams }: PageProps<"/agenda">)
     dayHref: href({ v: "dia" }), weekHref: href({ v: "semana" }), listHref: href({ v: "lista" }),
   };
 
-  // Pendências: sem baixa da semana (P6: antes só ontem e hoje), falta pagar de hoje (caixa no CRM), lista de espera, pedidos, já pagaram, Avec.
-  const [pendItems, confirmByPhone] = await Promise.all([getAgenda(noBaixaRange(today), now), listConfirmByPhone(now)]);
-  const abaRaw = sp.aba === "pacotes" ? "pagos" : sp.aba;
-  const pedidosOpen = sp.pedidos === "folga" || sp.pedidos === "site" ? sp.pedidos : null;
   const initialPending: PendingTab | null = pedidosOpen ? "pedidos" : abaRaw === "espera" || abaRaw === "pagos" ? abaRaw : abaRaw === "avec" && showAvec ? "avec" : abaRaw === "semBaixa" ? "semBaixa" : abaRaw === "telefone" ? "telefone" : null;
   let paid: ReactNode = null;
-  if (initialPending === "pagos") {
+  if (initialPending === "pagos" && paidRows) {
     const chip = PAID_CHIPS.some((c) => c.value === sp.f) ? (sp.f as PaidChip) : null;
-    const rows = await listPaidNotUsed(paidFilterOf(chip, withValues), now);
+    const rows = paidRows;
     const chipHref = Object.fromEntries([["todos", "/agenda?aba=pagos"], ...PAID_CHIPS.map((c) => [c.value, `/agenda?aba=pagos&f=${c.value}`])]) as Record<"todos" | PaidChip, string>;
     paid = <PaidList rows={rows} chip={chip} chipHref={chipHref} withValues={withValues} today={today} nowMs={now.getTime()} />;
   }
@@ -168,10 +190,9 @@ export default async function AgendaPage({ searchParams }: PageProps<"/agenda">)
   };
 
   let body: ReactNode;
-  if (range.view === "dia") {
-    const all = await getAgenda(range, now);
+  if (view.view === "dia") {
+    const { all, rawBlocks, acks } = view;
     // Bloqueios do dia: entram na folga de cada uma e na grade.
-    const rawBlocks = await listAgendaBlocks({ from: range.from, to: new Date(range.from.getTime() + 86_400_000) });
     const blocks: GridBlock[] = rawBlocks.filter((b) => blockAppliesOn(b, range.day)).flatMap((b) => {
       const start = hmToMinutes(b.startTime), end = hmToMinutes(b.endTime);
       return start != null && end != null && end > start ? [{ id: b.id, professionalId: b.professionalId, title: b.title || "Bloqueado", start, end, label: `${b.startTime}–${b.endTime}` }] : [];
@@ -183,18 +204,17 @@ export default async function AgendaPage({ searchParams }: PageProps<"/agenda">)
     });
     const casaRanges = effectiveRanges(range.day, null, casa);
     const casaSpan = casaRanges.length ? { start: Math.min(...casaRanges.map((r) => r[0])), end: Math.max(...casaRanges.map((r) => r[1])) } : null;
-    const [acks, prices] = await Promise.all([dayAcks(range.day), withValues ? listServicePrices() : Promise.resolve(null)]);
     const editBlocks = canBook ? { mode, pros: pros.map((p) => ({ id: p.id, name: p.name })), blocks: rawBlocks.filter((b) => blocks.some((x) => x.id === b.id)).map(({ professionalName: _n, ...b }) => b) } : undefined;
     body = (
       <DayAgenda key={range.day} day={range.day} today={today} nowMs={now.getTime()} pros={dayPros} items={all} blocks={blocks} casa={casaSpan}
         prefs={prefs} urlSel={sel} highlight={highlight} acks={acks} caixaOn={canCaixa} prices={prices} editBlocks={editBlocks} />
     );
-  } else if (range.view === "semana") {
+  } else if (view.view === "semana") {
     // Semana: a contagem por dia e por profissional (a Casa ou quem está escolhida). Tocar num dia abre o Dia.
-    const rows = await getAgendaWeekByPro(range);
+    const { rows } = view;
     body = <div className="px-4 pb-10 lg:px-6"><WeekByPro rows={sel ? rows.filter((r) => sel.includes(r.professionalId)) : rows} days={days} today={today} /></div>;
   } else {
-    const all = await getAgenda(range, now);
+    const { all } = view;
     const items = sel ? all.filter((i) => i.professionalId && sel.includes(i.professionalId)) : all;
     body = <div className="px-4 pb-10 lg:px-6"><AgendaBoard items={items} view="lista" days={days} today={today} nowMs={now.getTime()} highlight={highlight} /></div>;
   }

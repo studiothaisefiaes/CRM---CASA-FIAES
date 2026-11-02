@@ -23,26 +23,27 @@ async function collect(now: Date): Promise<Map<string, PaidEntry[]>> {
   const out = new Map<string, PaidEntry[]>();
   const push = (id: string, e: PaidEntry) => out.set(id, [...(out.get(id) ?? []), e]);
 
-  const pkgs = await db.select().from(clientPackages).where(and(isNotNull(clientPackages.contactId), isNull(clientPackages.cancelledAt),
-    sql`${clientPackages.totalSessions} > ${clientPackages.usedSessions}`, sql`(${clientPackages.validUntil} is null or ${clientPackages.validUntil} >= ${today})`))
-    .orderBy(sql`${clientPackages.validUntil} asc nulls last`, asc(clientPackages.packageName));
+  // 02/11: as quatro leituras não dependem uma da outra; vão juntas (antes em fila). A montagem segue a mesma ordem de antes.
+  const [pkgs, credits, prepaid, avec] = await Promise.all([
+    db.select().from(clientPackages).where(and(isNotNull(clientPackages.contactId), isNull(clientPackages.cancelledAt),
+      sql`${clientPackages.totalSessions} > ${clientPackages.usedSessions}`, sql`(${clientPackages.validUntil} is null or ${clientPackages.validUntil} >= ${today})`))
+      .orderBy(sql`${clientPackages.validUntil} asc nulls last`, asc(clientPackages.packageName)),
+    db.select({ id: clientCreditEntries.contactId, balance: sql<number>`sum(${clientCreditEntries.deltaCents})::int`, last: sql<string>`to_char(max(${clientCreditEntries.createdAt}) at time zone 'America/Bahia', 'YYYY-MM-DD')` })
+      .from(clientCreditEntries).groupBy(clientCreditEntries.contactId).having(sql`sum(${clientCreditEntries.deltaCents}) > 0`),
+    db.select({ contactId: appointments.contactId, label: appointments.serviceLabel, startsAt: appointments.startsAt, total: comandaItems.totalCents, day: comandas.day })
+      .from(comandaItems).innerJoin(comandas, eq(comandas.id, comandaItems.comandaId)).innerJoin(appointments, eq(appointments.id, comandaItems.appointmentId))
+      .where(and(eq(comandas.status, "fechada"), isNull(comandaItems.cancelledAt), gt(appointments.startsAt, now), inArray(appointments.status, ["agendado", "confirmado"]), isNotNull(appointments.contactId)))
+      .orderBy(asc(appointments.startsAt)),
+    // O texto do filtro é o predicado do índice parcial sales_payments_credito_cliente_idx (0099): mudar um, mudar o outro.
+    db.selectDistinct({ id: salesPayments.contactId }).from(salesPayments)
+      .where(and(isNotNull(salesPayments.contactId), sql`translate(lower(${salesPayments.method}), 'áéíóúâêôãõç', 'aeiouaeoaoc') like '%credito cliente%'`)),
+  ]);
   for (const p of pkgs) push(p.contactId!, {
     kind: "pacote", label: `${p.packageName} · faltam ${p.totalSessions - p.usedSessions} de ${p.totalSessions}${p.validUntil ? ` · vence ${dm(p.validUntil)}` : ""}`,
     valueCents: p.priceCents, paidOn: p.purchasedOn, validUntil: p.validUntil,
   });
-
-  const credits = await db.select({ id: clientCreditEntries.contactId, balance: sql<number>`sum(${clientCreditEntries.deltaCents})::int`, last: sql<string>`to_char(max(${clientCreditEntries.createdAt}) at time zone 'America/Bahia', 'YYYY-MM-DD')` })
-    .from(clientCreditEntries).groupBy(clientCreditEntries.contactId).having(sql`sum(${clientCreditEntries.deltaCents}) > 0`);
   for (const c of credits) push(c.id, { kind: "credito", label: "Crédito da cliente", valueCents: c.balance, paidOn: c.last, validUntil: null });
-
-  const prepaid = await db.select({ contactId: appointments.contactId, label: appointments.serviceLabel, startsAt: appointments.startsAt, total: comandaItems.totalCents, day: comandas.day })
-    .from(comandaItems).innerJoin(comandas, eq(comandas.id, comandaItems.comandaId)).innerJoin(appointments, eq(appointments.id, comandaItems.appointmentId))
-    .where(and(eq(comandas.status, "fechada"), isNull(comandaItems.cancelledAt), gt(appointments.startsAt, now), inArray(appointments.status, ["agendado", "confirmado"]), isNotNull(appointments.contactId)))
-    .orderBy(asc(appointments.startsAt));
   for (const a of prepaid) push(a.contactId!, { kind: "servico_pago", label: `${a.label} pago antes do horário (${DMH.format(a.startsAt).replace(",", "")})`, valueCents: a.total, paidOn: a.day, validUntil: null });
-
-  const avec = await db.selectDistinct({ id: salesPayments.contactId }).from(salesPayments)
-    .where(and(isNotNull(salesPayments.contactId), sql`translate(lower(${salesPayments.method}), 'áéíóúâêôãõç', 'aeiouaeoaoc') like '%credito cliente%'`));
   for (const a of avec) if (!(out.get(a.id!) ?? []).some((e) => e.kind === "credito")) push(a.id!, { kind: "credito_avec", label: "Crédito no Avec (conferir)", valueCents: null, paidOn: null, validUntil: null });
   return out;
 }
@@ -51,15 +52,19 @@ export async function listPaidNotUsed(f: PaidFilter, now = new Date()): Promise<
   const byContact = await collect(now);
   const ids = [...byContact.keys()];
   if (!ids.length) return [];
-  const people = await db.select({ id: contacts.id, name: contacts.name, phone: contacts.phoneE164 }).from(contacts).where(inArray(contacts.id, ids));
-  const next = await db.select({ id: appointments.contactId, at: sql<Date>`min(${appointments.startsAt})` }).from(appointments)
-    .where(and(inArray(appointments.contactId, ids), gte(appointments.startsAt, now), inArray(appointments.status, ["agendado", "confirmado", "solicitado"]), isNull(appointments.avecTwinOf)))
-    .groupBy(appointments.contactId);
+  // 02/11: as duas leituras juntas (antes em fila) e o próximo horário por mapa (antes um find por cliente).
+  const [people, next] = await Promise.all([
+    db.select({ id: contacts.id, name: contacts.name, phone: contacts.phoneE164 }).from(contacts).where(inArray(contacts.id, ids)),
+    db.select({ id: appointments.contactId, at: sql<Date>`min(${appointments.startsAt})` }).from(appointments)
+      .where(and(inArray(appointments.contactId, ids), gte(appointments.startsAt, now), inArray(appointments.status, ["agendado", "confirmado", "solicitado"]), isNull(appointments.avecTwinOf)))
+      .groupBy(appointments.contactId),
+  ]);
+  const nextOf = new Map(next.map((n) => [n.id, n.at]));
   const limit = shiftDay(dayOf(now), 30);
   let rows: PaidRow[] = people.map((p) => {
     const entries = [...byContact.get(p.id)!].sort((a, b) => ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind)).map((e) => (f.withValues ? e : { ...e, valueCents: null }));
     const expiries = entries.map((e) => e.validUntil).filter((d): d is string => !!d).sort();
-    const at = next.find((n) => n.id === p.id)?.at;
+    const at = nextOf.get(p.id);
     return { contactId: p.id, name: p.name?.trim() || "Cliente", phone: p.phone, entries, nextAppointmentAt: at ? new Date(at).toISOString() : null, soonestExpiry: expiries[0] ?? null };
   });
   if (f.semHorario) rows = rows.filter((r) => !r.nextAppointmentAt);

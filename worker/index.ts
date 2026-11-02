@@ -9,6 +9,7 @@ import { runRules } from "../src/server/rules/engine";
 import { sweepClosingWaits, sweepOverdueWaits } from "../src/server/domain/overdue-waits";
 import { sweepPosSilencio } from "../src/server/domain/pos-silencio";
 import { sweepRetomadaAutomatica } from "../src/server/domain/retomada-automatica";
+import { licoesDasEdicoes } from "../src/server/ai/licoes-edicoes";
 import { syncLidPairs } from "../src/server/whatsapp/lid-pairs";
 import { processHistoryEvents, purgeOldWebhookEvents, retryFailedWebhooks } from "../src/server/whatsapp/webhook";
 import { reconcileMissedMessages } from "../src/server/whatsapp/reconcile";
@@ -124,6 +125,9 @@ async function main() {
     // Duas funções que mandam mensagem: nascem desligadas e cada uma confere o interruptor.
     const ps = await sweepPosSilencio().catch((e) => { console.error("[depois do silêncio]", e); return 0; });
     if (ps) console.log("[depois do silêncio]", ps);
+    // Uma vez por dia (19h): a IA propõe lições a partir do que a equipe editou; só valem depois que a gestão aprova.
+    const li = await licoesDasEdicoes();
+    if (li) console.log("[lições das edições]", li);
     const ra = await sweepRetomadaAutomatica().catch((e) => { console.error("[retomada automática]", e); return 0; });
     if (ra) console.log("[retomada automática]", ra);
     await beat().catch((e) => console.error("[batida do worker]", e));

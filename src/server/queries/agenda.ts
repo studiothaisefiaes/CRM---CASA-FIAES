@@ -94,14 +94,20 @@ export async function getAgenda(range: AgendaRange, now: Date = new Date(), opts
   const serviceIds = [...new Set(aps.map((a) => a.serviceId).filter((x): x is string => !!x))];
   const apContacts = [...new Set(aps.map((a) => a.contactId).filter((x): x is string => !!x))];
   const seriesIds = [...new Set(aps.map((a) => a.seriesId).filter((x): x is string => !!x))];
-  const [durations, avatars, firstDay, typeLabels, funcoes, seriesDays, auxMap] = await Promise.all([
+  // 02/11: as comandas dos horários entram nesta mesma leva (antes era uma terceira ida ao banco depois dela).
+  const apIds = aps.map((a) => a.id);
+  const [durations, avatars, firstDay, typeLabels, funcoes, seriesDays, auxMap, links] = await Promise.all([
     serviceIds.length ? db.select({ id: lists.id, durationMin: lists.durationMin }).from(lists).where(inArray(lists.id, serviceIds)) : [],
     apContacts.length ? db.select({ id: contacts.id, ignored: contacts.ignored, hasAvatar: sql<boolean>`(${contacts.avatarPath} is not null)`, alertNotes: contacts.alertNotes, imageUse: contacts.imageUse }).from(contacts).where(inArray(contacts.id, apContacts)) : [],
     firstVisitDays([...new Set([...leadRows.map((r) => r.contactId), ...apContacts])]),
     getVisitTypes().then(visitTypeLabelMap),
     getFuncoes(),
     seriesDaysOf(seriesIds),
-    auxiliariesOf(aps.map((a) => a.id)),
+    auxiliariesOf(apIds),
+    // 6C: selo R$ (comanda fechada) e "falta fechar" (comanda aberta) de cada horário.
+    apIds.length ? db.select({ appointmentId: comandaItems.appointmentId, comandaId: comandas.id, status: comandas.status })
+      .from(comandaItems).innerJoin(comandas, eq(comandas.id, comandaItems.comandaId))
+      .where(and(inArray(comandaItems.appointmentId, apIds), isNull(comandaItems.cancelledAt), inArray(comandas.status, ["aberta", "fechada"]))) : [],
   ]);
   const seriesOf = (seriesId: string | null | undefined, at: string) => {
     const days = seriesId ? seriesDays.get(seriesId) : undefined;
@@ -148,13 +154,11 @@ export async function getAgenda(range: AgendaRange, now: Date = new Date(), opts
     };
   });
 
-  // 6C: selo R$ (comanda fechada) e "falta fechar" (comanda aberta) de cada horário.
-  const apptIds = booked.filter((i) => i.appointmentId).map((i) => i.appointmentId!);
-  const links = apptIds.length ? await db.select({ appointmentId: comandaItems.appointmentId, comandaId: comandas.id, status: comandas.status })
-    .from(comandaItems).innerJoin(comandas, eq(comandas.id, comandaItems.comandaId))
-    .where(and(inArray(comandaItems.appointmentId, apptIds), isNull(comandaItems.cancelledAt), inArray(comandas.status, ["aberta", "fechada"]))) : [];
+  // 6C: as comandas de cada horário, agrupadas uma vez (antes um filter da lista inteira por horário); a ordem dentro do grupo é a mesma.
+  const linksOf = new Map<string, { comandaId: string; status: string }[]>();
+  for (const x of links) if (x.appointmentId) { const list = linksOf.get(x.appointmentId); if (list) list.push(x); else linksOf.set(x.appointmentId, [x]); }
   for (const i of booked) {
-    const l = links.filter((x) => x.appointmentId === i.appointmentId);
+    const l = linksOf.get(i.appointmentId!) ?? [];
     i.paid = l.some((x) => x.status === "fechada");
     i.openComandaId = l.find((x) => x.status === "aberta")?.comandaId ?? null;
   }
@@ -180,9 +184,10 @@ export async function listServicePrices(): Promise<Record<string, number>> {
  * atende. Vazio com a função "Preço e tempo por profissional" desligada; preço só para quem vê valores (`withValues`).
  */
 export async function listBookingTerms(withValues: boolean): Promise<Record<string, Record<string, { durationMin: number | null; priceCents: number | null }>>> {
-  if (!(await getFuncoes()).preco_por_profissional) return {};
-  const rows = await db.select({ pro: professionalServices.professionalId, svc: professionalServices.serviceId, d: professionalServices.durationMin, p: professionalServices.priceCents })
-    .from(professionalServices).where(sql`${professionalServices.durationMin} is not null or ${professionalServices.priceCents} is not null`);
+  // 02/11: a chave da função e a tabela (pequena) são lidas juntas, em vez de uma esperar a outra.
+  const [funcoes, rows] = await Promise.all([getFuncoes(), db.select({ pro: professionalServices.professionalId, svc: professionalServices.serviceId, d: professionalServices.durationMin, p: professionalServices.priceCents })
+    .from(professionalServices).where(sql`${professionalServices.durationMin} is not null or ${professionalServices.priceCents} is not null`)]);
+  if (!funcoes.preco_por_profissional) return {};
   const out: Record<string, Record<string, { durationMin: number | null; priceCents: number | null }>> = {};
   for (const r of rows) {
     const price = withValues ? r.p : null;
