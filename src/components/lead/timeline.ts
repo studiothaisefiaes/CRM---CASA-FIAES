@@ -5,7 +5,7 @@ import type { Msg } from "./conversation";
 export const messagesToMsgs = (messages: DealDetail["messages"]): Msg[] => messages.map((m) => ({
   id: m.id, externalId: m.externalId, direction: m.direction, kind: m.kind, body: m.body, status: m.status, createdAt: new Date(m.createdAt).toISOString(),
   sender: m.sender, fromPhone: m.fromPhone, sentVia: m.sentVia, byId: m.sentByUserId ?? null, error: m.error, hasMedia: m.hasMedia, quotedBody: m.quotedBody,
-  edited: !!m.editedAt, deleted: !!m.deletedAt, purgedAt: m.mediaPurgedAt ? new Date(m.mediaPurgedAt).toISOString() : undefined,
+  edited: !!m.editedAt, editedTextMissing: m.editedTextMissing || undefined, deleted: !!m.deletedAt, purgedAt: m.mediaPurgedAt ? new Date(m.mediaPurgedAt).toISOString() : undefined,
   reactions: m.reactions ?? null, call: m.call ?? null,
   importedAt: m.importedAt ? new Date(m.importedAt).toISOString() : undefined,
   durationSec: m.mediaDurationSec, hasPlayback: !!m.playbackPath, transcript: m.transcript, transcriptStatus: m.transcriptStatus,

@@ -6,6 +6,16 @@ import { startLongPoll } from "@/lib/live-poll";
 import { playAlert } from "./sound";
 import { setRefreshing, takeUrlAhead } from "./refresh-gate";
 import { checkVersion } from "./version-state";
+import { SESSAO_CAIU } from "./session-watch";
+
+/** A sessão ainda vale? `null` = não deu para saber (sem rede, servidor trocando de versão): segue tentando. */
+async function sessionAlive(): Promise<boolean | null> {
+  try {
+    const r = await fetch("/api/sessao", { cache: "no-store" });
+    if (r.status === 401 || (r.redirected && new URL(r.url).pathname === "/login")) return false;
+    return r.ok ? true : null;
+  } catch { return null; }
+}
 
 export { shouldRefresh };
 
@@ -107,6 +117,8 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     let poll: { stop: () => void } | null = null;
     let dropped = false;
     const dispatch = (ev: LiveEvent) => listeners.current.forEach((l) => l(ev));
+    // Sessão vencida: para de tentar e mostra a faixa "Entrar de novo" (SessionWatch).
+    const sessionDropped = () => { stopped = true; window.dispatchEvent(new Event(SESSAO_CAIU)); };
     // Som em toda mensagem de cliente (conversa nova ou não, em qualquer etapa); ligação atendida e envios da Casa não tocam.
     // Só com `aviso` (o servidor já tirou mensagem velha, reação e canal quieto); o playAlert limita a um bipe a cada 3 s.
     const deliver = (ev: LiveEvent) => { dispatch(ev); if ((ev.type === "lead_criado" || ev.type === "mensagem_recebida" || ev.type === "alerta") && ev.aviso === true) playAlert(); };
@@ -116,9 +128,11 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       poll = startLongPoll({
         fetch: async (after, signal) => {
           const r = await fetch(`/api/stream/poll${after === null ? "" : `?after=${after}`}`, { cache: "no-store", signal });
+          // Cookie vencido: o proxy manda para o /login (redirect seguido) em vez de 401.
+          if (r.redirected && new URL(r.url).pathname === "/login") return { status: 401 };
           return r.ok ? { status: 200, ...(await r.json()) } : { status: r.status };
         },
-        onEvent: (ev) => deliver(ev as LiveEvent), retryMs: 3000, catchUp,
+        onEvent: (ev) => deliver(ev as LiveEvent), retryMs: 3000, catchUp, onUnauthorized: sessionDropped,
       });
     };
     const connect = () => {
@@ -135,7 +149,12 @@ export function LiveProvider({ children }: { children: ReactNode }) {
         }
         deliver(ev);
       };
-      es.onerror = () => { clearTimeout(watchdog); dropped = true; es?.close(); if (!stopped) retry = setTimeout(connect, 3000); };
+      es.onerror = () => {
+        clearTimeout(watchdog); dropped = true; es?.close();
+        if (stopped) return;
+        // 03/11: o stream caía com a sessão vencida e tentava de novo a cada 3 s para sempre, mudo. Pergunta se a sessão vale.
+        void sessionAlive().then((ok) => { if (stopped) return; if (ok === false) sessionDropped(); else retry = setTimeout(connect, 3000); });
+      };
     };
     let pollMode = false;
     try { pollMode = sessionStorage.getItem(POLL_MODE_KEY) === "poll"; } catch {}

@@ -38,6 +38,7 @@ const ROUTE_EXCEPTIONS: Record<string, string> = {
   "api/stream/route.ts": "tempo real: só avisa que algo mudou, sem dado; a tela recarrega com as próprias permissões",
   "api/stream/poll/route.ts": "o mesmo tempo real do /api/stream por long-polling (túnel/proxy que segura stream); exige sessão",
   "api/sessao/renovar/route.ts": "renova a própria sessão (exige sessão; não devolve dado de cliente)",
+  "api/sessao/route.ts": "só diz se a própria sessão vale (204/401), para o tempo real avisar 'entre de novo'; nenhum dado",
   "c/[token]/agenda.ics/route.ts": "calendário da visita: só com o token do link (32 bytes, só o hash no banco), sem o nome da cliente",
   "api/v1/openapi.json/route.ts": "documentação da API v1: só a descrição das rotas (OpenAPI), sem dado nenhum",
 };

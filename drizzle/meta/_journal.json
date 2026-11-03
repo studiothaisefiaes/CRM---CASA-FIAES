@@ -680,6 +680,13 @@
       "when": 1793500000000,
       "tag": "0099_agenda_indices",
       "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1793600000000,
+      "tag": "0100_edicao_sem_texto",
+      "breakpoints": true
     }
   ]
 }

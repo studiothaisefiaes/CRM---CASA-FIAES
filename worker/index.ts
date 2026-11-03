@@ -9,6 +9,7 @@ import { runRules } from "../src/server/rules/engine";
 import { sweepClosingWaits, sweepOverdueWaits } from "../src/server/domain/overdue-waits";
 import { sweepPosSilencio } from "../src/server/domain/pos-silencio";
 import { sweepRetomadaAutomatica } from "../src/server/domain/retomada-automatica";
+import { sweepStuckPending } from "../src/server/domain/send";
 import { licoesDasEdicoes } from "../src/server/ai/licoes-edicoes";
 import { syncLidPairs } from "../src/server/whatsapp/lid-pairs";
 import { processHistoryEvents, purgeOldWebhookEvents, retryFailedWebhooks } from "../src/server/whatsapp/webhook";
@@ -130,6 +131,9 @@ async function main() {
     if (li) console.log("[lições das edições]", li);
     const ra = await sweepRetomadaAutomatica().catch((e) => { console.error("[retomada automática]", e); return 0; });
     if (ra) console.log("[retomada automática]", ra);
+    // Envio preso em "enviando…" há mais de 10 min (o processo caiu no meio): vira "envio incerto, confira".
+    const sp = await sweepStuckPending().catch((e) => { console.error("[envio preso]", e); return 0; });
+    if (sp) console.log("[envio preso → incerto]", sp);
     await beat().catch((e) => console.error("[batida do worker]", e));
   });
   await boss.work(QUEUES.webhooks, async () => { const r = await retryFailedWebhooks(); if (r.tried) console.log("[webhooks]", r); });

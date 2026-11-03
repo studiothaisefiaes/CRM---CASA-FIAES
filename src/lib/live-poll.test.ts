@@ -60,3 +60,13 @@ describe("startLongPoll (tempo real por long-polling)", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("startLongPoll: sessão vencida (03/11)", () => {
+  it("401 para o poll e avisa quem chamou (a tela mostra 'Entrar de novo')", async () => {
+    let calls = 0, avisou = 0;
+    startLongPoll({ fetch: async () => { calls++; return { status: 401 }; }, onEvent: () => {}, retryMs: 10, onUnauthorized: () => { avisou++; } });
+    await tick(); await tick(); await new Promise((r) => setTimeout(r, 30));
+    expect(calls).toBe(1);
+    expect(avisou).toBe(1);
+  });
+});

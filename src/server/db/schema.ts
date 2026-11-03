@@ -340,6 +340,8 @@ export const messages = pgTable("messages", {
   transcriptAttempts: smallint("transcript_attempts").notNull().default(0),
   /** A cliente editou/apagou a mensagem no WhatsApp. */
   editedAt: timestamp("edited_at", { withTimezone: true }),
+  /** 0100: editada no formato novo do WhatsApp (criptografado): o texto novo não chegou, só o aviso de que mudou. */
+  editedTextMissing: boolean("edited_text_missing").notNull().default(false),
   /** Trecho da mensagem que esta responde (citação do WhatsApp). */
   quotedBody: text("quoted_body"),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),

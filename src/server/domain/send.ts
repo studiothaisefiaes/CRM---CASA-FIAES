@@ -414,3 +414,17 @@ async function claimedByEcho(messageId: string): Promise<{ externalId: string | 
   return cur?.status === "sent" ? { externalId: cur.externalId } : null;
 }
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/** Envio que ficou "enviando…" mais que isso (o processo caiu entre gravar e confirmar) vira "envio incerto". */
+export const STUCK_PENDING_MS = 10 * 60_000;
+/**
+ * 03/11: mensagem da Casa presa em "enviando…" (queda do servidor ou do banco no meio do envio) ficava assim para sempre. Passa a
+ * "envio incerto: confira no WhatsApp antes de reenviar", como o timeout. Só as sem id do WhatsApp (o eco ainda pode confirmar as outras).
+ */
+export async function sweepStuckPending(now = new Date()): Promise<number> {
+  const rows = await db.update(messages).set({ status: "failed", error: UNCERTAIN_SEND_MESSAGE })
+    .where(and(eq(messages.status, "pending"), eq(messages.direction, "out"), isNull(messages.externalId), sql`${messages.createdAt} < ${new Date(now.getTime() - STUCK_PENDING_MS).toISOString()}::timestamptz`))
+    .returning({ dealId: messages.dealId });
+  for (const d of new Set(rows.map((r) => r.dealId).filter((x): x is string => !!x))) await emit("mensagem_falhou", { dealId: d });
+  return rows.length;
+}

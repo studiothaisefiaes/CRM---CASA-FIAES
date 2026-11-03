@@ -10,8 +10,21 @@ import { sniffMime } from "../security/sniff";
 export const mediaDir = () => env().MEDIA_DIR || path.join(process.cwd(), "data", "media");
 const EXT: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif", "audio/ogg": "ogg", "audio/mpeg": "mp3", "audio/mp4": "m4a", "video/mp4": "mp4", "video/webm": "webm", "application/pdf": "pdf" };
 const extFor = (mime: string | null) => (mime && EXT[mime.split(";")[0].trim()]) || "bin";
-/** Baixado automaticamente; vídeo e documento só quando alguém abre. */
-const AUTO_KINDS = ["image", "audio", "sticker"];
+/**
+ * Baixado automaticamente. 03/11: vídeo e documento também (só baixavam quando alguém abria e o link do WhatsApp já tinha vencido),
+ * até AUTO_MAX_BYTES; maior que isso continua baixando só ao abrir.
+ */
+const AUTO_KINDS = ["image", "audio", "sticker", "video", "document"];
+export const AUTO_MAX_BYTES = 40 * 1024 * 1024;
+/** Tamanho declarado pelo WhatsApp (fileLength do nó de mídia, direto ou embrulhado); null = não informado. */
+export function declaredBytes(node: unknown, depth = 0): number | null {
+  if (!node || typeof node !== "object" || depth > 5) return null;
+  const len = (node as { fileLength?: unknown }).fileLength;
+  const n = typeof len === "number" ? len : typeof len === "string" ? Number(len) : typeof len === "object" && len && "low" in len ? Number((len as { low: number }).low) : NaN;
+  if (Number.isFinite(n) && n > 0) return n;
+  for (const v of Object.values(node)) { const f = declaredBytes(v, depth + 1); if (f) return f; }
+  return null;
+}
 const MAX_ATTEMPTS = 3;
 
 /** fileName do documento no nó do WhatsApp (direto ou dentro de documentWithCaptionMessage/ephemeralMessage…). */
@@ -81,12 +94,19 @@ export async function ensureMedia(messageId: string): Promise<{ file: string; mi
 
 /** Worker: baixa fotos, áudios e figurinhas recentes enquanto o link do WhatsApp ainda vale. */
 export async function downloadPendingMedia(limit = 20) {
-  const rows = await db.select({ id: messages.id }).from(messages)
+  const rows = await db.select({ id: messages.id, kind: messages.kind, media: messages.media }).from(messages)
     .where(and(isNotNull(messages.media), isNull(messages.mediaPath), isNull(messages.mediaPurgedAt), inArray(messages.kind, AUTO_KINDS), lt(messages.mediaAttempts, MAX_ATTEMPTS),
       sql`${messages.createdAt} > now() - interval '30 days'`))
     .orderBy(desc(messages.createdAt)).limit(limit);
   let ok = 0;
-  for (const r of rows) if (await ensureMedia(r.id)) ok++;
+  for (const r of rows) {
+    if ((r.kind === "video" || r.kind === "document") && (declaredBytes(r.media) ?? 0) > AUTO_MAX_BYTES) {
+      // Grande demais para baixar sozinho: sai da fila automática (abrir na conversa ainda baixa, ensureMedia não olha as tentativas).
+      await db.update(messages).set({ mediaAttempts: MAX_ATTEMPTS }).where(eq(messages.id, r.id));
+      continue;
+    }
+    if (await ensureMedia(r.id)) ok++;
+  }
   return { tried: rows.length, ok };
 }
 

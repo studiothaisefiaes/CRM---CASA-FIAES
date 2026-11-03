@@ -11,6 +11,8 @@ export function startLongPoll(opts: {
   onEvent: (e: PollEvent) => void;
   retryMs: number;
   catchUp?: boolean;
+  /** A sessão caiu (401): o poll para e quem chamou avisa a pessoa. */
+  onUnauthorized?: () => void;
 }) {
   const ac = new AbortController();
   let cursor: number | null = null;
@@ -20,7 +22,7 @@ export function startLongPoll(opts: {
       let r: PollResult;
       try { r = await opts.fetch(cursor, ac.signal); } catch { if (!ac.signal.aborted) await sleep(opts.retryMs); continue; }
       if (ac.signal.aborted) return;
-      if (r.status === 401) return;
+      if (r.status === 401) { opts.onUnauthorized?.(); return; }
       if (r.status !== 200 || typeof r.cursor !== "number") { await sleep(opts.retryMs); continue; }
       const first = cursor === null;
       cursor = r.cursor;

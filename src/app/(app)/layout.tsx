@@ -9,6 +9,7 @@ import { Sidebar } from "@/components/shell/sidebar";
 import { LiveProvider, LiveRefresh } from "@/components/shell/live";
 import { LateWatch } from "@/components/shell/late-watch";
 import { VersionWatch } from "@/components/shell/version-watch";
+import { SessionWatch } from "@/components/shell/session-watch";
 import { buildId } from "@/server/build-id";
 import { AppFrame } from "@/components/shell/app-frame";
 import { ShellBannersView } from "@/components/shell/connection-banner";
@@ -37,6 +38,8 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           <LateWatch initial={late} />
           {/* Versão nova do CRM (20/10): aviso "Atualizar" em vez de derrubar a tela. */}
           <VersionWatch versao={buildId()} />
+          {/* 03/11: sessão renovada uma vez por dia; caiu mesmo assim, faixa "Entrar de novo". */}
+          <SessionWatch />
           {/* Banners de conexão (channels) vêm do servidor; o sino busca /api/alertas sozinho (useLiveAlerts) e o atrasado, /api/alertas/atrasados. */}
           <LiveRefresh scopes={["channels", "team"]} />
           <AppFrame banners={<ShellBannersView banners={banners} perms={user.perms} />}>{children}</AppFrame>

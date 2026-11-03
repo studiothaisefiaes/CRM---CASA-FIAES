@@ -117,12 +117,31 @@ export function FiscalSettingsForm({ empresa, regras, nfse, nfce, missing, missi
     toast(r.ok ? `${kind === "nfce" ? "NFC-e" : "Nota fiscal"}: ${MODOS.find((x) => x.value === m)!.label}` : r.error, r.ok ? "ok" : "error");
     if (r.ok) router.refresh();
   });
+  // 03/11: Produção emite nota de verdade: pede confirmação antes (era um clique só).
+  const [pedeProducao, setPedeProducao] = useState<"nfse" | "nfce" | null>(null);
+  const escolher = (m: FiscalModo, kind: "nfse" | "nfce") => {
+    if (m === "producao") { setPedeProducao(kind); return; }
+    setPedeProducao(null);
+    trocarModo(m, kind);
+  };
   const chave = (kind: "nfse" | "nfce", atual: FiscalModo, label: string) => (
-    <div role="radiogroup" aria-label={label} className="flex flex-wrap gap-2">
-      {MODOS.map((m) => (
-        <button key={m.value} type="button" role="radio" aria-checked={atual === m.value} disabled={pending} onClick={() => atual !== m.value && trocarModo(m.value, kind)}
-          className={cn("min-h-11 rounded-full border px-4 text-sm transition-colors disabled:opacity-60 lg:min-h-9", atual === m.value ? "border-ink bg-ink text-paper" : "border-line-strong text-graphite hover:bg-paper-2")}>{m.label}</button>
-      ))}
+    <div className="flex flex-col gap-2">
+      <div role="radiogroup" aria-label={label} className="flex flex-wrap gap-2">
+        {MODOS.map((m) => (
+          <button key={m.value} type="button" role="radio" aria-checked={atual === m.value} disabled={pending} onClick={() => atual !== m.value && escolher(m.value, kind)}
+            className={cn("min-h-11 rounded-full border px-4 text-sm transition-colors disabled:opacity-60 lg:min-h-9", atual === m.value ? "border-ink bg-ink text-paper" : "border-line-strong text-graphite hover:bg-paper-2")}>{m.label}</button>
+        ))}
+      </div>
+      {pedeProducao === kind && (
+        <div role="alertdialog" aria-label="Confirmar Produção" className="rounded-[var(--radius-card)] border border-alert/30 bg-alert-soft/60 px-4 py-3">
+          <p className="text-sm font-semibold text-ink">Em Produção, toda {kind === "nfce" ? "NFC-e" : "nota"} sai de verdade, com valor fiscal{kind === "nfce" ? " na SEFAZ-BA" : ""}.</p>
+          <p className="mt-0.5 text-sm text-ink-2">Só ligue depois de testar e conferir com a contabilidade.</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button size="sm" variant="danger" disabled={pending} onClick={() => { setPedeProducao(null); trocarModo("producao", kind); }}>Sim, emitir de verdade</Button>
+            <Button size="sm" variant="secondary" onClick={() => setPedeProducao(null)}>Cancelar</Button>
+          </div>
+        </div>
+      )}
     </div>
   );
   const falta = (list: string[], ok: string) => (

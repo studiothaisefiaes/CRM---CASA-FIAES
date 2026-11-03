@@ -66,7 +66,8 @@ type EvoConnectionData = { remoteJid?: string; fromMe?: boolean; state?: string;
 export type EvoPayload = { event?: string; instance?: string; data?: (EvoMessageData & EvoConnectionData) | EvoMessageData[]; date_time?: string };
 
 /** Embrulhos do WhatsApp que só carregam outra mensagem dentro (temporária, visualização única, legenda de documento). */
-const WRAPPERS = ["ephemeralMessage", "viewOnceMessage", "viewOnceMessageV2", "viewOnceMessageV2Extension", "documentWithCaptionMessage"] as const;
+// associatedChildMessage (03/11): foto/vídeo de álbum chega embrulhado e virava balão vazio.
+const WRAPPERS = ["ephemeralMessage", "viewOnceMessage", "viewOnceMessageV2", "viewOnceMessageV2Extension", "associatedChildMessage", "documentWithCaptionMessage"] as const;
 type Loose = Record<string, unknown> & BaileysMessage;
 function unwrap(m: Loose): Loose {
   for (let i = 0; i < 3; i++) {
@@ -108,6 +109,23 @@ export function reactionOf(raw: BaileysMessage | null | undefined): { targetId: 
   return r?.key?.id ? { targetId: r.key.id, emoji: (r.text ?? "").trim() } : null;
 }
 
+type RichPart = { text?: string; title?: string; hydratedTitleText?: string; hydratedContentText?: string; hydratedFooterText?: string;
+  contentText?: string; description?: string; body?: { text?: string }; header?: { title?: string }; footer?: { text?: string } } | undefined;
+const joinText = (...xs: (string | null | undefined)[]) => xs.map((x) => x?.trim()).filter(Boolean).join("\n") || null;
+/** O texto de mensagens de empresa (modelo com botões, interativa, botões, lista). */
+function richText(m: Loose): string | null {
+  const tpl = m.templateMessage as { hydratedTemplate?: RichPart; hydratedFourRowTemplate?: RichPart; interactiveMessageTemplate?: RichPart } | undefined;
+  const h = tpl?.hydratedTemplate ?? tpl?.hydratedFourRowTemplate;
+  if (h) return joinText(h.hydratedTitleText, h.hydratedContentText, h.hydratedFooterText);
+  const im = tpl?.interactiveMessageTemplate ?? (m.interactiveMessage as RichPart);
+  if (im) return joinText(im.header?.title, im.body?.text, im.footer?.text);
+  const b = m.buttonsMessage as RichPart;
+  if (b) return joinText(b.contentText, b.text);
+  const l = m.listMessage as RichPart;
+  if (l) return joinText(l.title, l.description);
+  return null;
+}
+
 /** Extrai tipo e texto de uma mensagem do WhatsApp (Baileys). null = não é conversa. */
 export function parseContent(raw: BaileysMessage | null | undefined): { kind: string; body: string | null } | null {
   if (!raw) return null;
@@ -147,6 +165,9 @@ export function parseContent(raw: BaileysMessage | null | undefined): { kind: st
   const choice = m.buttonsResponseMessage?.selectedDisplayText ?? m.templateButtonReplyMessage?.selectedDisplayText ?? m.listResponseMessage?.title
     ?? m.interactiveResponseMessage?.body?.text;
   if (choice) return { kind: "text", body: choice };
+  // 03/11: mensagem de empresa com botões (modelo, interativa, botões, lista) chegava como balão vazio: vale o texto dela.
+  const rich = richText(m);
+  if (rich) return { kind: "text", body: rich };
   return { kind: "other", body: null };
 }
 
@@ -154,6 +175,9 @@ export function parseContent(raw: BaileysMessage | null | undefined): { kind: st
 export function protocolAction(raw: BaileysMessage | null | undefined): { type: "edit"; id: string; body: string | null } | { type: "delete"; id: string } | null {
   if (!raw) return null;
   const m = raw as Loose;
+  // 03/11: edição no formato novo vem criptografada (secretEncType 2 = MESSAGE_EDIT); o texto novo não vem, só qual mensagem mudou.
+  const secret = m.secretEncryptedMessage as { secretEncType?: number | string; targetMessageKey?: { id?: string } } | undefined;
+  if (secret?.targetMessageKey?.id && (secret.secretEncType === 2 || secret.secretEncType === "MESSAGE_EDIT")) return { type: "edit", id: secret.targetMessageKey.id, body: null };
   const proto = m.protocolMessage ?? (m.editedMessage as { message?: Loose } | undefined)?.message?.protocolMessage;
   if (!proto?.key?.id) return null;
   const t = proto.type;
@@ -468,7 +492,10 @@ export async function handleEvolutionEvent(p: EvoPayload) {
     if (reaction) return { ok: true, kind: "reaction", ...(await applyReaction(reaction, !!d.key.fromMe)) };
     const proto = protocolAction(d.message);
     if (proto) {
-      const set = proto.type === "edit" ? { editedAt: new Date(), ...(proto.body != null ? { body: proto.body } : {}) } : { deletedAt: new Date() };
+      // Edição sem o texto novo (criptografada): marca "veja no celular" em vez de deixar o texto antigo parecer o atual.
+      const set = proto.type === "edit"
+        ? { editedAt: new Date(), ...(proto.body != null ? { body: proto.body, editedTextMissing: false } : { editedTextMissing: true }) }
+        : { deletedAt: new Date() };
       const r = await db.update(messages).set(set).where(eq(messages.externalId, proto.id)).returning({ dealId: messages.dealId });
       if (r[0]?.dealId) await emit("mensagem_atualizada", { dealId: r[0].dealId });
       return { ok: true, kind: proto.type, found: r.length > 0 };

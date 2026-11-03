@@ -42,8 +42,11 @@ export function retryPush(sender: PushSender, delayMs = 1_500): PushSender {
 }
 
 /** Avisos sem espera que também vão por push (o resto fica só no sino). */
-export const PUSH_ALSO: readonly string[] = ["mencao", "agendada_falhou", "encaminhar_falhou", "mensagem_cliente", "link_remarcar"];
-const PUSH_TITLE: Record<string, string> = { mencao: "Te marcaram numa nota", agendada_falhou: "Mensagem agendada não saiu", encaminhar_falhou: "Encaminhamento não saiu", mensagem_cliente: CLIENT_MESSAGE_TITLE, link_remarcar: "Cliente pediu para remarcar" };
+// 03/11: WhatsApp caído também vai por push (para a gestão): à noite ou no domingo ninguém está com o CRM aberto para ver a faixa.
+const WHATSAPP_DOWN = ["whatsapp_sem_conexao", "whatsapp_desconectado"];
+export const PUSH_ALSO: readonly string[] = ["mencao", "agendada_falhou", "encaminhar_falhou", "mensagem_cliente", "link_remarcar", ...WHATSAPP_DOWN];
+const PUSH_TITLE: Record<string, string> = { mencao: "Te marcaram numa nota", agendada_falhou: "Mensagem agendada não saiu", encaminhar_falhou: "Encaminhamento não saiu", mensagem_cliente: CLIENT_MESSAGE_TITLE, link_remarcar: "Cliente pediu para remarcar",
+  whatsapp_sem_conexao: "WhatsApp da Casa sem conexão", whatsapp_desconectado: "WhatsApp da Casa desconectou" };
 
 /** Envia o push dos alertas ainda não avisados. Marca `pushedAt` sempre, para não reprocessar. */
 export async function sendPushForPendingAlerts(sender: PushSender = webPushSender, opts: { retryDelayMs?: number } = {}): Promise<{ sent: number; failed: number }> {
@@ -82,7 +85,7 @@ export async function sendPushForPendingAlerts(sender: PushSender = webPushSende
       ? [...new Set([...(a.userId ? [a.userId] : []), ...team.filter((u) => u.todas || !a.userId).map((u) => u.id)])]
       : toManagers ? managers : a.userId ? [a.userId] : [];
     const title = PUSH_TITLE[a.type] ?? (a.level >= 2 ? "Atraso escalado para a gestão" : "Conversa esperando");
-    const payload = JSON.stringify({ title, body: a.message, url: leadHref(a.dealId) });
+    const payload = JSON.stringify({ title, body: a.message, url: WHATSAPP_DOWN.includes(a.type) ? "/config/whatsapp" : leadHref(a.dealId) });
     const subsOf = targets.flatMap((uid) => byUser.get(uid) ?? []).filter((s) => !gone.has(s.endpoint));
     // Em paralelo: um endpoint lento ou fora do ar não segura os outros aparelhos.
     const results = await Promise.allSettled(subsOf.map((s) => send(s, payload)));

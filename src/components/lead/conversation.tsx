@@ -18,7 +18,7 @@ import { TRANSCRIPT_MAX_SECONDS, formatDuration, type TranscriptStatus } from "@
 export type Msg = { id: string; externalId?: string | null; direction: "in" | "out"; kind: string; body: string | null; status: string; createdAt: string; sender: string | null; fromPhone: boolean;
   /** Por onde saiu a mensagem da Casa ("celular" | "crm"); ausente nas antigas, que usam `fromPhone`. */ sentVia?: "celular" | "crm" | null;
   /** Quem da equipe enviou (a Casa pelo CRM): só ela edita a própria mensagem. */ byId?: string | null;
-  error?: string | null; hasMedia?: boolean; quotedBody?: string | null; edited?: boolean; deleted?: boolean;
+  error?: string | null; hasMedia?: boolean; quotedBody?: string | null; edited?: boolean; editedTextMissing?: boolean; deleted?: boolean;
   /** Quando a retenção apagou o arquivo da mídia (ISO): a tela mostra \"Mídia expirada\". */ purgedAt?: string;
   /** Nota interna (kind "nota"): de onde veio. A cliente não vê. */ note?: "crm" | "chatguru" | "menu";
   /** Trazida do "Exportar conversa" do WhatsApp (ISO de quando foi importada): selo "importada" no balão. */ importedAt?: string;
@@ -141,7 +141,7 @@ export function findQuoted(messages: Msg[], quotingId: string): string | null {
 
 /** Os campos que mudam o que o balão mostra. A lista recria os objetos a cada carga; só re-renderiza quem mudou de verdade. */
 const sameMsg = (a: Msg, b: Msg) =>
-  a === b || (a.id === b.id && a.status === b.status && a.body === b.body && a.kind === b.kind && a.error === b.error && a.quotedBody === b.quotedBody && a.edited === b.edited
+  a === b || (a.id === b.id && a.status === b.status && a.body === b.body && a.kind === b.kind && a.error === b.error && a.quotedBody === b.quotedBody && a.edited === b.edited && a.editedTextMissing === b.editedTextMissing
     && a.deleted === b.deleted && a.purgedAt === b.purgedAt && a.hasMedia === b.hasMedia && a.externalId === b.externalId && a.sender === b.sender && a.fromPhone === b.fromPhone && a.sentVia === b.sentVia && a.byId === b.byId && a.direction === b.direction && a.createdAt === b.createdAt && a.importedAt === b.importedAt
     && a.durationSec === b.durationSec && a.hasPlayback === b.hasPlayback && a.transcript === b.transcript && a.transcriptStatus === b.transcriptStatus
     && (a.reactions?.cliente ?? null) === (b.reactions?.cliente ?? null) && (a.reactions?.casa ?? null) === (b.reactions?.casa ?? null)
@@ -355,7 +355,9 @@ export const Bubble = memo(function Bubble({ m, day, who = null, onReply, onDele
           )}
           <span className="flex items-center justify-end gap-1 text-xs text-muted mt-1" title={m.status === "failed" && m.error ? m.error : undefined}>
             {m.importedAt && <span data-importada="" className="shrink-0 rounded-full border border-line px-1.5 leading-4 text-xs text-muted">importada</span>}
-            {m.edited && "editada · "}
+            {m.edited && (m.editedTextMissing
+              ? <span data-editada-sem-texto="" className="font-semibold text-alert" title="O WhatsApp não manda o texto novo desta edição">editada: veja o texto novo no celular · </span>
+              : "editada · ")}
             {out && outVia(m)}
             {new Date(m.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
             {out && !m.importedAt && (isUncertainSend(m)

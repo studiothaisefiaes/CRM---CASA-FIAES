@@ -88,3 +88,15 @@ it("regras e textos: dois campos com o aviso de não confirmado, texto sugerido 
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Salvar regras e textos" })); });
   expect(regrasSalvas).toHaveBeenCalledWith({ ...DEFAULT_FISCAL_REGRAS, assinaturaNfse: "sha256", informarAliquotaNaDps: true });
 });
+
+it("Produção pede confirmação antes (03/11): o clique sozinho não emite de verdade", async () => {
+  show();
+  const nfce = screen.getByRole("radiogroup", { name: "Chave da nota do produto (NFC-e)" });
+  await act(async () => { fireEvent.click(within(nfce).getByRole("radio", { name: "Produção" })); });
+  expect(modoNfce).not.toHaveBeenCalled();
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Cancelar" })); });
+  expect(screen.queryByRole("alertdialog")).toBeNull();
+  await act(async () => { fireEvent.click(within(nfce).getByRole("radio", { name: "Produção" })); });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Sim, emitir de verdade" })); });
+  expect(modoNfce).toHaveBeenCalledWith("producao");
+});
